@@ -8,8 +8,10 @@ from flask import Flask, request, jsonify
 import threading
 import os
 import logging
-
 import time
+
+# Initialize Flask app BEFORE using @app.route
+app = Flask(__name__)
 start_time = time.time()
 
 # Update the health endpoint to be more Railway-friendly
