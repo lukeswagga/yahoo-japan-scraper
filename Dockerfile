@@ -1,7 +1,3 @@
-# Remove the lowercase file
-rm dockerfile
-
-# Create the correct uppercase Dockerfile
 cat > Dockerfile << 'EOF'
 FROM python:3.11-slim
 
