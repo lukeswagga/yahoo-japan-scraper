@@ -1,6 +1,10 @@
+# Remove the lowercase file
+rm dockerfile
+
+# Create the correct uppercase Dockerfile
+cat > Dockerfile << 'EOF'
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -27,3 +31,4 @@ EXPOSE 8000
 
 # Run the Discord bot
 CMD ["python", "secure_discordbot.py"]
+EOF
