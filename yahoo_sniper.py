@@ -627,7 +627,14 @@ def get_discord_bot_stats():
 
 def main_loop():
     print("🎯 Starting Enhanced Yahoo Japan Sniper...")
+    
+    # Start health server for Railway health checks
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
+    print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
+    
     print(f"👕 CLOTHING ONLY - Advanced filtering enabled")
+    # ... rest of your existing code continues unchanged ...nced filtering enabled")
     print(f"🚫 Excluded brands: {', '.join(COMPLETELY_EXCLUDED_BRANDS)}")
     print(f"💰 Max Price: ¥{MAX_PRICE_YEN:,} (~${convert_jpy_to_usd(MAX_PRICE_YEN):.2f} USD)")
     print(f"🔥 High-resale focus: Enhanced brand detection")

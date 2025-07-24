@@ -1,0 +1,13 @@
+
+# Add this to your Flask health endpoint in secure_discordbot.py
+@app.route('/health', methods=['GET'])
+def health():
+    try:
+        return jsonify({
+            'status': 'healthy',
+            'bot_ready': bot.is_ready() if 'bot' in globals() else False,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
