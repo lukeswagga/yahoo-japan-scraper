@@ -137,6 +137,8 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_listings_created_at ON listings(created_at)",
             "CREATE INDEX IF NOT EXISTS idx_reactions_user_id ON reactions(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_reactions_auction_id ON reactions(auction_id)",
+            "CREATE INDEX IF NOT EXISTS idx_user_bookmarks_user_id ON user_bookmarks(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_user_bookmarks_auction_id ON user_bookmarks(auction_id)",
         ]
         
         for index_sql in indexes:
@@ -348,3 +350,60 @@ def add_reaction(user_id, auction_id, reaction_type):
     except Exception as e:
         print(f"❌ Error adding reaction: {e}")
         return False
+
+def add_bookmark(user_id, auction_id, bookmark_message_id, bookmark_channel_id):
+    """Add a bookmark for a user"""
+    try:
+        if db_manager.use_postgres:
+            db_manager.execute_query('''
+                INSERT INTO user_bookmarks (user_id, auction_id, bookmark_message_id, bookmark_channel_id)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id, auction_id) DO UPDATE SET
+                    bookmark_message_id = EXCLUDED.bookmark_message_id,
+                    bookmark_channel_id = EXCLUDED.bookmark_channel_id,
+                    created_at = CURRENT_TIMESTAMP
+            ''', (user_id, auction_id, bookmark_message_id, bookmark_channel_id))
+        else:
+            db_manager.execute_query('''
+                INSERT OR REPLACE INTO user_bookmarks 
+                (user_id, auction_id, bookmark_message_id, bookmark_channel_id)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, auction_id, bookmark_message_id, bookmark_channel_id))
+        
+        return True
+    except Exception as e:
+        print(f"❌ Error adding bookmark: {e}")
+        return False
+
+def get_user_bookmarks(user_id, limit=10):
+    """Get user's bookmarks"""
+    return db_manager.execute_query('''
+        SELECT ub.auction_id, l.title, l.brand, l.price_usd, l.zenmarket_url, ub.created_at
+        FROM user_bookmarks ub
+        JOIN listings l ON ub.auction_id = l.auction_id
+        WHERE ub.user_id = ?
+        ORDER BY ub.created_at DESC
+        LIMIT ?
+    ''', (user_id, limit), fetch_all=True)
+
+def clear_user_bookmarks(user_id):
+    """Clear all bookmarks for a user"""
+    try:
+        count_result = db_manager.execute_query(
+            'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
+            (user_id,),
+            fetch_one=True
+        )
+        
+        count = count_result[0] if count_result else 0
+        
+        if count > 0:
+            db_manager.execute_query(
+                'DELETE FROM user_bookmarks WHERE user_id = ?',
+                (user_id,)
+            )
+        
+        return count
+    except Exception as e:
+        print(f"❌ Error clearing bookmarks: {e}")
+        return 0

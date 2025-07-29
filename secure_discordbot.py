@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-import sqlite3
 import re
 from datetime import datetime, timezone
 import asyncio
@@ -9,7 +8,10 @@ import threading
 import os
 import logging
 import time
-from database_manager import db_manager, get_user_proxy_preference, set_user_proxy_preference, add_listing, add_reaction
+from database_manager import (
+    db_manager, get_user_proxy_preference, set_user_proxy_preference, 
+    add_listing, add_reaction, add_bookmark, get_user_bookmarks, clear_user_bookmarks
+)
 
 # Initialize Flask app BEFORE using @app.route
 app = Flask(__name__)
@@ -41,7 +43,7 @@ def load_secure_config():
         print("❌ SECURITY ERROR: GUILD_ID environment variable not set!")
         exit(1)
     
-    if len(bot_token) < 50 or not bot_token.startswith('M'):
+    if len(bot_token) < 50 or not bot_token.startswith(('M', 'N', 'O')):
         print("❌ SECURITY ERROR: Invalid token format detected!")
         exit(1)
     
@@ -117,8 +119,6 @@ BRAND_CHANNEL_MAP = {
     "Jean Paul Gaultier": "jean-paul-gaultier"
 }
 
-DB_FILE = "auction_tracking.db"
-
 intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
@@ -129,222 +129,227 @@ auction_channel = None
 brand_channels_cache = {}
 
 class UserPreferenceLearner:
-    def __init__(self, db_file="auction_tracking.db"):
-        self.db_file = db_file
+    def __init__(self):
         self.init_learning_tables()
     
     def init_learning_tables(self):
-        conn = sqlite3.connect(self.db_file)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_seller_preferences (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                seller_id TEXT,
-                likes INTEGER DEFAULT 0,
-                dislikes INTEGER DEFAULT 0,
-                trust_score REAL DEFAULT 0.5,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id, seller_id)
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_brand_preferences (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                brand TEXT,
-                likes INTEGER DEFAULT 0,
-                dislikes INTEGER DEFAULT 0,
-                preference_score REAL DEFAULT 0.5,
-                avg_liked_price REAL DEFAULT 0,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id, brand)
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_item_preferences (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                item_category TEXT,
-                size_preference TEXT,
-                max_price_usd REAL,
-                min_quality_score REAL DEFAULT 0.3,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
+        try:
+            db_manager.execute_query('''
+                CREATE TABLE IF NOT EXISTS user_seller_preferences (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    seller_id VARCHAR(100),
+                    likes INTEGER DEFAULT 0,
+                    dislikes INTEGER DEFAULT 0,
+                    trust_score REAL DEFAULT 0.5,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, seller_id)
+                )
+            ''' if db_manager.use_postgres else '''
+                CREATE TABLE IF NOT EXISTS user_seller_preferences (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    seller_id TEXT,
+                    likes INTEGER DEFAULT 0,
+                    dislikes INTEGER DEFAULT 0,
+                    trust_score REAL DEFAULT 0.5,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, seller_id)
+                )
+            ''')
+            
+            db_manager.execute_query('''
+                CREATE TABLE IF NOT EXISTS user_brand_preferences (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    brand VARCHAR(100),
+                    likes INTEGER DEFAULT 0,
+                    dislikes INTEGER DEFAULT 0,
+                    preference_score REAL DEFAULT 0.5,
+                    avg_liked_price REAL DEFAULT 0,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, brand)
+                )
+            ''' if db_manager.use_postgres else '''
+                CREATE TABLE IF NOT EXISTS user_brand_preferences (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    brand TEXT,
+                    likes INTEGER DEFAULT 0,
+                    dislikes INTEGER DEFAULT 0,
+                    preference_score REAL DEFAULT 0.5,
+                    avg_liked_price REAL DEFAULT 0,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, brand)
+                )
+            ''')
+            
+            db_manager.execute_query('''
+                CREATE TABLE IF NOT EXISTS user_item_preferences (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    item_category VARCHAR(100),
+                    size_preference VARCHAR(50),
+                    max_price_usd REAL,
+                    min_quality_score REAL DEFAULT 0.3,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id)
+                )
+            ''' if db_manager.use_postgres else '''
+                CREATE TABLE IF NOT EXISTS user_item_preferences (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    item_category TEXT,
+                    size_preference TEXT,
+                    max_price_usd REAL,
+                    min_quality_score REAL DEFAULT 0.3,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id)
+                )
+            ''')
+            
+            print("✅ User preference learning tables initialized")
+            
+        except Exception as e:
+            print(f"❌ Error initializing learning tables: {e}")
     
     def learn_from_reaction(self, user_id, auction_data, reaction_type):
-        conn = sqlite3.connect(self.db_file)
-        cursor = conn.cursor()
-        
         try:
             is_positive = (reaction_type == "thumbs_up")
             
-            self._update_seller_preference(cursor, user_id, auction_data, is_positive)
-            self._update_brand_preference(cursor, user_id, auction_data, is_positive)
-            self._update_item_preferences(cursor, user_id, auction_data, is_positive)
+            self._update_seller_preference(user_id, auction_data, is_positive)
+            self._update_brand_preference(user_id, auction_data, is_positive)
+            self._update_item_preferences(user_id, auction_data, is_positive)
             
-            conn.commit()
             print(f"🧠 Updated preferences for user {user_id} based on {reaction_type}")
             
         except Exception as e:
             print(f"❌ Error learning from reaction: {e}")
-            conn.rollback()
-        finally:
-            conn.close()
     
-    def _update_seller_preference(self, cursor, user_id, auction_data, is_positive):
+    def _update_seller_preference(self, user_id, auction_data, is_positive):
         seller_id = auction_data.get('seller_id', 'unknown')
         
-        cursor.execute('''
-            INSERT OR IGNORE INTO user_seller_preferences (user_id, seller_id)
-            VALUES (?, ?)
-        ''', (user_id, seller_id))
+        if db_manager.use_postgres:
+            db_manager.execute_query('''
+                INSERT INTO user_seller_preferences (user_id, seller_id)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id, seller_id) DO NOTHING
+            ''', (user_id, seller_id))
+        else:
+            db_manager.execute_query('''
+                INSERT OR IGNORE INTO user_seller_preferences (user_id, seller_id)
+                VALUES (?, ?)
+            ''', (user_id, seller_id))
         
         if is_positive:
-            cursor.execute('''
+            db_manager.execute_query('''
                 UPDATE user_seller_preferences 
                 SET likes = likes + 1, last_updated = CURRENT_TIMESTAMP
                 WHERE user_id = ? AND seller_id = ?
             ''', (user_id, seller_id))
         else:
-            cursor.execute('''
+            db_manager.execute_query('''
                 UPDATE user_seller_preferences 
                 SET dislikes = dislikes + 1, last_updated = CURRENT_TIMESTAMP
                 WHERE user_id = ? AND seller_id = ?
             ''', (user_id, seller_id))
         
-        cursor.execute('''
+        result = db_manager.execute_query('''
             SELECT likes, dislikes FROM user_seller_preferences 
             WHERE user_id = ? AND seller_id = ?
-        ''', (user_id, seller_id))
+        ''', (user_id, seller_id), fetch_one=True)
         
-        likes, dislikes = cursor.fetchone()
-        total_reactions = likes + dislikes
-        trust_score = likes / total_reactions if total_reactions > 0 else 0.5
-        
-        cursor.execute('''
-            UPDATE user_seller_preferences 
-            SET trust_score = ? WHERE user_id = ? AND seller_id = ?
-        ''', (trust_score, user_id, seller_id))
+        if result:
+            likes, dislikes = result
+            total_reactions = likes + dislikes
+            trust_score = likes / total_reactions if total_reactions > 0 else 0.5
+            
+            db_manager.execute_query('''
+                UPDATE user_seller_preferences 
+                SET trust_score = ? WHERE user_id = ? AND seller_id = ?
+            ''', (trust_score, user_id, seller_id))
     
-    def _update_brand_preference(self, cursor, user_id, auction_data, is_positive):
+    def _update_brand_preference(self, user_id, auction_data, is_positive):
         brand = auction_data.get('brand', '')
         
-        cursor.execute('''
-            INSERT OR IGNORE INTO user_brand_preferences (user_id, brand)
-            VALUES (?, ?)
-        ''', (user_id, brand))
+        if db_manager.use_postgres:
+            db_manager.execute_query('''
+                INSERT INTO user_brand_preferences (user_id, brand)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id, brand) DO NOTHING
+            ''', (user_id, brand))
+        else:
+            db_manager.execute_query('''
+                INSERT OR IGNORE INTO user_brand_preferences (user_id, brand)
+                VALUES (?, ?)
+            ''', (user_id, brand))
         
         if is_positive:
-            cursor.execute('''
+            db_manager.execute_query('''
                 UPDATE user_brand_preferences 
                 SET likes = likes + 1, last_updated = CURRENT_TIMESTAMP
                 WHERE user_id = ? AND brand = ?
             ''', (user_id, brand))
             
-            cursor.execute('''
+            result = db_manager.execute_query('''
                 SELECT avg_liked_price, likes FROM user_brand_preferences 
                 WHERE user_id = ? AND brand = ?
-            ''', (user_id, brand))
+            ''', (user_id, brand), fetch_one=True)
             
-            result = cursor.fetchone()
             if result:
                 current_avg, likes = result
                 new_price = auction_data.get('price_usd', 0)
                 new_avg = ((current_avg * (likes - 1)) + new_price) / likes if likes > 0 else new_price
                 
-                cursor.execute('''
+                db_manager.execute_query('''
                     UPDATE user_brand_preferences 
                     SET avg_liked_price = ? WHERE user_id = ? AND brand = ?
                 ''', (new_avg, user_id, brand))
         else:
-            cursor.execute('''
+            db_manager.execute_query('''
                 UPDATE user_brand_preferences 
                 SET dislikes = dislikes + 1, last_updated = CURRENT_TIMESTAMP
                 WHERE user_id = ? AND brand = ?
             ''', (user_id, brand))
         
-        cursor.execute('''
+        result = db_manager.execute_query('''
             SELECT likes, dislikes FROM user_brand_preferences 
             WHERE user_id = ? AND brand = ?
-        ''', (user_id, brand))
+        ''', (user_id, brand), fetch_one=True)
         
-        likes, dislikes = cursor.fetchone()
-        total_reactions = likes + dislikes
-        preference_score = likes / total_reactions if total_reactions > 0 else 0.5
-        
-        cursor.execute('''
-            UPDATE user_brand_preferences 
-            SET preference_score = ? WHERE user_id = ? AND brand = ?
-        ''', (preference_score, user_id, brand))
+        if result:
+            likes, dislikes = result
+            total_reactions = likes + dislikes
+            preference_score = likes / total_reactions if total_reactions > 0 else 0.5
+            
+            db_manager.execute_query('''
+                UPDATE user_brand_preferences 
+                SET preference_score = ? WHERE user_id = ? AND brand = ?
+            ''', (preference_score, user_id, brand))
     
-    def _update_item_preferences(self, cursor, user_id, auction_data, is_positive):
+    def _update_item_preferences(self, user_id, auction_data, is_positive):
         if is_positive:
             price_usd = auction_data.get('price_usd', 0)
             quality_score = auction_data.get('deal_quality', 0.5)
             
-            cursor.execute('''
-                INSERT OR REPLACE INTO user_item_preferences 
-                (user_id, max_price_usd, min_quality_score)
-                VALUES (?, 
-                    COALESCE((SELECT MAX(max_price_usd, ?) FROM user_item_preferences WHERE user_id = ?), ?),
-                    COALESCE((SELECT MIN(min_quality_score, ?) FROM user_item_preferences WHERE user_id = ?), ?)
-                )
-            ''', (user_id, price_usd, user_id, price_usd, quality_score, user_id, quality_score))
-    
-    def should_show_to_user(self, user_id, auction_data):
-        conn = sqlite3.connect(self.db_file)
-        cursor = conn.cursor()
-        
-        try:
-            brand = auction_data.get('brand', '')
-            seller_id = auction_data.get('seller_id', 'unknown')
-            price_usd = auction_data.get('price_usd', 0)
-            deal_quality = auction_data.get('deal_quality', 0.5)
-            
-            cursor.execute('''
-                SELECT preference_score FROM user_brand_preferences 
-                WHERE user_id = ? AND brand = ?
-            ''', (user_id, brand))
-            brand_pref = cursor.fetchone()
-            brand_score = brand_pref[0] if brand_pref else 0.5
-            
-            cursor.execute('''
-                SELECT trust_score FROM user_seller_preferences 
-                WHERE user_id = ? AND seller_id = ?
-            ''', (user_id, seller_id))
-            seller_pref = cursor.fetchone()
-            seller_score = seller_pref[0] if seller_pref else 0.5
-            
-            cursor.execute('''
-                SELECT max_price_usd, min_quality_score FROM user_item_preferences 
-                WHERE user_id = ?
-            ''', (user_id,))
-            item_pref = cursor.fetchone()
-            
-            if item_pref:
-                max_price, min_quality = item_pref
-                if price_usd > max_price or deal_quality < min_quality:
-                    return False, "Price/quality outside user preferences"
-            
-            combined_score = (brand_score * 0.4) + (seller_score * 0.3) + (deal_quality * 0.3)
-            
-            return combined_score >= 0.4, f"Combined score: {combined_score:.2f}"
-            
-        except Exception as e:
-            print(f"❌ Error checking user preferences: {e}")
-            return True, "Error checking preferences"
-        finally:
-            conn.close()
-    
+            if db_manager.use_postgres:
+                db_manager.execute_query('''
+                    INSERT INTO user_item_preferences (user_id, max_price_usd, min_quality_score)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        max_price_usd = GREATEST(user_item_preferences.max_price_usd, EXCLUDED.max_price_usd),
+                        min_quality_score = LEAST(user_item_preferences.min_quality_score, EXCLUDED.min_quality_score)
+                ''', (user_id, price_usd, quality_score))
+            else:
+                db_manager.execute_query('''
+                    INSERT OR REPLACE INTO user_item_preferences 
+                    (user_id, max_price_usd, min_quality_score)
+                    VALUES (?, 
+                        COALESCE((SELECT MAX(max_price_usd, ?) FROM user_item_preferences WHERE user_id = ?), ?),
+                        COALESCE((SELECT MIN(min_quality_score, ?) FROM user_item_preferences WHERE user_id = ?), ?)
+                    )
+                ''', (user_id, price_usd, user_id, price_usd, quality_score, user_id, quality_score))
+
     def is_likely_spam(self, title, brand):
         title_lower = title.lower()
         
@@ -409,115 +414,6 @@ class UserPreferenceLearner:
 
 preference_learner = None
 
-def init_database():
-    print("🔧 Initializing database...")
-    db_manager.init_database()
-    print("✅ Database initialization complete")
-    
-def add_listing(auction_data, message_id):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    try:
-        # First, check if deal_quality column exists, if not add it
-        cursor.execute("PRAGMA table_info(listings)")
-        columns = [column[1] for column in cursor.fetchall()]
-        
-        if 'deal_quality' not in columns:
-            cursor.execute('ALTER TABLE listings ADD COLUMN deal_quality REAL DEFAULT 0.5')
-            print("✅ Added deal_quality column to listings table")
-        
-        if 'priority_score' not in columns:
-            cursor.execute('ALTER TABLE listings ADD COLUMN priority_score REAL DEFAULT 0.0')
-            print("✅ Added priority_score column to listings table")
-        
-        cursor.execute('''
-            INSERT OR REPLACE INTO listings 
-            (auction_id, title, brand, price_jpy, price_usd, seller_id, 
-             zenmarket_url, yahoo_url, image_url, deal_quality, priority_score, message_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            auction_data['auction_id'],
-            auction_data['title'],
-            auction_data['brand'],
-            auction_data['price_jpy'],
-            auction_data['price_usd'],
-            auction_data.get('seller_id', 'unknown'),
-            auction_data['zenmarket_url'],
-            auction_data.get('yahoo_url', ''),
-            auction_data.get('image_url', ''),
-            auction_data.get('deal_quality', 0.5),
-            auction_data.get('priority', 0.0),
-            message_id
-        ))
-        
-        conn.commit()
-        return True
-    except Exception as e:
-        print(f"❌ Database error: {e}")
-        return False
-    finally:
-        conn.close()
-
-def add_reaction(user_id, auction_id, reaction_type):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-            DELETE FROM reactions 
-            WHERE user_id = ? AND auction_id = ?
-        ''', (user_id, auction_id))
-        
-        cursor.execute('''
-            INSERT INTO reactions (user_id, auction_id, reaction_type)
-            VALUES (?, ?, ?)
-        ''', (user_id, auction_id, reaction_type))
-        
-        conn.commit()
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error adding reaction: {e}")
-        return False
-    finally:
-        conn.close()
-
-def get_user_proxy_preference(user_id):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-            SELECT proxy_service, setup_complete FROM user_preferences 
-            WHERE user_id = ?
-        ''', (user_id,))
-        
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result:
-            return result[0], result[1]
-        else:
-            return "zenmarket", False
-            
-    except sqlite3.OperationalError:
-        conn.close()
-        return "zenmarket", False
-
-def set_user_proxy_preference(user_id, proxy_service):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        INSERT OR REPLACE INTO user_preferences 
-        (user_id, proxy_service, setup_complete, updated_at)
-        VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)
-    ''', (user_id, proxy_service))
-    
-    conn.commit()
-    conn.close()
-
 def generate_proxy_url(auction_id, proxy_service):
     if proxy_service not in SUPPORTED_PROXIES:
         proxy_service = "zenmarket"
@@ -578,14 +474,12 @@ async def get_or_create_brand_channel(brand_name):
     
     print(f"🔍 Looking for channel: {full_channel_name}")
     
-    # Check cache first
     if full_channel_name in brand_channels_cache:
         channel = brand_channels_cache[full_channel_name]
         if channel and channel.guild:
             print(f"✅ Found cached channel: {full_channel_name}")
             return channel
     
-    # Search for existing channel - check all channels in guild
     for channel in guild.text_channels:
         print(f"🔍 Checking existing channel: '{channel.name}' vs target: '{full_channel_name}'")
         if channel.name == full_channel_name:
@@ -593,15 +487,62 @@ async def get_or_create_brand_channel(brand_name):
             print(f"✅ Found existing channel: {full_channel_name}")
             return channel
     
-    # If we get here, the channel doesn't exist, so we'll use the main auction channel
     print(f"⚠️ Channel {full_channel_name} doesn't exist, falling back to main channel")
     return None
+
+async def create_bookmark_for_user(user_id, auction_data):
+    """Create a bookmark (DM or private channel) for liked listings"""
+    try:
+        user = bot.get_user(user_id)
+        if not user:
+            print(f"❌ Could not find user {user_id} for bookmark")
+            return False
+        
+        # Create the bookmark embed
+        embed = discord.Embed(
+            title=f"📚 Bookmarked: {auction_data['title'][:80]}...",
+            url=auction_data.get('zenmarket_url', ''),
+            description=f"💴 **¥{auction_data['price_jpy']:,}** (~${auction_data['price_usd']:.2f})\n🏷️ **{auction_data['brand'].replace('_', ' ').title()}**\n👤 **Seller:** {auction_data.get('seller_id', 'unknown')}",
+            color=0x00ff00,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        if auction_data.get('image_url'):
+            embed.set_thumbnail(url=auction_data['image_url'])
+        
+        # Add proxy links
+        auction_id = auction_data['auction_id'].replace('yahoo_', '')
+        link_section = "\n**🛒 Proxy Links:**\n"
+        for key, proxy_info in SUPPORTED_PROXIES.items():
+            proxy_url = generate_proxy_url(auction_id, key)
+            link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
+        
+        embed.add_field(name="Links", value=link_section, inline=False)
+        embed.set_footer(text=f"Bookmarked on {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
+        
+        # Send to user's DM
+        dm_channel = await user.create_dm()
+        bookmark_message = await dm_channel.send(embed=embed)
+        
+        # Store bookmark in database using the helper function
+        success = add_bookmark(user_id, auction_data['auction_id'], bookmark_message.id, dm_channel.id)
+        
+        if success:
+            print(f"📚 Created bookmark for user {user_id}: {auction_data['title'][:30]}...")
+            return True
+        else:
+            print(f"❌ Failed to store bookmark in database for user {user_id}")
+            return False
+        
+    except Exception as e:
+        print(f"❌ Error creating bookmark for user {user_id}: {e}")
+        return False
 
 async def process_batch_buffer():
     global batch_buffer, last_batch_time
     
     while True:
-        await asyncio.sleep(1)  # Check more frequently
+        await asyncio.sleep(1)
         
         if not batch_buffer:
             continue
@@ -613,16 +554,14 @@ async def process_batch_buffer():
         if last_batch_time:
             time_since_batch = (current_time - last_batch_time).total_seconds()
         
-        # Process immediately when buffer is full OR after timeout
         should_send = (
             buffer_size >= BATCH_SIZE or 
             time_since_batch >= BATCH_TIMEOUT
         )
         
         if should_send:
-            # Take exactly BATCH_SIZE items or all remaining items
             items_to_send = batch_buffer[:BATCH_SIZE]
-            batch_buffer = batch_buffer[BATCH_SIZE:]  # Remove processed items
+            batch_buffer = batch_buffer[BATCH_SIZE:]
             
             last_batch_time = current_time
             
@@ -638,7 +577,6 @@ async def send_single_listing(auction_data):
             print(f"🚫 Blocking spam listing: {title[:50]}...")
             return False
         
-        # Debug: Print brand and check mapping
         print(f"🏷️ Processing brand: '{brand}' -> Channel mapping exists: {brand in BRAND_CHANNEL_MAP}")
         
         target_channel = None
@@ -662,12 +600,12 @@ async def send_single_listing(auction_data):
             print("❌ No target channel available")
             return False
         
-        # Check for duplicates (like the original working version)
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute('SELECT message_id FROM listings WHERE auction_id = ?', (auction_data['auction_id'],))
-        existing = cursor.fetchone()
-        conn.close()
+        # Check for duplicates using database manager
+        existing = db_manager.execute_query(
+            'SELECT message_id FROM listings WHERE auction_id = ?', 
+            (auction_data['auction_id'],), 
+            fetch_one=True
+        )
         
         if existing:
             return False
@@ -746,7 +684,7 @@ async def send_individual_listings_with_rate_limit(batch_data):
 
 @bot.event
 async def on_ready():
-    global guild, auction_channel
+    global guild, auction_channel, preference_learner
     print(f'✅ Bot connected as {bot.user}!')
     guild = bot.get_guild(GUILD_ID)
     
@@ -754,8 +692,12 @@ async def on_ready():
         print(f'🎯 Connected to server: {guild.name}')
         auction_channel = await get_or_create_auction_channel()
         
+        # Initialize preference learner
+        preference_learner = UserPreferenceLearner()
+        
         bot.loop.create_task(process_batch_buffer())
         print("⏰ Started batch buffer processor")
+        print("🧠 User preference learning system initialized")
     else:
         print(f'❌ Could not find server with ID: {GUILD_ID}')
 
@@ -801,14 +743,11 @@ async def on_reaction_add(reaction, user):
     auction_id = auction_id_match.group(1)
     reaction_type = "thumbs_up" if str(reaction.emoji) == "👍" else "thumbs_down"
     
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
+    # Get listing data using database manager
+    result = db_manager.execute_query('''
         SELECT title, brand, price_jpy, price_usd, seller_id, yahoo_url, deal_quality
         FROM listings WHERE auction_id = ?
-    ''', (auction_id,))
-    result = cursor.fetchone()
+    ''', (auction_id,), fetch_one=True)
     
     if result:
         title, brand, price_jpy, price_usd, seller_id, yahoo_url, deal_quality = result
@@ -820,7 +759,9 @@ async def on_reaction_add(reaction, user):
             'price_jpy': price_jpy,
             'price_usd': price_usd,
             'seller_id': seller_id,
-            'deal_quality': deal_quality
+            'deal_quality': deal_quality,
+            'zenmarket_url': generate_proxy_url(auction_id, proxy_service),
+            'image_url': ''  # We'll need to get this if we stored it
         }
         
         if preference_learner:
@@ -828,14 +769,15 @@ async def on_reaction_add(reaction, user):
         
         add_reaction(user.id, auction_id, reaction_type)
         
+        # Create bookmark for thumbs up reactions
         if reaction_type == "thumbs_up":
+            await create_bookmark_for_user(user.id, auction_data)
+            await reaction.message.add_reaction("📚")  # Bookmark emoji
             await reaction.message.add_reaction("✅")
         else:
             await reaction.message.add_reaction("❌")
         
         print(f"✅ Learned from {user.name}'s {reaction_type} on {brand} item")
-    
-    conn.close()
 
 async def handle_setup_reaction(reaction, user):
     emoji = str(reaction.emoji)
@@ -864,6 +806,12 @@ async def handle_setup_reaction(reaction, user):
         inline=False
     )
     
+    embed.add_field(
+        name="📚 Bookmarks",
+        value="When you react 👍 to listings, they'll be automatically bookmarked and sent to your DMs!",
+        inline=False
+    )
+    
     dm_channel = await user.create_dm()
     await dm_channel.send(embed=embed)
     
@@ -882,6 +830,21 @@ async def setup_command(ctx):
             description=f"You're already set up! Your current proxy service is **{current_proxy['name']}** {current_proxy['emoji']}",
             color=0x00ff00
         )
+        
+        # Show bookmark count
+        bookmark_count = db_manager.execute_query(
+            'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
+            (user_id,),
+            fetch_one=True
+        )
+        
+        if bookmark_count:
+            embed.add_field(
+                name="📚 Your Bookmarks",
+                value=f"You have **{bookmark_count[0]}** bookmarked items",
+                inline=False
+            )
+        
         await ctx.send(embed=embed)
         return
     
@@ -907,30 +870,85 @@ async def setup_command(ctx):
         inline=False
     )
     
+    embed.add_field(
+        name="📚 Auto-Bookmarking",
+        value="After setup, any listing you react 👍 to will be automatically bookmarked and sent to your DMs!",
+        inline=False
+    )
+    
     message = await ctx.send(embed=embed)
     
     for proxy in SUPPORTED_PROXIES.values():
         await message.add_reaction(proxy['emoji'])
 
+@bot.command(name='bookmarks')
+async def bookmarks_command(ctx):
+    """Show user's bookmarked listings"""
+    user_id = ctx.author.id
+    
+    bookmarks = get_user_bookmarks(user_id, limit=10)
+    
+    if not bookmarks:
+        embed = discord.Embed(
+            title="📚 Your Bookmarks",
+            description="You haven't bookmarked any listings yet! React 👍 to auction listings to bookmark them.",
+            color=0x0099ff
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    embed = discord.Embed(
+        title=f"📚 Your Recent Bookmarks ({len(bookmarks)} shown)",
+        color=0x0099ff
+    )
+    
+    for auction_id, title, brand, price_usd, zenmarket_url, created_at in bookmarks:
+        short_title = title[:50] + "..." if len(title) > 50 else title
+        embed.add_field(
+            name=f"{brand.replace('_', ' ').title()} - ${price_usd:.2f}",
+            value=f"[{short_title}]({zenmarket_url})\nBookmarked: {created_at[:10]}",
+            inline=False
+        )
+    
+    embed.set_footer(text="Use !clear_bookmarks to remove all bookmarks")
+    await ctx.send(embed=embed)
+
+@bot.command(name='clear_bookmarks')
+async def clear_bookmarks_command(ctx):
+    """Clear user's bookmarks"""
+    user_id = ctx.author.id
+    
+    count = clear_user_bookmarks(user_id)
+    
+    if count == 0:
+        await ctx.send("❌ You don't have any bookmarks to clear!")
+        return
+    
+    embed = discord.Embed(
+        title="🗑️ Bookmarks Cleared",
+        description=f"Successfully removed **{count}** bookmarks.",
+        color=0x00ff00
+    )
+    await ctx.send(embed=embed)
+
 @bot.command(name='db_debug')
 async def db_debug_command(ctx):
     """Debug database connection"""
     try:
-        from database_manager import db_manager
-        
         await ctx.send(f"PostgreSQL available: {db_manager.use_postgres}")
         await ctx.send(f"Database URL exists: {bool(db_manager.database_url)}")
         
-        # Test queries
         result = db_manager.execute_query('SELECT COUNT(*) FROM user_preferences', fetch_one=True)
         await ctx.send(f"User preferences count: {result[0] if result else 'Error'}")
         
         result2 = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
         await ctx.send(f"Reactions count: {result2[0] if result2 else 'Error'}")
         
-        # Test your specific user
         result3 = db_manager.execute_query('SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?', (ctx.author.id,), fetch_one=True)
         await ctx.send(f"Your settings: {result3 if result3 else 'None found'}")
+        
+        bookmark_count = db_manager.execute_query('SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?', (ctx.author.id,), fetch_one=True)
+        await ctx.send(f"Your bookmarks: {bookmark_count[0] if bookmark_count else 0}")
         
     except Exception as e:
         await ctx.send(f"Database error: {e}")
@@ -941,26 +959,28 @@ async def test_command(ctx):
 
 @bot.command(name='stats')
 async def stats_command(ctx):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
+    # Get reaction stats using database manager
+    stats = db_manager.execute_query('''
         SELECT 
             COUNT(*) as total,
             SUM(CASE WHEN reaction_type = 'thumbs_up' THEN 1 ELSE 0 END) as thumbs_up,
             SUM(CASE WHEN reaction_type = 'thumbs_down' THEN 1 ELSE 0 END) as thumbs_down
         FROM reactions 
         WHERE user_id = ?
-    ''', (ctx.author.id,))
+    ''', (ctx.author.id,), fetch_one=True)
     
-    stats = cursor.fetchone()
     total, thumbs_up, thumbs_down = stats[0], stats[1] or 0, stats[2] or 0
     
-    cursor.execute('''
+    top_brands = db_manager.execute_query('''
         SELECT brand, preference_score FROM user_brand_preferences 
         WHERE user_id = ? ORDER BY preference_score DESC LIMIT 3
-    ''', (ctx.author.id,))
-    top_brands = cursor.fetchall()
+    ''', (ctx.author.id,), fetch_all=True)
+    
+    bookmark_count = db_manager.execute_query(
+        'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
+        (ctx.author.id,),
+        fetch_one=True
+    )
     
     embed = discord.Embed(
         title=f"📊 Stats for {ctx.author.display_name}",
@@ -972,6 +992,13 @@ async def stats_command(ctx):
         value=f"Total: {total}\n👍 Likes: {thumbs_up}\n👎 Dislikes: {thumbs_down}",
         inline=True
     )
+    
+    if bookmark_count:
+        embed.add_field(
+            name="📚 Bookmarks",
+            value=f"Total: {bookmark_count[0]}",
+            inline=True
+        )
     
     if total > 0:
         positivity = thumbs_up / total * 100
@@ -989,21 +1016,17 @@ async def stats_command(ctx):
             inline=False
         )
     
-    conn.close()
     await ctx.send(embed=embed)
 
 @bot.command(name='preferences')
 async def preferences_command(ctx):
     user_id = ctx.author.id
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
     
-    cursor.execute('''
+    prefs = db_manager.execute_query('''
         SELECT proxy_service, notifications_enabled, min_quality_threshold, max_price_alert 
         FROM user_preferences WHERE user_id = ?
-    ''', (user_id,))
+    ''', (user_id,), fetch_one=True)
     
-    prefs = cursor.fetchone()
     if not prefs:
         await ctx.send("❌ No preferences found. Run `!setup` first!")
         return
@@ -1040,15 +1063,11 @@ async def preferences_command(ctx):
         inline=True
     )
     
-    conn.close()
     await ctx.send(embed=embed)
 
 @bot.command(name='export')
 async def export_command(ctx):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
+    all_reactions = db_manager.execute_query('''
         SELECT r.reaction_type, r.created_at, l.title, l.brand, l.price_jpy, 
                l.price_usd, l.seller_id, l.zenmarket_url, l.yahoo_url, l.auction_id,
                l.deal_quality, l.priority_score
@@ -1056,10 +1075,7 @@ async def export_command(ctx):
         JOIN listings l ON r.auction_id = l.auction_id
         WHERE r.user_id = ?
         ORDER BY r.created_at DESC
-    ''', (ctx.author.id,))
-    
-    all_reactions = cursor.fetchall()
-    conn.close()
+    ''', (ctx.author.id,), fetch_all=True)
     
     if not all_reactions:
         await ctx.send("❌ No reactions found!")
@@ -1115,17 +1131,12 @@ async def export_command(ctx):
 
 @bot.command(name='scraper_stats')
 async def scraper_stats_command(ctx):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
+    recent_stats = db_manager.execute_query('''
         SELECT timestamp, total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched
         FROM scraper_stats 
         ORDER BY timestamp DESC 
         LIMIT 5
-    ''', )
-    
-    recent_stats = cursor.fetchall()
+    ''', fetch_all=True)
     
     if not recent_stats:
         await ctx.send("❌ No scraper statistics found!")
@@ -1145,7 +1156,6 @@ async def scraper_stats_command(ctx):
             inline=True
         )
     
-    conn.close()
     await ctx.send(embed=embed)
 
 @bot.command(name='commands')
@@ -1163,6 +1173,12 @@ async def commands_command(ctx):
     )
     
     embed.add_field(
+        name="📚 Bookmarks",
+        value="**!bookmarks** - View your bookmarked listings\n**!clear_bookmarks** - Remove all bookmarks",
+        inline=False
+    )
+    
+    embed.add_field(
         name="📊 Statistics & Data",
         value="**!stats** - Your reaction statistics\n**!scraper_stats** - Recent scraper performance\n**!export** - Export your reaction data",
         inline=False
@@ -1170,15 +1186,13 @@ async def commands_command(ctx):
     
     embed.add_field(
         name="🧠 Bot Testing",
-        value="**!test** - Test if bot is working\n**!commands** - Show this help",
+        value="**!test** - Test if bot is working\n**!commands** - Show this help\n**!db_debug** - Database diagnostics",
         inline=False
     )
     
     embed.set_footer(text="New users: Start with !setup | React with 👍/👎 to auction listings to train the bot!")
     
     await ctx.send(embed=embed)
-
-app = Flask(__name__)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -1193,15 +1207,12 @@ def webhook():
         if not all(field in data for field in required_fields):
             return jsonify({"error": "Missing required fields"}), 400
         
-        # Add to buffer - scraper already checked for duplicates
         batch_buffer.append(data)
         
         if len(batch_buffer) == 1:
             last_batch_time = datetime.now(timezone.utc)
         
         print(f"📥 Added to buffer: {data['title'][:30]}... (Buffer: {len(batch_buffer)}/4)")
-        
-        # If buffer is full, the processor will handle it within 1 second
         
         return jsonify({
             "status": "queued",
@@ -1213,36 +1224,16 @@ def webhook():
         print(f"❌ Webhook error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({
-        "status": "healthy",
-        "bot_ready": bot.is_ready(),
-        "guild_connected": guild is not None,
-        "buffer_size": len(batch_buffer),
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }), 200
-
 @app.route('/stats', methods=['GET'])
 def api_stats():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT COUNT(*) FROM listings')
-    total_listings = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT COUNT(*) FROM reactions')
-    total_reactions = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT COUNT(DISTINCT user_id) FROM user_preferences WHERE setup_complete = 1')
-    active_users = cursor.fetchone()[0]
-    
-    conn.close()
+    total_listings = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
+    total_reactions = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
+    active_users = db_manager.execute_query('SELECT COUNT(DISTINCT user_id) FROM user_preferences WHERE setup_complete = TRUE', fetch_one=True)
     
     return jsonify({
-        "total_listings": total_listings,
-        "total_reactions": total_reactions,
-        "active_users": active_users,
+        "total_listings": total_listings[0] if total_listings else 0,
+        "total_reactions": total_reactions[0] if total_reactions else 0,
+        "active_users": active_users[0] if active_users else 0,
         "buffer_size": len(batch_buffer)
     }), 200
 
@@ -1251,7 +1242,7 @@ def run_flask():
 
 def main():
     print("🔧 Initializing database...")
-    init_database()
+    db_manager.init_database()
     
     print("🔒 SECURITY: Performing startup security checks...")
     
@@ -1268,6 +1259,7 @@ def main():
     print(f"📺 Main auction channel: #{AUCTION_CHANNEL_NAME}")
     print(f"📦 Batch size: {BATCH_SIZE} listings per message")
     print(f"🧠 AI learning system: Enabled")
+    print(f"📚 Auto-bookmarking: Enabled")
     
     print("🌐 Starting webhook server...")
     flask_thread = threading.Thread(target=run_flask, daemon=True)
