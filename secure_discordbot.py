@@ -1093,32 +1093,32 @@ async def db_debug_command(ctx):
     except Exception as e:
         await ctx.send(f"Database error: {e}")
 
-@bot.command(name='clear_old_listings')
-async def clear_old_listings_command(ctx):
-    """Clear listings older than 3 days"""
+@bot.command(name='clear_recent_listings')
+async def clear_recent_listings_command(ctx):
+    """Clear listings from today to fix duplicate detection"""
     try:
-        # Count old listings first
-        old_count = db_manager.execute_query('''
+        # Count recent listings first
+        recent_count = db_manager.execute_query('''
             SELECT COUNT(*) FROM listings 
-            WHERE created_at < NOW() - INTERVAL '3 days'
+            WHERE created_at > NOW() - INTERVAL '6 hours'
         ''' if db_manager.use_postgres else '''
             SELECT COUNT(*) FROM listings 
-            WHERE created_at < datetime('now', '-3 days')
+            WHERE created_at > datetime('now', '-6 hours')
         ''', fetch_one=True)
         
-        old_listings = old_count[0] if old_count else 0
+        recent_listings = recent_count[0] if recent_count else 0
         
-        if old_listings == 0:
-            await ctx.send("✅ No old listings to clear!")
+        if recent_listings == 0:
+            await ctx.send("✅ No recent listings to clear!")
             return
         
-        # Delete old listings
+        # Delete recent listings
         db_manager.execute_query('''
             DELETE FROM listings 
-            WHERE created_at < NOW() - INTERVAL '3 days'
+            WHERE created_at > NOW() - INTERVAL '6 hours'
         ''' if db_manager.use_postgres else '''
             DELETE FROM listings 
-            WHERE created_at < datetime('now', '-3 days')
+            WHERE created_at > datetime('now', '-6 hours')
         ''')
         
         # Also clear reactions for deleted listings
@@ -1127,21 +1127,52 @@ async def clear_old_listings_command(ctx):
             WHERE auction_id NOT IN (SELECT auction_id FROM listings)
         ''')
         
-        # Clear bookmarks for deleted listings
+        # Clear bookmarks for deleted listings  
         db_manager.execute_query('''
             DELETE FROM user_bookmarks 
             WHERE auction_id NOT IN (SELECT auction_id FROM listings)
         ''')
         
         embed = discord.Embed(
-            title="🗑️ Database Cleanup Complete",
-            description=f"Removed **{old_listings}** old listings (older than 3 days) and associated data.",
+            title="🗑️ Recent Listings Cleared",
+            description=f"Removed **{recent_listings}** recent listings from the last 6 hours to fix duplicate detection.\n\nNew listings should start appearing shortly!",
             color=0x00ff00
         )
         await ctx.send(embed=embed)
         
     except Exception as e:
-        await ctx.send(f"❌ Error clearing old listings: {e}")
+        await ctx.send(f"❌ Error clearing recent listings: {e}")
+
+@bot.command(name='force_clear_all')
+async def force_clear_all_command(ctx):
+    """Emergency command to clear ALL listings"""
+    try:
+        # Count all listings
+        total_count = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
+        total_listings = total_count[0] if total_count else 0
+        
+        if total_listings == 0:
+            await ctx.send("✅ No listings to clear!")
+            return
+        
+        # Delete ALL listings
+        db_manager.execute_query('DELETE FROM listings')
+        
+        # Clear all reactions
+        db_manager.execute_query('DELETE FROM reactions')
+        
+        # Clear all bookmarks
+        db_manager.execute_query('DELETE FROM user_bookmarks WHERE user_id = ?', (ctx.author.id,))
+        
+        embed = discord.Embed(
+            title="🚨 ALL LISTINGS CLEARED",
+            description=f"**EMERGENCY RESET**: Removed **{total_listings}** listings and all associated data.\n\nFresh listings should start appearing within 5 minutes!",
+            color=0xff4444
+        )
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error clearing all listings: {e}")
 
 @bot.command(name='test')
 async def test_command(ctx):
@@ -1375,8 +1406,8 @@ async def commands_command(ctx):
     )
     
     embed.add_field(
-        name="🧠 Bot Testing",
-        value="**!test** - Test if bot is working\n**!commands** - Show this help\n**!db_debug** - Database diagnostics\n**!clear_old_listings** - Clean up old auction data",
+        name="🧠 Bot Testing & Maintenance",
+        value="**!test** - Test if bot is working\n**!commands** - Show this help\n**!db_debug** - Database diagnostics\n**!clear_recent_listings** - Clear recent duplicates\n**!force_clear_all** - Emergency: clear all listings",
         inline=False
     )
     
