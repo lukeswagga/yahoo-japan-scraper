@@ -933,7 +933,7 @@ async def db_debug_command(ctx):
         await ctx.send(f"Your settings: {result3 if result3 else 'None found'}")
         
     except Exception as e:
-        await ctx.send(f"Database error: {e}"
+        await ctx.send(f"Database error: {e}")
 
 @bot.command(name='test')
 async def test_command(ctx):
