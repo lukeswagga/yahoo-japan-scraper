@@ -10,9 +10,8 @@ import hashlib
 import sqlite3
 from flask import Flask
 import threading
-from enhanced_filtering import EnhancedSpamDetector
 
-
+# Flask app for Railway health checks
 scraper_app = Flask(__name__)
 
 @scraper_app.route('/health', methods=['GET'])
@@ -26,6 +25,7 @@ def root():
 def run_health_server():
     port = int(os.environ.get('PORT', 8000))
     scraper_app.run(host='0.0.0.0', port=port, debug=False)
+
 
 # At the top of the file, replace the hardcoded URLs with:
 DISCORD_BOT_WEBHOOK = os.getenv('DISCORD_BOT_WEBHOOK', "http://localhost:8000/webhook")
@@ -529,16 +529,6 @@ def search_yahoo(keyword_combo):
                 if not is_valid:
                     continue
 
-                # NEW: Add spam detection here
-                spam_detector = EnhancedSpamDetector()
-                is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
-                if is_spam:
-                    print(f"🚫 Blocked spam ({spam_category}): {title[:50]}...")
-                    continue
-
-                # Existing code continues...
-
-
                 price_tag = item.select_one(".Product__priceValue")
                 if not price_tag:
                     continue
@@ -655,8 +645,19 @@ def get_discord_bot_stats():
 
 def main_loop():
     print("🎯 Starting Enhanced Yahoo Japan Sniper...")
+def main_loop():
+    print("🎯 Starting Enhanced Yahoo Japan Sniper...")
     
-  # Start health server for Railway
+    # Start health server for Railway
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
+    print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
+    
+    print(f"👕 CLOTHING ONLY - Advanced filtering enabled")
+    # ... rest of your existing code ...
+
+    
+    # Start health server for Railway health checks
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
     print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
