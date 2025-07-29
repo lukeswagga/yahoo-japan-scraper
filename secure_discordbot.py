@@ -912,6 +912,29 @@ async def setup_command(ctx):
     for proxy in SUPPORTED_PROXIES.values():
         await message.add_reaction(proxy['emoji'])
 
+@bot.command(name='db_debug')
+async def db_debug_command(ctx):
+    """Debug database connection"""
+    try:
+        from database_manager import db_manager
+        
+        await ctx.send(f"PostgreSQL available: {db_manager.use_postgres}")
+        await ctx.send(f"Database URL exists: {bool(db_manager.database_url)}")
+        
+        # Test queries
+        result = db_manager.execute_query('SELECT COUNT(*) FROM user_preferences', fetch_one=True)
+        await ctx.send(f"User preferences count: {result[0] if result else 'Error'}")
+        
+        result2 = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
+        await ctx.send(f"Reactions count: {result2[0] if result2 else 'Error'}")
+        
+        # Test your specific user
+        result3 = db_manager.execute_query('SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?', (ctx.author.id,), fetch_one=True)
+        await ctx.send(f"Your settings: {result3 if result3 else 'None found'}")
+        
+    except Exception as e:
+        await ctx.send(f"Database error: {e}"
+
 @bot.command(name='test')
 async def test_command(ctx):
     await ctx.send("✅ Bot is working!")
