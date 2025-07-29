@@ -553,8 +553,14 @@ async def create_bookmark_for_user(user_id, auction_data):
         )
         
         # Add the SAME thumbnail/image as the original
-        if auction_data.get('image_url'):
-            embed.set_thumbnail(url=auction_data['image_url'])
+        image_url = auction_data.get('image_url', '')
+        print(f"🖼️ Bookmark image URL: '{image_url}'")
+        
+        if image_url and image_url.strip():
+            embed.set_thumbnail(url=image_url)
+            print(f"✅ Added thumbnail to bookmark")
+        else:
+            print(f"⚠️ No image URL available for bookmark")
         
         # Different footer to indicate it's bookmarked
         embed.set_footer(text=f"📚 Bookmarked from ID: {auction_data['auction_id']} | {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
@@ -788,7 +794,7 @@ async def send_single_listing(auction_data):
         print(f"✅ Message sent successfully, ID: {message.id}")
         
         # Add to database
-        print(f"💾 Adding to database...")
+        print(f"💾 Adding to database with image URL: {auction_data.get('image_url', 'No image')}")
         db_result = add_listing(auction_data, message.id)
         if db_result:
             print(f"✅ Successfully added to database")
