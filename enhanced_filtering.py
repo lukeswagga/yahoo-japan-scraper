@@ -41,6 +41,21 @@ class EnhancedSpamDetector:
             'media_items': [
                 r'poster', r'ポスター', r'sticker', r'magazine', r'雑誌',
                 r'dvd', r'book', r'本', r'figure', r'フィギュア', r'toy'
+            ],
+            'womens_clothing': [
+                r'femme', r'women', r'ladies', r'レディース', r'ウィメンズ',
+                r'dress', r'ドレス', r'skirt', r'スカート', r'blouse', r'ブラウス',
+                r'heel', r'ヒール', r'pump', r'パンプス', r'sandal', r'サンダル',
+                r'bra', r'ブラ', r'lingerie', r'ランジェリー'
+            ],
+            'kids_clothing': [
+                r'kids', r'child', r'children', r'baby', r'infant', r'toddler',
+                r'キッズ', r'子供', r'ベビー', r'幼児', r'こども', r'子ども',
+                r'boys', r'girls', r'youth', r'junior'
+            ],
+            'shoes_general': [
+                r'shoes', r'boot', r'sneaker', r'loafer', r'oxford',
+                r'靴', r'シューズ', r'ブーツ', r'スニーカー', r'ローファー'
             ]
         }
         
@@ -48,7 +63,14 @@ class EnhancedSpamDetector:
         self.brand_specific_spam = {
             'celine': ['wallet', '財布', 'bag', 'バッグ', 'purse', 'handbag'],
             'bottega_veneta': ['wallet', '財布', 'bag', 'バッグ', 'clutch'],
-            'undercover': ['cb400', 'vtr250', 'motorcycle', 'バイク', 'engine']
+            'undercover': ['cb400', 'vtr250', 'motorcycle', 'バイク', 'engine'],
+            'miu_miu': [
+                'shoes', 'heel', 'pump', 'sandal', 'boot', 'sneaker',
+                '靴', 'シューズ', 'ヒール', 'パンプス', 'サンダル', 'ブーツ',
+                'dress', 'skirt', 'blouse', 'femme', 'women', 'ladies',
+                'ドレス', 'スカート', 'ブラウス', 'レディース'
+            ],
+            'jean_paul_gaultier': ['femme', 'women', 'ladies', 'レディース']
         }
     
     def is_spam(self, title, brand):
@@ -56,16 +78,32 @@ class EnhancedSpamDetector:
         title_lower = title.lower()
         brand_lower = brand.lower() if brand else ""
         
+        # Check for kids clothing (universal block)
+        for pattern in self.spam_patterns['kids_clothing']:
+            if re.search(pattern, title_lower) or re.search(pattern, brand_lower):
+                print(f"🚫 Kids clothing detected: {pattern} in '{title[:30]}...'")
+                return True, "kids_clothing"
+        
+        # Check for women's clothing (universal block)
+        for pattern in self.spam_patterns['womens_clothing']:
+            if re.search(pattern, title_lower) or re.search(pattern, brand_lower):
+                print(f"🚫 Women's clothing detected: {pattern} in '{title[:30]}...'")
+                return True, "womens_clothing"
+        
         # Check general spam patterns
         for category, patterns in self.spam_patterns.items():
+            if category in ['kids_clothing', 'womens_clothing']:
+                continue  # Already checked above
             for pattern in patterns:
                 if re.search(pattern, title_lower) or re.search(pattern, brand_lower):
                     print(f"🚫 Spam detected ({category}): {pattern} in '{title[:30]}...'")
                     return True, category
         
         # Check brand-specific spam
+        brand_clean = brand_lower.replace('_', ' ').replace('-', ' ')
         for spam_brand, spam_items in self.brand_specific_spam.items():
-            if spam_brand in brand_lower:
+            spam_brand_clean = spam_brand.replace('_', ' ').replace('-', ' ')
+            if spam_brand_clean in brand_clean:
                 for spam_item in spam_items:
                     if spam_item in title_lower:
                         print(f"🚫 Brand-specific spam: {spam_item} in {spam_brand}")
@@ -318,7 +356,11 @@ def test_spam_detection():
         ("CB400SF Engine Parts Motorcycle", "undercover", True),
         ("Celine Wallet Leather Handbag", "celine", True),
         ("Rick Owens DRKSHDW Jacket Black", "rick_owens", False),
-        ("Computer Server RAM Memory", "maison_margiela", True)
+        ("Computer Server RAM Memory", "maison_margiela", True),
+        ("Miu Miu Dress Women's Size 38", "miu_miu", True),
+        ("Jean Paul Gaultier Femme Blouse", "jean_paul_gaultier", True),
+        ("Balenciaga Kids T-Shirt Size 10", "balenciaga", True),
+        ("Martine Rose Shirt Size L", "martine_rose", False)
     ]
     
     for title, brand, should_be_spam in test_cases:
