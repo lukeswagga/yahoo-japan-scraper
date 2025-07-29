@@ -149,22 +149,6 @@ def check_if_auction_exists_in_db(auction_id):
     except Exception:
         return False
 
-def check_if_duplicate_in_discord_bot(auction_id):
-    """Check if auction already exists in Discord bot's database"""
-    try:
-        # Make a request to Discord bot to check for duplicates
-        check_url = DISCORD_BOT_WEBHOOK.replace('/webhook', '/check_duplicate')
-        response = requests.get(f"{check_url}/{auction_id}", timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get('exists', False)
-        else:
-            # If we can't check, assume it doesn't exist to avoid missing items
-            return False
-    except Exception as e:
-        print(f"⚠️ Could not check Discord bot for duplicates: {e}")
-        return False
-
 def add_to_scraper_db(auction_id):
     """Add auction to local scraper database"""
     try:
@@ -478,17 +462,9 @@ def search_yahoo(keyword_combo):
                     skipped_seen += 1
                     continue
                 
-                # Check local scraper database for duplicates (fast local check)
                 if check_if_auction_exists_in_db(auc_id):
                     skipped_db += 1
                     seen_ids.add(auc_id)
-                    continue
-                
-                # Check Discord bot database for duplicates (prevents sending duplicates)
-                if check_if_duplicate_in_discord_bot(auc_id):
-                    skipped_db += 1
-                    seen_ids.add(auc_id)
-                    add_to_scraper_db(auc_id)  # Add to local DB to avoid future checks
                     continue
 
                 is_valid, matched_brand = is_valid_brand_item(title)
