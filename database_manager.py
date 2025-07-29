@@ -220,32 +220,39 @@ class DatabaseManager:
     
     def execute_query(self, query, params=None, fetch_one=False, fetch_all=False):
         """Execute a database query with proper parameter binding"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            if self.use_postgres:
-                # PostgreSQL uses %s for all parameter types
-                query = query.replace('?', '%s')
-                if params:
-                    cursor.execute(query, params)
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                if self.use_postgres:
+                    # PostgreSQL uses %s for all parameter types
+                    query = query.replace('?', '%s')
+                    if params:
+                        cursor.execute(query, params)
+                    else:
+                        cursor.execute(query)
                 else:
-                    cursor.execute(query)
-            else:
-                # SQLite uses ?
-                if params:
-                    cursor.execute(query, params)
+                    # SQLite uses ?
+                    if params:
+                        cursor.execute(query, params)
+                    else:
+                        cursor.execute(query)
+                
+                if fetch_one:
+                    result = cursor.fetchone()
+                elif fetch_all:
+                    result = cursor.fetchall()
                 else:
-                    cursor.execute(query)
-            
-            if fetch_one:
-                result = cursor.fetchone()
-            elif fetch_all:
-                result = cursor.fetchall()
-            else:
-                result = cursor.rowcount
-            
-            conn.commit()
-            return result
+                    result = cursor.rowcount
+                
+                conn.commit()
+                return result
+                
+        except Exception as e:
+            print(f"❌ Database execute_query error: {e}")
+            print(f"❌ Query: {query}")
+            print(f"❌ Params: {params}")
+            raise e
 
 # Global database manager instance
 db_manager = DatabaseManager()
@@ -285,51 +292,60 @@ def set_user_proxy_preference(user_id, proxy_service):
 
 def add_listing(auction_data, message_id):
     """Updated to work with both PostgreSQL and SQLite"""
-    if db_manager.use_postgres:
-        # PostgreSQL UPSERT
-        db_manager.execute_query('''
-            INSERT INTO listings 
-            (auction_id, title, brand, price_jpy, price_usd, seller_id, 
-             zenmarket_url, yahoo_url, image_url, deal_quality, priority_score, message_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (auction_id) DO UPDATE SET
-                title = EXCLUDED.title,
-                message_id = EXCLUDED.message_id
-        ''', (
-            auction_data['auction_id'],
-            auction_data['title'],
-            auction_data['brand'],
-            auction_data['price_jpy'],
-            auction_data['price_usd'],
-            auction_data.get('seller_id', 'unknown'),
-            auction_data['zenmarket_url'],
-            auction_data.get('yahoo_url', ''),
-            auction_data.get('image_url', ''),
-            auction_data.get('deal_quality', 0.5),
-            auction_data.get('priority', 0.0),
-            message_id
-        ))
-    else:
-        # SQLite (your existing code)
-        db_manager.execute_query('''
-            INSERT OR REPLACE INTO listings 
-            (auction_id, title, brand, price_jpy, price_usd, seller_id, 
-             zenmarket_url, yahoo_url, image_url, deal_quality, priority_score, message_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            auction_data['auction_id'],
-            auction_data['title'],
-            auction_data['brand'],
-            auction_data['price_jpy'],
-            auction_data['price_usd'],
-            auction_data.get('seller_id', 'unknown'),
-            auction_data['zenmarket_url'],
-            auction_data.get('yahoo_url', ''),
-            auction_data.get('image_url', ''),
-            auction_data.get('deal_quality', 0.5),
-            auction_data.get('priority', 0.0),
-            message_id
-        ))
+    try:
+        if db_manager.use_postgres:
+            # PostgreSQL UPSERT
+            result = db_manager.execute_query('''
+                INSERT INTO listings 
+                (auction_id, title, brand, price_jpy, price_usd, seller_id, 
+                 zenmarket_url, yahoo_url, image_url, deal_quality, priority_score, message_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (auction_id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    message_id = EXCLUDED.message_id
+            ''', (
+                auction_data['auction_id'],
+                auction_data['title'],
+                auction_data['brand'],
+                auction_data['price_jpy'],
+                auction_data['price_usd'],
+                auction_data.get('seller_id', 'unknown'),
+                auction_data['zenmarket_url'],
+                auction_data.get('yahoo_url', ''),
+                auction_data.get('image_url', ''),
+                auction_data.get('deal_quality', 0.5),
+                auction_data.get('priority', 0.0),
+                message_id
+            ))
+        else:
+            # SQLite (your existing code)
+            result = db_manager.execute_query('''
+                INSERT OR REPLACE INTO listings 
+                (auction_id, title, brand, price_jpy, price_usd, seller_id, 
+                 zenmarket_url, yahoo_url, image_url, deal_quality, priority_score, message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                auction_data['auction_id'],
+                auction_data['title'],
+                auction_data['brand'],
+                auction_data['price_jpy'],
+                auction_data['price_usd'],
+                auction_data.get('seller_id', 'unknown'),
+                auction_data['zenmarket_url'],
+                auction_data.get('yahoo_url', ''),
+                auction_data.get('image_url', ''),
+                auction_data.get('deal_quality', 0.5),
+                auction_data.get('priority', 0.0),
+                message_id
+            ))
+        
+        print(f"✅ Successfully added listing to database: {auction_data['auction_id']}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error adding listing to database: {e}")
+        print(f"❌ Auction data: {auction_data}")
+        return False
 
 def add_reaction(user_id, auction_id, reaction_type):
     """Updated to work with both PostgreSQL and SQLite"""
