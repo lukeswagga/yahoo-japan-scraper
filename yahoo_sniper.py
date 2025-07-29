@@ -528,6 +528,12 @@ def search_yahoo(keyword_combo):
                 if not is_valid:
                     continue
 
+                    spam_detector = EnhancedSpamDetector()
+is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
+if is_spam:
+    print(f"🚫 Blocked spam ({spam_category}): {title[:50]}...")
+    continue
+
                 price_tag = item.select_one(".Product__priceValue")
                 if not price_tag:
                     continue
