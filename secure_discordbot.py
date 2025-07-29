@@ -556,11 +556,14 @@ async def create_bookmark_for_user(user_id, auction_data):
         image_url = auction_data.get('image_url', '')
         print(f"🖼️ Bookmark image URL: '{image_url}'")
         
-        if image_url and image_url.strip():
-            embed.set_thumbnail(url=image_url)
-            print(f"✅ Added thumbnail to bookmark")
+        if image_url and image_url.strip() and image_url != '':
+            try:
+                embed.set_thumbnail(url=image_url)
+                print(f"✅ Added thumbnail to bookmark: {image_url}")
+            except Exception as e:
+                print(f"❌ Failed to set thumbnail: {e}")
         else:
-            print(f"⚠️ No image URL available for bookmark")
+            print(f"⚠️ No valid image URL available for bookmark")
         
         # Different footer to indicate it's bookmarked
         embed.set_footer(text=f"📚 Bookmarked from ID: {auction_data['auction_id']} | {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
