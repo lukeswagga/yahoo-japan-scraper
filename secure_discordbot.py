@@ -666,6 +666,8 @@ async def send_single_listing(auction_data):
         brand = auction_data.get('brand', '')
         title = auction_data.get('title', '')
         
+        print(f"🔄 Processing listing: {title[:50]}...")
+        
         if preference_learner and preference_learner.is_likely_spam(title, brand):
             print(f"🚫 Blocking spam listing: {title[:50]}...")
             return False
@@ -694,6 +696,7 @@ async def send_single_listing(auction_data):
             return False
         
         # Check for duplicates using database manager
+        print(f"🔍 Checking for duplicates: {auction_data['auction_id']}")
         existing = db_manager.execute_query(
             'SELECT message_id FROM listings WHERE auction_id = ?', 
             (auction_data['auction_id'],), 
@@ -701,7 +704,10 @@ async def send_single_listing(auction_data):
         )
         
         if existing:
+            print(f"⚠️ Duplicate found, skipping: {auction_data['auction_id']}")
             return False
+        
+        print(f"✅ No duplicate found, proceeding with listing")
         
         price_usd = auction_data['price_usd']
         deal_quality = auction_data.get('deal_quality', 0.5)
@@ -749,15 +755,25 @@ async def send_single_listing(auction_data):
         
         embed.set_footer(text=f"ID: {auction_data['auction_id']} | !setup for proxy config | React 👍/👎 to train")
         
+        print(f"📤 Sending message to #{target_channel.name}")
         message = await target_channel.send(embed=embed)
+        print(f"✅ Message sent successfully, ID: {message.id}")
         
-        add_listing(auction_data, message.id)
+        # Add to database
+        print(f"💾 Adding to database...")
+        db_result = add_listing(auction_data, message.id)
+        if db_result:
+            print(f"✅ Successfully added to database")
+        else:
+            print(f"⚠️ Database add failed, but message was sent")
         
         print(f"✅ Sent to #{target_channel.name}: {display_title}")
         return True
         
     except Exception as e:
         print(f"❌ Error sending individual listing: {e}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
         return False
 
 async def send_individual_listings_with_rate_limit(batch_data):
