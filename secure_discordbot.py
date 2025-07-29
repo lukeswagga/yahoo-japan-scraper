@@ -1482,8 +1482,25 @@ def webhook():
         print(f"❌ Webhook error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/stats', methods=['GET'])
-def api_stats():
+@app.route('/check_duplicate/<auction_id>', methods=['GET'])
+def check_duplicate(auction_id):
+    """Check if auction ID already exists in database"""
+    try:
+        existing = db_manager.execute_query(
+            'SELECT auction_id FROM listings WHERE auction_id = ?',
+            (auction_id,),
+            fetch_one=True
+        )
+        
+        return jsonify({
+            'exists': existing is not None,
+            'auction_id': auction_id
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'exists': False
+        }), 500
     total_listings = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
     total_reactions = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
     active_users = db_manager.execute_query('SELECT COUNT(DISTINCT user_id) FROM user_preferences WHERE setup_complete = TRUE', fetch_one=True)
