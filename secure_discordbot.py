@@ -509,27 +509,55 @@ async def create_bookmark_for_user(user_id, auction_data):
             print(f"❌ Could not create bookmark channel for {user.name}")
             return False
         
-        # Create the bookmark embed
-        embed = discord.Embed(
-            title=f"📚 {auction_data['title'][:80]}...",
-            url=auction_data.get('zenmarket_url', ''),
-            description=f"💴 **¥{auction_data['price_jpy']:,}** (~${auction_data['price_usd']:.2f})\n🏷️ **{auction_data['brand'].replace('_', ' ').title()}**\n👤 **Seller:** {auction_data.get('seller_id', 'unknown')}",
-            color=0x00ff00,
-            timestamp=datetime.now(timezone.utc)
-        )
+        # Create the EXACT same embed as the original listing
+        price_usd = auction_data['price_usd']
+        deal_quality = auction_data.get('deal_quality', 0.5)
+        priority = auction_data.get('priority', 0.0)
         
-        if auction_data.get('image_url'):
-            embed.set_thumbnail(url=auction_data['image_url'])
+        if deal_quality >= 0.8 or priority >= 100:
+            color = 0x00ff00
+            quality_emoji = "🔥"
+        elif deal_quality >= 0.6 or priority >= 70:
+            color = 0xffa500
+            quality_emoji = "🌟"
+        else:
+            color = 0xff4444
+            quality_emoji = "⭐"
         
-        # Add proxy links
+        display_title = auction_data['title']
+        if len(display_title) > 100:
+            display_title = display_title[:97] + "..."
+        
+        price_jpy = auction_data['price_jpy']
+        
+        description = f"💴 **¥{price_jpy:,}** (~${price_usd:.2f})\n"
+        description += f"🏷️ **{auction_data['brand'].replace('_', ' ').title()}**\n"
+        description += f"{quality_emoji} **Quality: {deal_quality:.1%}** | **Priority: {priority:.0f}**\n"
+        description += f"👤 **Seller:** {auction_data.get('seller_id', 'unknown')}\n"
+        
         auction_id = auction_data['auction_id'].replace('yahoo_', '')
         link_section = "\n**🛒 Proxy Links:**\n"
         for key, proxy_info in SUPPORTED_PROXIES.items():
             proxy_url = generate_proxy_url(auction_id, key)
             link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
         
-        embed.add_field(name="Links", value=link_section, inline=False)
-        embed.set_footer(text=f"Bookmarked on {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
+        description += link_section
+        
+        # Create the EXACT same embed as in brand channels
+        embed = discord.Embed(
+            title=display_title,
+            url=auction_data['zenmarket_url'],
+            description=description,
+            color=color,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        # Add the SAME thumbnail/image as the original
+        if auction_data.get('image_url'):
+            embed.set_thumbnail(url=auction_data['image_url'])
+        
+        # Different footer to indicate it's bookmarked
+        embed.set_footer(text=f"📚 Bookmarked from ID: {auction_data['auction_id']} | {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
         
         # Send to user's private bookmark channel
         try:
