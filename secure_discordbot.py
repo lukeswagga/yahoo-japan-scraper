@@ -560,17 +560,25 @@ async def get_or_create_user_bookmark_channel(user):
             print("❌ No guild available for bookmark channel creation")
             return None
         
-        # Channel name format: 📚-bookmarks-username
+        # Channel name format: bookmarks-username
         safe_username = re.sub(r'[^a-zA-Z0-9]', '', user.name.lower())[:20]  # Clean username
-        channel_name = f"📚-bookmarks-{safe_username}-{str(user.id)[-4:]}"  # Add last 4 digits of ID for uniqueness
+        channel_name = f"bookmarks-{safe_username}"
         
-        # Check if channel already exists
+        print(f"🔍 Looking for existing bookmark channel: #{channel_name}")
+        
+        # Check if channel already exists by name
         existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
         if existing_channel:
-            # Verify user has access
-            if user in [member for member in existing_channel.members]:
+            # Double-check that this user has access to it
+            user_permissions = existing_channel.permissions_for(user)
+            if user_permissions.read_messages:
                 print(f"✅ Found existing bookmark channel: #{channel_name}")
                 return existing_channel
+            else:
+                print(f"⚠️ Found channel #{channel_name} but user doesn't have access")
+        
+        # If we get here, we need to create a new channel
+        print(f"📚 Creating new bookmark channel: #{channel_name}")
         
         # Create bookmark category if it doesn't exist
         category = None
