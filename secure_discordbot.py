@@ -491,16 +491,27 @@ async def get_or_create_brand_channel(brand_name):
     return None
 
 async def create_bookmark_for_user(user_id, auction_data):
-    """Create a bookmark (DM or private channel) for liked listings"""
+    """Create a bookmark in user's private channel"""
     try:
         user = bot.get_user(user_id)
         if not user:
-            print(f"❌ Could not find user {user_id} for bookmark")
+            try:
+                user = await bot.fetch_user(user_id)
+            except:
+                print(f"❌ Could not fetch user {user_id}")
+                return False
+        
+        print(f"📚 Creating bookmark for user: {user.name} ({user_id})")
+        
+        # Get or create user's private bookmark channel
+        bookmark_channel = await get_or_create_user_bookmark_channel(user)
+        if not bookmark_channel:
+            print(f"❌ Could not create bookmark channel for {user.name}")
             return False
         
         # Create the bookmark embed
         embed = discord.Embed(
-            title=f"📚 Bookmarked: {auction_data['title'][:80]}...",
+            title=f"📚 {auction_data['title'][:80]}...",
             url=auction_data.get('zenmarket_url', ''),
             description=f"💴 **¥{auction_data['price_jpy']:,}** (~${auction_data['price_usd']:.2f})\n🏷️ **{auction_data['brand'].replace('_', ' ').title()}**\n👤 **Seller:** {auction_data.get('seller_id', 'unknown')}",
             color=0x00ff00,
@@ -520,23 +531,97 @@ async def create_bookmark_for_user(user_id, auction_data):
         embed.add_field(name="Links", value=link_section, inline=False)
         embed.set_footer(text=f"Bookmarked on {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
         
-        # Send to user's DM
-        dm_channel = await user.create_dm()
-        bookmark_message = await dm_channel.send(embed=embed)
+        # Send to user's private bookmark channel
+        try:
+            bookmark_message = await bookmark_channel.send(embed=embed)
+            print(f"✅ Successfully sent bookmark to #{bookmark_channel.name}")
+        except discord.HTTPException as e:
+            print(f"❌ Failed to send bookmark message: {e}")
+            return False
         
-        # Store bookmark in database using the helper function
-        success = add_bookmark(user_id, auction_data['auction_id'], bookmark_message.id, dm_channel.id)
+        # Store bookmark in database
+        success = add_bookmark(user_id, auction_data['auction_id'], bookmark_message.id, bookmark_channel.id)
         
         if success:
-            print(f"📚 Created bookmark for user {user_id}: {auction_data['title'][:30]}...")
+            print(f"📚 Successfully created bookmark for {user.name}: {auction_data['title'][:30]}...")
             return True
         else:
-            print(f"❌ Failed to store bookmark in database for user {user_id}")
+            print(f"❌ Failed to store bookmark in database for {user.name}")
             return False
         
     except Exception as e:
-        print(f"❌ Error creating bookmark for user {user_id}: {e}")
+        print(f"❌ Unexpected error creating bookmark for user {user_id}: {e}")
         return False
+
+async def get_or_create_user_bookmark_channel(user):
+    """Get or create a private bookmark channel for a user"""
+    try:
+        if not guild:
+            print("❌ No guild available for bookmark channel creation")
+            return None
+        
+        # Channel name format: 📚-bookmarks-username
+        safe_username = re.sub(r'[^a-zA-Z0-9]', '', user.name.lower())[:20]  # Clean username
+        channel_name = f"📚-bookmarks-{safe_username}-{str(user.id)[-4:]}"  # Add last 4 digits of ID for uniqueness
+        
+        # Check if channel already exists
+        existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
+        if existing_channel:
+            # Verify user has access
+            if user in [member for member in existing_channel.members]:
+                print(f"✅ Found existing bookmark channel: #{channel_name}")
+                return existing_channel
+        
+        # Create bookmark category if it doesn't exist
+        category = None
+        for cat in guild.categories:
+            if cat.name == "📚 USER BOOKMARKS":
+                category = cat
+                break
+        
+        if not category:
+            # Create category with restricted permissions
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_messages=True)
+            }
+            category = await guild.create_category("📚 USER BOOKMARKS", overwrites=overwrites)
+            print("✅ Created bookmark category")
+        
+        # Create private channel for the user
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            user: discord.PermissionOverwrite(read_messages=True, send_messages=False, add_reactions=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_messages=True)
+        }
+        
+        bookmark_channel = await guild.create_text_channel(
+            channel_name,
+            category=category,
+            overwrites=overwrites,
+            topic=f"Private bookmark channel for {user.name} - Your liked auction listings will appear here!"
+        )
+        
+        # Send welcome message
+        welcome_embed = discord.Embed(
+            title="📚 Welcome to Your Personal Bookmark Channel!",
+            description=f"Hi {user.mention}! This is your private bookmark channel.\n\nWhenever you react 👍 to auction listings, they'll be automatically saved here for easy reference.",
+            color=0x0099ff
+        )
+        welcome_embed.add_field(
+            name="🎯 How it works:",
+            value="• React 👍 to any auction listing\n• It gets bookmarked here instantly\n• Use `!bookmarks` to see a summary\n• Use `!clear_bookmarks` to clean up",
+            inline=False
+        )
+        
+        await bookmark_channel.send(embed=welcome_embed)
+        
+        print(f"✅ Created new bookmark channel: #{channel_name} for {user.name}")
+        return bookmark_channel
+        
+    except Exception as e:
+        print(f"❌ Error creating bookmark channel for {user.name}: {e}")
+        return None
 
 async def process_batch_buffer():
     global batch_buffer, last_batch_time
@@ -771,9 +856,16 @@ async def on_reaction_add(reaction, user):
         
         # Create bookmark for thumbs up reactions
         if reaction_type == "thumbs_up":
-            await create_bookmark_for_user(user.id, auction_data)
-            await reaction.message.add_reaction("📚")  # Bookmark emoji
-            await reaction.message.add_reaction("✅")
+            print(f"👍 User {user.name} liked {auction_data['title'][:30]}... - Creating bookmark")
+            bookmark_success = await create_bookmark_for_user(user.id, auction_data)
+            
+            if bookmark_success:
+                await reaction.message.add_reaction("📚")  # Bookmark emoji
+                await reaction.message.add_reaction("✅")
+                print(f"✅ Bookmark created successfully for {user.name}")
+            else:
+                await reaction.message.add_reaction("⚠️")  # Warning emoji if bookmark failed
+                print(f"⚠️ Bookmark failed for {user.name}")
         else:
             await reaction.message.add_reaction("❌")
         
@@ -808,7 +900,7 @@ async def handle_setup_reaction(reaction, user):
     
     embed.add_field(
         name="📚 Bookmarks",
-        value="When you react 👍 to listings, they'll be automatically bookmarked and sent to your DMs!",
+        value="When you react 👍 to listings, they'll be automatically bookmarked in your own private channel!",
         inline=False
     )
     
@@ -872,7 +964,7 @@ async def setup_command(ctx):
     
     embed.add_field(
         name="📚 Auto-Bookmarking",
-        value="After setup, any listing you react 👍 to will be automatically bookmarked and sent to your DMs!",
+        value="After setup, any listing you react 👍 to will be automatically bookmarked in your own private channel!",
         inline=False
     )
     
