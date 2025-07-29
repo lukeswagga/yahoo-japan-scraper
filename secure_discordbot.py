@@ -1060,6 +1060,30 @@ async def db_debug_command(ctx):
         result2 = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
         await ctx.send(f"Reactions count: {result2[0] if result2 else 'Error'}")
         
+        # Check total listings count
+        listings_count = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
+        await ctx.send(f"Total listings in DB: {listings_count[0] if listings_count else 'Error'}")
+        
+        # Check recent listings (last 24 hours)
+        recent_listings = db_manager.execute_query('''
+            SELECT COUNT(*) FROM listings 
+            WHERE created_at > NOW() - INTERVAL '1 day'
+        ''' if db_manager.use_postgres else '''
+            SELECT COUNT(*) FROM listings 
+            WHERE created_at > datetime('now', '-1 day')
+        ''', fetch_one=True)
+        await ctx.send(f"Recent listings (24h): {recent_listings[0] if recent_listings else 'Error'}")
+        
+        # Show some recent auction IDs
+        recent_ids = db_manager.execute_query('''
+            SELECT auction_id, title, created_at FROM listings 
+            ORDER BY created_at DESC LIMIT 5
+        ''', fetch_all=True)
+        
+        if recent_ids:
+            ids_text = "\n".join([f"{aid[:10]}... - {title[:30]}... - {created}" for aid, title, created in recent_ids])
+            await ctx.send(f"Recent auction IDs:\n```{ids_text}```")
+        
         result3 = db_manager.execute_query('SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?', (ctx.author.id,), fetch_one=True)
         await ctx.send(f"Your settings: {result3 if result3 else 'None found'}")
         
@@ -1068,6 +1092,56 @@ async def db_debug_command(ctx):
         
     except Exception as e:
         await ctx.send(f"Database error: {e}")
+
+@bot.command(name='clear_old_listings')
+async def clear_old_listings_command(ctx):
+    """Clear listings older than 3 days"""
+    try:
+        # Count old listings first
+        old_count = db_manager.execute_query('''
+            SELECT COUNT(*) FROM listings 
+            WHERE created_at < NOW() - INTERVAL '3 days'
+        ''' if db_manager.use_postgres else '''
+            SELECT COUNT(*) FROM listings 
+            WHERE created_at < datetime('now', '-3 days')
+        ''', fetch_one=True)
+        
+        old_listings = old_count[0] if old_count else 0
+        
+        if old_listings == 0:
+            await ctx.send("✅ No old listings to clear!")
+            return
+        
+        # Delete old listings
+        db_manager.execute_query('''
+            DELETE FROM listings 
+            WHERE created_at < NOW() - INTERVAL '3 days'
+        ''' if db_manager.use_postgres else '''
+            DELETE FROM listings 
+            WHERE created_at < datetime('now', '-3 days')
+        ''')
+        
+        # Also clear reactions for deleted listings
+        db_manager.execute_query('''
+            DELETE FROM reactions 
+            WHERE auction_id NOT IN (SELECT auction_id FROM listings)
+        ''')
+        
+        # Clear bookmarks for deleted listings
+        db_manager.execute_query('''
+            DELETE FROM user_bookmarks 
+            WHERE auction_id NOT IN (SELECT auction_id FROM listings)
+        ''')
+        
+        embed = discord.Embed(
+            title="🗑️ Database Cleanup Complete",
+            description=f"Removed **{old_listings}** old listings (older than 3 days) and associated data.",
+            color=0x00ff00
+        )
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error clearing old listings: {e}")
 
 @bot.command(name='test')
 async def test_command(ctx):
@@ -1302,7 +1376,7 @@ async def commands_command(ctx):
     
     embed.add_field(
         name="🧠 Bot Testing",
-        value="**!test** - Test if bot is working\n**!commands** - Show this help\n**!db_debug** - Database diagnostics",
+        value="**!test** - Test if bot is working\n**!commands** - Show this help\n**!db_debug** - Database diagnostics\n**!clear_old_listings** - Clean up old auction data",
         inline=False
     )
     
