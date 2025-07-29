@@ -9,6 +9,7 @@ import threading
 import os
 import logging
 import time
+from database_manager import db_manager, get_user_proxy_preference, set_user_proxy_preference, add_listing, add_reaction
 
 # Initialize Flask app BEFORE using @app.route
 app = Flask(__name__)
@@ -409,71 +410,10 @@ class UserPreferenceLearner:
 preference_learner = None
 
 def init_database():
-    global preference_learner
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
+    print("🔧 Initializing database...")
+    db_manager.init_database()
+    print("✅ Database initialization complete")
     
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS listings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            auction_id TEXT UNIQUE,
-            title TEXT,
-            brand TEXT,
-            price_jpy INTEGER,
-            price_usd REAL,
-            seller_id TEXT,
-            zenmarket_url TEXT,
-            yahoo_url TEXT,
-            image_url TEXT,
-            deal_quality REAL DEFAULT 0.5,
-            priority_score REAL DEFAULT 0.0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            message_id INTEGER
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS reactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            auction_id TEXT,
-            reaction_type TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (auction_id) REFERENCES listings (auction_id)
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS user_preferences (
-            user_id INTEGER PRIMARY KEY,
-            proxy_service TEXT DEFAULT 'zenmarket',
-            setup_complete BOOLEAN DEFAULT FALSE,
-            notifications_enabled BOOLEAN DEFAULT TRUE,
-            min_quality_threshold REAL DEFAULT 0.3,
-            max_price_alert REAL DEFAULT 1000.0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS scraper_stats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            total_found INTEGER DEFAULT 0,
-            quality_filtered INTEGER DEFAULT 0,
-            sent_to_discord INTEGER DEFAULT 0,
-            errors_count INTEGER DEFAULT 0,
-            keywords_searched INTEGER DEFAULT 0
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-    print("✅ Database initialized with enhanced schema")
-    
-    preference_learner = UserPreferenceLearner(DB_FILE)
-
 def add_listing(auction_data, message_id):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
