@@ -61,6 +61,13 @@ class EnhancedSpamDetector:
         
         # Brand-specific spam patterns
         self.brand_specific_spam = {
+            'prada': [
+                'wallet', '財布', 'bag', 'バッグ', 'purse', 'handbag', 'keychain', 'キーホルダー',
+                'pouch', 'ポーチ', 'case', 'ケース', 'accessory', 'アクセサリー',
+                'necklace', 'ネックレス', 'bracelet', 'ブレスレット', 'earring', 'ピアス',
+                'ring', '指輪', 'perfume', '香水', 'fragrance', 'cologne',
+                'prada sport', 'プラダスポーツ', 'vintage', 'ヴィンテージ'
+            ],
             'celine': ['wallet', '財布', 'bag', 'バッグ', 'purse', 'handbag'],
             'bottega_veneta': ['wallet', '財布', 'bag', 'バッグ', 'clutch'],
             'undercover': ['cb400', 'vtr250', 'motorcycle', 'バイク', 'engine'],
@@ -70,13 +77,31 @@ class EnhancedSpamDetector:
                 'dress', 'skirt', 'blouse', 'femme', 'women', 'ladies',
                 'ドレス', 'スカート', 'ブラウス', 'レディース'
             ],
-            'jean_paul_gaultier': ['femme', 'women', 'ladies', 'レディース']
+            'jean_paul_gaultier': ['femme', 'women', 'ladies', 'レディース'],
+            'balenciaga': ['yeezy', 'gap', 'yeezy gap']
         }
+        
+        # Special allowed terms that override spam detection
+        self.brand_specific_allowed = {
+            'maison_margiela': ['replica', 'レプリカ'],
+            'margiela': ['replica', 'レプリカ']
+        }
+        
+        # Universal exclusions
+        self.universal_exclusions = [
+            'zara', 'ザラ'
+        ]
     
     def is_spam(self, title, brand):
         """Enhanced spam detection with pattern matching"""
         title_lower = title.lower()
         brand_lower = brand.lower() if brand else ""
+        
+        # Check universal exclusions first
+        for exclusion in self.universal_exclusions:
+            if exclusion in title_lower:
+                print(f"🚫 Universal exclusion detected: {exclusion} in '{title[:30]}...'")
+                return True, "universal_exclusion"
         
         # Check for kids clothing (universal block)
         for pattern in self.spam_patterns['kids_clothing']:
@@ -84,11 +109,12 @@ class EnhancedSpamDetector:
                 print(f"🚫 Kids clothing detected: {pattern} in '{title[:30]}...'")
                 return True, "kids_clothing"
         
-        # Check for women's clothing (universal block)
-        for pattern in self.spam_patterns['womens_clothing']:
-            if re.search(pattern, title_lower) or re.search(pattern, brand_lower):
-                print(f"🚫 Women's clothing detected: {pattern} in '{title[:30]}...'")
-                return True, "womens_clothing"
+        # Check for women's clothing ONLY for Miu Miu
+        if 'miu_miu' in brand_lower or 'miu miu' in brand_lower:
+            for pattern in self.spam_patterns['womens_clothing']:
+                if re.search(pattern, title_lower):
+                    print(f"🚫 Women's clothing detected for Miu Miu: {pattern} in '{title[:30]}...'")
+                    return True, "womens_clothing"
         
         # Check general spam patterns
         for category, patterns in self.spam_patterns.items():
@@ -106,8 +132,13 @@ class EnhancedSpamDetector:
             if spam_brand_clean in brand_clean:
                 for spam_item in spam_items:
                     if spam_item in title_lower:
-                        print(f"🚫 Brand-specific spam: {spam_item} in {spam_brand}")
-                        return True, f"{spam_brand}_spam"
+                        # Check if this is an allowed term for this brand
+                        allowed_terms = self.brand_specific_allowed.get(spam_brand, [])
+                        if spam_item not in allowed_terms:
+                            print(f"🚫 Brand-specific spam: {spam_item} in {spam_brand}")
+                            return True, f"{spam_brand}_spam"
+                        else:
+                            print(f"✅ Allowed term for {spam_brand}: {spam_item}")
         
         # Additional heuristics
         if self._has_suspicious_pricing(title):

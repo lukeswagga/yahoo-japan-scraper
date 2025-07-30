@@ -116,7 +116,8 @@ BRAND_CHANNEL_MAP = {
     "Raf Simons": "raf-simons",
     "Rick Owens": "rick-owens",
     "Undercover": "undercover",
-    "Jean Paul Gaultier": "jean-paul-gaultier"
+    "Jean Paul Gaultier": "jean-paul-gaultier",
+    "Yohji Yamamoto": "yohji-yamamoto"  # Fixed mapping
 }
 
 intents = discord.Intents.default()
@@ -485,6 +486,28 @@ async def get_or_create_brand_channel(brand_name):
         if channel.name == full_channel_name:
             brand_channels_cache[full_channel_name] = channel
             print(f"✅ Found existing channel: {full_channel_name}")
+            
+            # Update permissions to make it read-only for users
+            try:
+                overwrites = {
+                    guild.default_role: discord.PermissionOverwrite(
+                        send_messages=False,  # Users cannot send messages
+                        add_reactions=True,   # Users CAN react (for bookmarks)
+                        read_messages=True,   # Users can read
+                        use_slash_commands=False  # Users cannot use commands
+                    ),
+                    guild.me: discord.PermissionOverwrite(
+                        send_messages=True,   # Bot can send messages
+                        manage_messages=True, # Bot can manage messages
+                        add_reactions=True,   # Bot can react
+                        read_messages=True    # Bot can read
+                    )
+                }
+                await channel.edit(overwrites=overwrites)
+                print(f"✅ Updated permissions for {full_channel_name} - now read-only for users")
+            except Exception as e:
+                print(f"⚠️ Could not update permissions for {full_channel_name}: {e}")
+            
             return channel
     
     print(f"⚠️ Channel {full_channel_name} doesn't exist, falling back to main channel")
