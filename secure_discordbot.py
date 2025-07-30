@@ -554,16 +554,17 @@ async def create_bookmark_for_user(user_id, auction_data):
         
         # Add the SAME thumbnail/image as the original
         image_url = auction_data.get('image_url', '')
-        print(f"🖼️ Bookmark image URL: '{image_url}'")
+        print(f"🖼️ Bookmark image URL from auction_data: '{image_url}'")
         
-        if image_url and image_url.strip() and image_url != '':
+        if image_url and image_url.strip() and image_url != '' and image_url != 'None':
             try:
                 embed.set_thumbnail(url=image_url)
-                print(f"✅ Added thumbnail to bookmark: {image_url}")
+                print(f"✅ Added thumbnail to bookmark: {image_url[:50]}...")
             except Exception as e:
                 print(f"❌ Failed to set thumbnail: {e}")
+                print(f"❌ Image URL was: {image_url}")
         else:
-            print(f"⚠️ No valid image URL available for bookmark")
+            print(f"⚠️ No valid image URL available for bookmark (value: '{image_url}')")
         
         # Different footer to indicate it's bookmarked
         embed.set_footer(text=f"📚 Bookmarked from ID: {auction_data['auction_id']} | {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
@@ -1482,8 +1483,25 @@ def webhook():
         print(f"❌ Webhook error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/stats', methods=['GET'])
-def api_stats():
+@app.route('/check_duplicate/<auction_id>', methods=['GET'])
+def check_duplicate(auction_id):
+    """Check if auction ID already exists in database"""
+    try:
+        existing = db_manager.execute_query(
+            'SELECT auction_id FROM listings WHERE auction_id = ?',
+            (auction_id,),
+            fetch_one=True
+        )
+        
+        return jsonify({
+            'exists': existing is not None,
+            'auction_id': auction_id
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'exists': False
+        }), 500
     total_listings = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
     total_reactions = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
     active_users = db_manager.execute_query('SELECT COUNT(DISTINCT user_id) FROM user_preferences WHERE setup_complete = TRUE', fetch_one=True)
