@@ -490,8 +490,8 @@ async def get_or_create_brand_channel(brand_name):
     print(f"⚠️ Channel {full_channel_name} doesn't exist, falling back to main channel")
     return None
 
-async def create_bookmark_for_user(user_id, auction_data):
-    """Create a bookmark in user's private channel"""
+async def create_bookmark_for_user(user_id, auction_data, original_message):
+    """Create a bookmark in user's private channel using the EXACT original embed"""
     try:
         user = bot.get_user(user_id)
         if not user:
@@ -509,65 +509,30 @@ async def create_bookmark_for_user(user_id, auction_data):
             print(f"❌ Could not create bookmark channel for {user.name}")
             return False
         
-        # Create the EXACT same embed as the original listing
-        price_usd = auction_data['price_usd']
-        deal_quality = auction_data.get('deal_quality', 0.5)
-        priority = auction_data.get('priority', 0.0)
-        
-        if deal_quality >= 0.8 or priority >= 100:
-            color = 0x00ff00
-            quality_emoji = "🔥"
-        elif deal_quality >= 0.6 or priority >= 70:
-            color = 0xffa500
-            quality_emoji = "🌟"
+        # Copy the EXACT embed from the original message
+        if original_message.embeds:
+            original_embed = original_message.embeds[0]
+            
+            # Create a new embed with the same data
+            embed = discord.Embed(
+                title=original_embed.title,
+                url=original_embed.url,
+                description=original_embed.description,
+                color=original_embed.color,
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            # Copy the thumbnail (image) from original
+            if original_embed.thumbnail:
+                embed.set_thumbnail(url=original_embed.thumbnail.url)
+                print(f"✅ Copied thumbnail from original: {original_embed.thumbnail.url}")
+            
+            # Different footer to indicate it's bookmarked
+            embed.set_footer(text=f"📚 Bookmarked from ID: {auction_data['auction_id']} | {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
+            
         else:
-            color = 0xff4444
-            quality_emoji = "⭐"
-        
-        display_title = auction_data['title']
-        if len(display_title) > 100:
-            display_title = display_title[:97] + "..."
-        
-        price_jpy = auction_data['price_jpy']
-        
-        description = f"💴 **¥{price_jpy:,}** (~${price_usd:.2f})\n"
-        description += f"🏷️ **{auction_data['brand'].replace('_', ' ').title()}**\n"
-        description += f"{quality_emoji} **Quality: {deal_quality:.1%}** | **Priority: {priority:.0f}**\n"
-        description += f"👤 **Seller:** {auction_data.get('seller_id', 'unknown')}\n"
-        
-        auction_id = auction_data['auction_id'].replace('yahoo_', '')
-        link_section = "\n**🛒 Proxy Links:**\n"
-        for key, proxy_info in SUPPORTED_PROXIES.items():
-            proxy_url = generate_proxy_url(auction_id, key)
-            link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
-        
-        description += link_section
-        
-        # Create the EXACT same embed as in brand channels
-        embed = discord.Embed(
-            title=display_title,
-            url=auction_data['zenmarket_url'],
-            description=description,
-            color=color,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        # Add the SAME thumbnail/image as the original
-        image_url = auction_data.get('image_url', '')
-        print(f"🖼️ Bookmark image URL from auction_data: '{image_url}'")
-        
-        if image_url and image_url.strip() and image_url != '' and image_url != 'None':
-            try:
-                embed.set_thumbnail(url=image_url)
-                print(f"✅ Added thumbnail to bookmark: {image_url[:50]}...")
-            except Exception as e:
-                print(f"❌ Failed to set thumbnail: {e}")
-                print(f"❌ Image URL was: {image_url}")
-        else:
-            print(f"⚠️ No valid image URL available for bookmark (value: '{image_url}')")
-        
-        # Different footer to indicate it's bookmarked
-        embed.set_footer(text=f"📚 Bookmarked from ID: {auction_data['auction_id']} | {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
+            print(f"❌ No embeds found in original message")
+            return False
         
         # Send to user's private bookmark channel
         try:
@@ -919,7 +884,7 @@ async def on_reaction_add(reaction, user):
         # Create bookmark for thumbs up reactions
         if reaction_type == "thumbs_up":
             print(f"👍 User {user.name} liked {auction_data['title'][:30]}... - Creating bookmark")
-            bookmark_success = await create_bookmark_for_user(user.id, auction_data)
+            bookmark_success = await create_bookmark_for_user(user.id, auction_data, reaction.message)
             
             if bookmark_success:
                 await reaction.message.add_reaction("📚")  # Bookmark emoji
