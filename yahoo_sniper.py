@@ -895,7 +895,8 @@ def generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, c
     
     max_keywords = tier_config['max_keywords']
     
-    if keyword_manager:
+    if keyword_manager and keyword_manager.keyword_performance:
+        # Only use performance-based filtering if we have actual performance data
         learned_keywords = keyword_manager.get_best_keywords_for_brand(brand, max_keywords)
         
         performance_filtered = []
@@ -1049,7 +1050,9 @@ def main_loop():
                         brand_listings = []
                         
                         for keyword in keywords:
-                            if keyword_manager and keyword in keyword_manager.dead_keywords:
+                            # Only skip dead keywords if we have performance data to base the decision on
+                            if (keyword_manager and keyword_manager.keyword_performance and 
+                                keyword in keyword_manager.dead_keywords):
                                 print(f"⏭️ Skipping dead keyword: {keyword}")
                                 continue
                             

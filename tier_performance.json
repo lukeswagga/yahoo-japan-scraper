@@ -1,0 +1,20 @@
+{
+  "tier_1_premium": {
+    "total_searches": 0,
+    "successful_finds": 0,
+    "avg_efficiency": 0.0,
+    "last_updated": "2024-01-01T00:00:00"
+  },
+  "tier_1_high": {
+    "total_searches": 0,
+    "successful_finds": 0,
+    "avg_efficiency": 0.0,
+    "last_updated": "2024-01-01T00:00:00"
+  },
+  "tier_2": {
+    "total_searches": 0,
+    "successful_finds": 0,
+    "avg_efficiency": 0.0,
+    "last_updated": "2024-01-01T00:00:00"
+  }
+} 
