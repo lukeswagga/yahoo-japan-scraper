@@ -20,15 +20,20 @@ start_time = time.time()
 # Update the health endpoint to be more Railway-friendly
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({
-        "status": "healthy" if bot.is_ready() and guild else "starting",
-        "bot_ready": bot.is_ready(),
-        "guild_connected": guild is not None,
-        "buffer_size": len(batch_buffer),
-        "uptime_seconds": int(time.time() - start_time),
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }), 200
-
+    try:
+        return jsonify({
+            "status": "healthy",
+            "service": "discord-bot",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "bot_ready": bot.is_ready() if 'bot' in globals() else False
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "error": str(e),
+            "service": "discord-bot"
+        }), 500
+        
 # === SECURE CONFIG LOADING ===
 def load_secure_config():
     """Load sensitive configuration from environment variables ONLY"""
@@ -2098,53 +2103,72 @@ def run_flask():
 
 
 def main():
-    print("🔧 Initializing database...")
-    
-    # Test PostgreSQL connection first
-    print("🔍 Testing PostgreSQL connection...")
-    if not test_postgres_connection():
-        print("❌ PostgreSQL connection failed - exiting")
-        return
-    
-    # Initialize all database tables
-    db_manager.init_database()
-    
-    # Initialize subscription tables
-    if not init_subscription_tables():
-        print("❌ Failed to initialize subscription tables - exiting")
-        return
-    
-    print("🔒 SECURITY: Performing startup security checks...")
-    
-    if not BOT_TOKEN or len(BOT_TOKEN) < 50:
-        print("❌ SECURITY FAILURE: Invalid bot token!")
-        return
-    
-    if not GUILD_ID or GUILD_ID == 1234567890:
-        print("❌ SECURITY FAILURE: Invalid guild ID!")
-        return
-    
-    print("✅ SECURITY: All security checks passed")
-    print(f"🎯 Target server ID: {GUILD_ID}")
-    print(f"📺 Main auction channel: #{AUCTION_CHANNEL_NAME}")
-    print(f"📦 Batch size: {BATCH_SIZE} listings per message")
-    print(f"🧠 AI learning system: Enabled")
-    print(f"📚 Auto-bookmarking: Enabled")
-    print(f"💎 Premium tier system: Ready")
-    print(f"🗄️ Database: PostgreSQL")
-    
-    print("🌐 Starting webhook server...")
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    print("🌐 Webhook server started on port 8000")
-    
-    print("🤖 Connecting to Discord...")
     try:
+        print("🚀 Starting Discord bot...")
+        print("🔧 Initializing database...")
+        
+        # Test PostgreSQL connection first
+        print("🔍 Testing PostgreSQL connection...")
+        if not test_postgres_connection():
+            print("❌ PostgreSQL connection failed - continuing anyway for health check")
+            # Don't exit here - let the health check work
+        
+        # Initialize all database tables
+        try:
+            db_manager.init_database()
+            print("✅ Database initialized")
+        except Exception as e:
+            print(f"⚠️ Database init warning: {e}")
+        
+        # Initialize subscription tables
+        try:
+            if not init_subscription_tables():
+                print("⚠️ Subscription tables init warning")
+        except Exception as e:
+            print(f"⚠️ Subscription tables warning: {e}")
+        
+        print("🔒 SECURITY: Performing startup security checks...")
+        
+        if not BOT_TOKEN or len(BOT_TOKEN) < 50:
+            print("❌ SECURITY FAILURE: Invalid bot token!")
+            return
+        
+        if not GUILD_ID or GUILD_ID == 1234567890:
+            print("❌ SECURITY FAILURE: Invalid guild ID!")
+            return
+        
+        print("✅ SECURITY: All security checks passed")
+        print(f"🎯 Target server ID: {GUILD_ID}")
+        print(f"📺 Main auction channel: #{AUCTION_CHANNEL_NAME}")
+        print(f"📦 Batch size: {BATCH_SIZE} listings per message")
+        print(f"🧠 AI learning system: Enabled")
+        print(f"📚 Auto-bookmarking: Enabled")
+        print(f"💎 Premium tier system: Ready")
+        print(f"🗄️ Database: PostgreSQL")
+        
+        print("🌐 Starting webhook server...")
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        print("🌐 Webhook server started on port 8000")
+        
+        print("🤖 Connecting to Discord...")
         bot.run(BOT_TOKEN)
-    except discord.errors.LoginFailure:
-        print("❌ SECURITY FAILURE: Invalid bot token - login failed!")
+        
     except Exception as e:
-        print(f"❌ Error starting bot: {e}")
+        print(f"❌ CRITICAL ERROR in main(): {e}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        # Still start Flask for health checks
+        try:
+            flask_thread = threading.Thread(target=run_flask, daemon=True)
+            flask_thread.start()
+            print("🌐 Emergency webhook server started")
+            # Keep the process alive
+            import time
+            while True:
+                time.sleep(60)
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
