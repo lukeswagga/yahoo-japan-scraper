@@ -131,6 +131,22 @@ class DatabaseManager:
             )
         ''')
         
+        # User subscriptions table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_subscriptions (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT UNIQUE,
+                tier VARCHAR(20) DEFAULT 'free',
+                upgraded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                payment_provider VARCHAR(50),
+                subscription_id VARCHAR(100),
+                status VARCHAR(20) DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # Create indexes
         indexes = [
             "CREATE INDEX IF NOT EXISTS idx_listings_brand ON listings(brand)",
@@ -215,6 +231,21 @@ class DatabaseManager:
                 sent_to_discord INTEGER DEFAULT 0,
                 errors_count INTEGER DEFAULT 0,
                 keywords_searched INTEGER DEFAULT 0
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER UNIQUE,
+                tier TEXT DEFAULT 'free',
+                upgraded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                payment_provider TEXT,
+                subscription_id TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
     

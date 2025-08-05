@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import asyncio
 from flask import Flask, request, jsonify
 import threading
@@ -753,37 +753,44 @@ async def send_single_listing(auction_data):
         if len(display_title) > 100:
             display_title = display_title[:97] + "..."
         
-        price_jpy = auction_data['price_jpy']
+        # Create embed using the helper function
+        embed = create_listing_embed(auction_data)
         
-        description = f"💴 **¥{price_jpy:,}** (~${price_usd:.2f})\n"
-        description += f"🏷️ **{auction_data['brand'].replace('_', ' ').title()}**\n"
-        description += f"{quality_emoji} **Quality: {deal_quality:.1%}** | **Priority: {priority:.0f}**\n"
-        description += f"👤 **Seller:** {auction_data.get('seller_id', 'unknown')}\n"
-        
-        auction_id = auction_data['auction_id'].replace('yahoo_', '')
-        link_section = "\n**🛒 Proxy Links:**\n"
-        for key, proxy_info in SUPPORTED_PROXIES.items():
-            proxy_url = generate_proxy_url(auction_id, key)
-            link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
-        
-        description += link_section
-        
-        embed = discord.Embed(
-            title=display_title,
-            url=auction_data['zenmarket_url'],
-            description=description,
-            color=color,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        if auction_data.get('image_url'):
-            embed.set_thumbnail(url=auction_data['image_url'])
-        
-        embed.set_footer(text=f"ID: {auction_data['auction_id']} | !setup for proxy config | React 👍/👎 to train")
-        
-        print(f"📤 Sending message to #{target_channel.name}")
-        message = await target_channel.send(embed=embed)
-        print(f"✅ Message sent successfully, ID: {message.id}")
+        # Tier-based sending logic
+        if tier_manager and target_channel:
+            # Check if this is a premium channel that requires tier access
+            channel_name = target_channel.name
+            is_premium_channel = False
+            
+            # Check if it's a brand channel (premium)
+            if channel_name.startswith('🏷️-'):
+                is_premium_channel = True
+            # Check if it's in pro or elite channels
+            elif channel_name in tier_manager.tier_channels['pro'] or channel_name in tier_manager.tier_channels['elite']:
+                is_premium_channel = True
+            
+            if is_premium_channel:
+                # Send to premium users only
+                print(f"💎 Sending to premium channel: #{channel_name}")
+                message = await target_channel.send(embed=embed)
+                print(f"✅ Message sent to premium channel, ID: {message.id}")
+                
+                # Queue for free users with delay
+                if delayed_manager:
+                    delay_seconds = tier_manager.should_delay_listing('free', priority)
+                    if delay_seconds > 0:
+                        await delayed_manager.queue_for_free_users(auction_data, delay_seconds)
+                        print(f"⏳ Queued for free users with {delay_seconds/3600:.1f} hour delay")
+            else:
+                # Send to all users (free channel)
+                print(f"📤 Sending to free channel: #{channel_name}")
+                message = await target_channel.send(embed=embed)
+                print(f"✅ Message sent to free channel, ID: {message.id}")
+        else:
+            # Fallback to original behavior
+            print(f"📤 Sending message to #{target_channel.name}")
+            message = await target_channel.send(embed=embed)
+            print(f"✅ Message sent successfully, ID: {message.id}")
         
         # Add to database
         print(f"💾 Adding to database with image URL: {auction_data.get('image_url', 'No image')}")
@@ -819,7 +826,7 @@ async def send_individual_listings_with_rate_limit(batch_data):
 
 @bot.event
 async def on_ready():
-    global guild, auction_channel, preference_learner
+    global guild, auction_channel, preference_learner, tier_manager, delayed_manager
     print(f'✅ Bot connected as {bot.user}!')
     guild = bot.get_guild(GUILD_ID)
     
@@ -830,9 +837,16 @@ async def on_ready():
         # Initialize preference learner
         preference_learner = UserPreferenceLearner()
         
+        # Initialize tier system
+        tier_manager = PremiumTierManager(bot)
+        delayed_manager = DelayedListingManager()
+        
         bot.loop.create_task(process_batch_buffer())
+        bot.loop.create_task(delayed_manager.process_delayed_queue())
         print("⏰ Started batch buffer processor")
         print("🧠 User preference learning system initialized")
+        print("💎 Premium tier system initialized")
+        print("⏳ Delayed listing manager started")
     else:
         print(f'❌ Could not find server with ID: {GUILD_ID}')
 
@@ -1501,6 +1515,398 @@ def check_duplicate(auction_id):
         "buffer_size": len(batch_buffer)
     }), 200
 
+# === PREMIUM TIER SYSTEM ===
+
+class PremiumTierManager:
+    def __init__(self, bot):
+        self.bot = bot
+        self.tier_roles = {
+            'free': 'Free User',
+            'pro': 'Pro User',  # $20/month
+            'elite': 'Elite User'  # $50/month
+        }
+        
+        self.tier_channels = {
+            'free': [
+                '📦-daily-digest',
+                '💰-budget-steals', 
+                '🗳️-community-votes',
+                '💬-general-chat',
+                '💡-style-advice'
+            ],
+            'pro': [
+                # All free channels plus:
+                '⏰-hourly-drops',
+                '🔔-size-alerts',
+                '📊-price-tracker',
+                '🔍-sold-listings',
+                # All brand channels
+                '🏷️-raf-simons', '🏷️-rick-owens', '🏷️-maison-margiela',
+                '🏷️-jean-paul-gaultier', '🏷️-yohji_yamamoto', '🏷️-junya-watanabe',
+                '🏷️-undercover', '🏷️-vetements', '🏷️-martine-rose',
+                '🏷️-balenciaga', '🏷️-alyx', '🏷️-celine', '🏷️-bottega-veneta',
+                '🏷️-kiko-kostadinov', '🏷️-chrome-hearts', '🏷️-comme-des-garcons',
+                '🏷️-prada', '🏷️-miu-miu', '🏷️-hysteric-glamour'
+            ],
+            'elite': [
+                # All pro channels plus:
+                '⚡-instant-alerts',
+                '🔥-grail-hunter', 
+                '🎯-personal-alerts',
+                '📊-market-intelligence',
+                '🛡️-verified-sellers',
+                '💎-investment-pieces',
+                '🏆-vip-lounge',
+                '📈-trend-analysis',
+                '💹-investment-tracking'
+            ]
+        }
+        
+        self.tier_features = {
+            'free': {
+                'delay_multiplier': 8.0,  # 8x delay (2+ hours behind)
+                'daily_limit': 10,
+                'bookmark_limit': 25,
+                'ai_personalized': False,
+                'priority_support': False
+            },
+            'pro': {
+                'delay_multiplier': 0.0,  # Real-time
+                'daily_limit': None,
+                'bookmark_limit': 500,
+                'ai_personalized': True,
+                'priority_support': False
+            },
+            'elite': {
+                'delay_multiplier': 0.0,  # Real-time
+                'daily_limit': None,
+                'bookmark_limit': None,
+                'ai_personalized': True,
+                'priority_support': True,
+                'early_access': True
+            }
+        }
+    
+    async def setup_tier_roles(self, guild):
+        """Create tier roles if they don't exist"""
+        for tier, role_name in self.tier_roles.items():
+            existing_role = discord.utils.get(guild.roles, name=role_name)
+            if not existing_role:
+                try:
+                    color = {
+                        'free': 0x808080,    # Gray
+                        'pro': 0x3498db,     # Blue  
+                        'elite': 0xf1c40f    # Gold
+                    }[tier]
+                    
+                    role = await guild.create_role(
+                        name=role_name,
+                        color=discord.Color(color),
+                        mentionable=False,
+                        reason="Premium tier role"
+                    )
+                    print(f"✅ Created role: {role_name}")
+                except Exception as e:
+                    print(f"❌ Error creating role {role_name}: {e}")
+    
+    async def setup_channel_permissions(self, guild):
+        """Set up permissions for all channels based on tiers"""
+        for tier, channels in self.tier_channels.items():
+            role = discord.utils.get(guild.roles, name=self.tier_roles[tier])
+            if not role:
+                continue
+            
+            # Add permissions for channels this tier can access
+            accessible_channels = []
+            if tier == 'free':
+                accessible_channels = self.tier_channels['free']
+            elif tier == 'pro':
+                accessible_channels = self.tier_channels['free'] + self.tier_channels['pro']
+            elif tier == 'elite':
+                accessible_channels = (self.tier_channels['free'] + 
+                                     self.tier_channels['pro'] + 
+                                     self.tier_channels['elite'])
+            
+            for channel_name in accessible_channels:
+                channel = discord.utils.get(guild.text_channels, name=channel_name)
+                if channel:
+                    try:
+                        await channel.set_permissions(role, read_messages=True, add_reactions=True)
+                        print(f"✅ Set {tier} access to #{channel_name}")
+                    except Exception as e:
+                        print(f"❌ Error setting permissions for #{channel_name}: {e}")
+        
+        # Deny access to premium channels for free users
+        free_role = discord.utils.get(guild.roles, name=self.tier_roles['free'])
+        if free_role:
+            premium_channels = self.tier_channels['pro'] + self.tier_channels['elite']
+            for channel_name in premium_channels:
+                channel = discord.utils.get(guild.text_channels, name=channel_name)
+                if channel:
+                    try:
+                        await channel.set_permissions(free_role, read_messages=False)
+                    except Exception as e:
+                        print(f"❌ Error denying access to #{channel_name}: {e}")
+    
+    def get_user_tier(self, member):
+        """Get user's current tier based on roles"""
+        user_roles = [role.name for role in member.roles]
+        
+        if self.tier_roles['elite'] in user_roles:
+            return 'elite'
+        elif self.tier_roles['pro'] in user_roles:
+            return 'pro'
+        else:
+            return 'free'
+    
+    async def upgrade_user(self, member, new_tier):
+        """Upgrade user to new tier"""
+        guild = member.guild
+        
+        # Remove old tier roles
+        for tier_role_name in self.tier_roles.values():
+            role = discord.utils.get(guild.roles, name=tier_role_name)
+            if role in member.roles:
+                await member.remove_roles(role)
+        
+        # Add new tier role
+        new_role = discord.utils.get(guild.roles, name=self.tier_roles[new_tier])
+        if new_role:
+            await member.add_roles(new_role)
+            
+            # Update database
+            db_manager.execute_query('''
+                INSERT OR REPLACE INTO user_subscriptions 
+                (user_id, tier, upgraded_at, expires_at)
+                VALUES (?, ?, ?, ?)
+            ''', (
+                member.id, 
+                new_tier, 
+                datetime.now().isoformat(),
+                (datetime.now() + timedelta(days=30)).isoformat()  # Monthly
+            ))
+            
+            return True
+        return False
+    
+    def should_delay_listing(self, user_tier, listing_priority):
+        """Determine if listing should be delayed for user tier"""
+        if user_tier in ['pro', 'elite']:
+            return False  # Real-time for paying users
+        
+        # Free users get delayed listings
+        features = self.tier_features['free']
+        delay_hours = features['delay_multiplier']
+        
+        # High priority items get less delay
+        if listing_priority >= 100:
+            delay_hours *= 0.5
+        elif listing_priority >= 70:
+            delay_hours *= 0.75
+        
+        return delay_hours * 3600  # Convert to seconds
+
+class DelayedListingManager:
+    def __init__(self):
+        self.delayed_queue = []
+        self.running = False
+    
+    async def queue_for_free_users(self, listing_data, delay_seconds):
+        """Queue listing for delayed delivery to free users"""
+        delivery_time = datetime.now() + timedelta(seconds=delay_seconds)
+        
+        self.delayed_queue.append({
+            'listing': listing_data,
+            'delivery_time': delivery_time,
+            'target_channels': ['📦-daily-digest', '💰-budget-steals']
+        })
+        
+        # Sort by delivery time
+        self.delayed_queue.sort(key=lambda x: x['delivery_time'])
+    
+    async def process_delayed_queue(self):
+        """Background task to process delayed listings"""
+        self.running = True
+        while self.running:
+            try:
+                now = datetime.now()
+                ready_items = []
+                
+                # Find items ready for delivery
+                for item in self.delayed_queue:
+                    if item['delivery_time'] <= now:
+                        ready_items.append(item)
+                
+                # Remove ready items from queue
+                for item in ready_items:
+                    self.delayed_queue.remove(item)
+                    await self.deliver_to_free_channels(item)
+                
+                await asyncio.sleep(60)  # Check every minute
+                
+            except Exception as e:
+                print(f"❌ Delayed queue error: {e}")
+                await asyncio.sleep(300)
+    
+    async def deliver_to_free_channels(self, queued_item):
+        """Deliver listing to free user channels"""
+        listing = queued_item['listing']
+        
+        for channel_name in queued_item['target_channels']:
+            channel = discord.utils.get(guild.text_channels, name=channel_name)
+            if channel:
+                try:
+                    embed = create_listing_embed(listing)
+                    embed.set_footer(text=f"Free Tier - Upgrade for real-time alerts | ID: {listing['auction_id']}")
+                    await channel.send(embed=embed)
+                    print(f"📤 Delivered delayed listing to #{channel_name}")
+                except Exception as e:
+                    print(f"❌ Error delivering to #{channel_name}: {e}")
+
+# Initialize the systems
+tier_manager = None
+delayed_manager = None
+
+def create_listing_embed(listing_data):
+    """Create a Discord embed for a listing"""
+    title = listing_data.get('title', '')
+    brand = listing_data.get('brand', '')
+    price_jpy = listing_data.get('price_jpy', 0)
+    price_usd = listing_data.get('price_usd', 0)
+    deal_quality = listing_data.get('deal_quality', 0.5)
+    priority = listing_data.get('priority', 0.0)
+    seller_id = listing_data.get('seller_id', 'unknown')
+    zenmarket_url = listing_data.get('zenmarket_url', '')
+    image_url = listing_data.get('image_url', '')
+    auction_id = listing_data.get('auction_id', '')
+    
+    if deal_quality >= 0.8 or priority >= 100:
+        color = 0x00ff00
+        quality_emoji = "🔥"
+    elif deal_quality >= 0.6 or priority >= 70:
+        color = 0xffa500
+        quality_emoji = "🌟"
+    else:
+        color = 0xff4444
+        quality_emoji = "⭐"
+    
+    display_title = title
+    if len(display_title) > 100:
+        display_title = display_title[:97] + "..."
+    
+    description = f"💴 **¥{price_jpy:,}** (~${price_usd:.2f})\n"
+    description += f"🏷️ **{brand.replace('_', ' ').title()}**\n"
+    description += f"{quality_emoji} **Quality: {deal_quality:.1%}** | **Priority: {priority:.0f}**\n"
+    description += f"👤 **Seller:** {seller_id}\n"
+    
+    auction_id_clean = auction_id.replace('yahoo_', '')
+    link_section = "\n**🛒 Proxy Links:**\n"
+    for key, proxy_info in SUPPORTED_PROXIES.items():
+        proxy_url = generate_proxy_url(auction_id_clean, key)
+        link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
+    
+    description += link_section
+    
+    embed = discord.Embed(
+        title=display_title,
+        url=zenmarket_url,
+        description=description,
+        color=color,
+        timestamp=datetime.now(timezone.utc)
+    )
+    
+    if image_url:
+        embed.set_thumbnail(url=image_url)
+    
+    embed.set_footer(text=f"ID: {auction_id} | !setup for proxy config | React 👍/👎 to train")
+    
+    return embed
+
+@bot.command(name='setup_tiers')
+@commands.has_permissions(administrator=True)
+async def setup_tiers_command(ctx):
+    """Admin command to set up tier system"""
+    global tier_manager
+    tier_manager = PremiumTierManager(bot)
+    
+    await tier_manager.setup_tier_roles(ctx.guild)
+    await tier_manager.setup_channel_permissions(ctx.guild)
+    
+    await ctx.send("✅ Tier system setup complete!")
+
+@bot.command(name='upgrade_user')
+@commands.has_permissions(administrator=True)
+async def upgrade_user_command(ctx, member: discord.Member, tier: str):
+    """Admin command to upgrade user tier"""
+    if tier not in ['free', 'pro', 'elite']:
+        await ctx.send("❌ Invalid tier. Use: free, pro, or elite")
+        return
+    
+    if not tier_manager:
+        await ctx.send("❌ Tier system not initialized. Run `!setup_tiers` first")
+        return
+    
+    success = await tier_manager.upgrade_user(member, tier)
+    if success:
+        embed = discord.Embed(
+            title="🎯 User Upgraded",
+            description=f"{member.mention} has been upgraded to **{tier.title()} Tier**",
+            color=0x00ff00
+        )
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send("❌ Failed to upgrade user")
+
+@bot.command(name='my_tier')
+async def my_tier_command(ctx):
+    """Show user's current tier and benefits"""
+    if not tier_manager:
+        await ctx.send("❌ Tier system not initialized")
+        return
+    
+    user_tier = tier_manager.get_user_tier(ctx.author)
+    features = tier_manager.tier_features[user_tier]
+    
+    embed = discord.Embed(
+        title=f"🎯 Your Tier: {user_tier.title()}",
+        color={
+            'free': 0x808080,
+            'pro': 0x3498db, 
+            'elite': 0xf1c40f
+        }[user_tier]
+    )
+    
+    if user_tier == 'free':
+        embed.add_field(
+            name="Current Benefits",
+            value=f"• {features['daily_limit']} listings per day\n• {features['bookmark_limit']} bookmark limit\n• Community features\n• 2+ hour delays",
+            inline=False
+        )
+        embed.add_field(
+            name="🚀 Upgrade to Pro ($20/month)",
+            value="• Real-time alerts\n• All brand channels\n• Unlimited bookmarks\n• AI personalization\n• Price tracking",
+            inline=False
+        )
+    elif user_tier == 'pro':
+        embed.add_field(
+            name="Your Benefits",
+            value="• Real-time alerts\n• All brand channels\n• Unlimited bookmarks\n• AI personalization\n• Price tracking",
+            inline=False
+        )
+        embed.add_field(
+            name="🔥 Upgrade to Elite ($50/month)",
+            value="• Grail hunter alerts\n• Market intelligence\n• Investment tracking\n• Priority support\n• VIP lounge access",
+            inline=False
+        )
+    else:
+        embed.add_field(
+            name="Elite Benefits",
+            value="• All Pro features\n• Grail hunter alerts\n• Market intelligence\n• Investment tracking\n• Priority support\n• VIP lounge access",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
+
 def run_flask():
     app.run(host='0.0.0.0', port=8000, debug=False)
 
@@ -1524,6 +1930,7 @@ def main():
     print(f"📦 Batch size: {BATCH_SIZE} listings per message")
     print(f"🧠 AI learning system: Enabled")
     print(f"📚 Auto-bookmarking: Enabled")
+    print(f"💎 Premium tier system: Ready")
     
     print("🌐 Starting webhook server...")
     flask_thread = threading.Thread(target=run_flask, daemon=True)
