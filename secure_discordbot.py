@@ -1611,9 +1611,16 @@ class PremiumTierManager:
     
     async def setup_channel_permissions(self, guild):
         """Set up permissions for all channels based on tiers"""
+        print("🔧 Setting up channel permissions...")
+        
+        # Get all existing channels
+        existing_channels = [channel.name for channel in guild.text_channels]
+        print(f"📋 Found {len(existing_channels)} existing channels")
+        
         for tier, channels in self.tier_channels.items():
             role = discord.utils.get(guild.roles, name=self.tier_roles[tier])
             if not role:
+                print(f"⚠️ Role {self.tier_roles[tier]} not found, skipping")
                 continue
             
             # Add permissions for channels this tier can access
@@ -1627,7 +1634,14 @@ class PremiumTierManager:
                                      self.tier_channels['pro'] + 
                                      self.tier_channels['elite'])
             
-            for channel_name in accessible_channels:
+            # Filter to only include existing channels
+            existing_accessible_channels = [ch for ch in accessible_channels if ch in existing_channels]
+            missing_channels = [ch for ch in accessible_channels if ch not in existing_channels]
+            
+            if missing_channels:
+                print(f"⚠️ Missing channels for {tier} tier: {missing_channels}")
+            
+            for channel_name in existing_accessible_channels:
                 channel = discord.utils.get(guild.text_channels, name=channel_name)
                 if channel:
                     try:
@@ -1636,17 +1650,22 @@ class PremiumTierManager:
                     except Exception as e:
                         print(f"❌ Error setting permissions for #{channel_name}: {e}")
         
-        # Deny access to premium channels for free users
+        # Deny access to premium channels for free users (only existing ones)
         free_role = discord.utils.get(guild.roles, name=self.tier_roles['free'])
         if free_role:
             premium_channels = self.tier_channels['pro'] + self.tier_channels['elite']
-            for channel_name in premium_channels:
+            existing_premium_channels = [ch for ch in premium_channels if ch in existing_channels]
+            
+            for channel_name in existing_premium_channels:
                 channel = discord.utils.get(guild.text_channels, name=channel_name)
                 if channel:
                     try:
                         await channel.set_permissions(free_role, read_messages=False)
+                        print(f"🚫 Denied free user access to #{channel_name}")
                     except Exception as e:
                         print(f"❌ Error denying access to #{channel_name}: {e}")
+        
+        print("✅ Channel permissions setup complete!")
     
     def get_user_tier(self, member):
         """Get user's current tier based on roles"""
@@ -1904,6 +1923,50 @@ async def my_tier_command(ctx):
             value="• All Pro features\n• Grail hunter alerts\n• Market intelligence\n• Investment tracking\n• Priority support\n• VIP lounge access",
             inline=False
         )
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='update_channels')
+@commands.has_permissions(administrator=True)
+async def update_channels_command(ctx):
+    """Update channel permissions for newly added channels"""
+    if not tier_manager:
+        await ctx.send("❌ Tier system not initialized. Run `!setup_tiers` first")
+        return
+    
+    await ctx.send("🔄 Updating channel permissions for new channels...")
+    await tier_manager.setup_channel_permissions(ctx.guild)
+    await ctx.send("✅ Channel permissions updated!")
+
+@bot.command(name='list_channels')
+@commands.has_permissions(administrator=True)
+async def list_channels_command(ctx):
+    """List all channels and their tier assignments"""
+    if not tier_manager:
+        await ctx.send("❌ Tier system not initialized")
+        return
+    
+    embed = discord.Embed(title="📋 Channel Tier Assignments", color=0x3498db)
+    
+    existing_channels = [channel.name for channel in ctx.guild.text_channels]
+    
+    for tier, channels in tier_manager.tier_channels.items():
+        existing_tier_channels = [ch for ch in channels if ch in existing_channels]
+        missing_tier_channels = [ch for ch in channels if ch not in existing_channels]
+        
+        if existing_tier_channels:
+            embed.add_field(
+                name=f"✅ {tier.title()} Tier (Existing)",
+                value="\n".join([f"• #{ch}" for ch in existing_tier_channels]),
+                inline=True
+            )
+        
+        if missing_tier_channels:
+            embed.add_field(
+                name=f"❌ {tier.title()} Tier (Missing)",
+                value="\n".join([f"• #{ch}" for ch in missing_tier_channels]),
+                inline=True
+            )
     
     await ctx.send(embed=embed)
 
