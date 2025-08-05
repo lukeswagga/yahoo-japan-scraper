@@ -1037,6 +1037,129 @@ async def setup_command(ctx):
     for proxy in SUPPORTED_PROXIES.values():
         await message.add_reaction(proxy['emoji'])
 
+# Add this command to secure_discordbot.py for testing
+
+@bot.command(name='test_database')
+@commands.has_permissions(administrator=True)
+async def test_database_command(ctx):
+    """Test PostgreSQL database connection and tables"""
+    try:
+        embed = discord.Embed(
+            title="🗄️ Database Connection Test",
+            color=0x0099ff
+        )
+        
+        # Test connection
+        version_result = db_manager.execute_query('SELECT version()', fetch_one=True)
+        if version_result:
+            db_version = version_result[0][:100] + "..." if len(version_result[0]) > 100 else version_result[0]
+            embed.add_field(
+                name="✅ Connection Status", 
+                value=f"Connected to PostgreSQL\n```{db_version}```",
+                inline=False
+            )
+        
+        # Test tables
+        tables = db_manager.execute_query('''
+            SELECT table_name FROM information_schema.tables 
+            WHERE table_schema = 'public'
+            ORDER BY table_name
+        ''', fetch_all=True)
+        
+        if tables:
+            table_list = []
+            for table_name, in tables:
+                try:
+                    count = db_manager.execute_query(f'SELECT COUNT(*) FROM {table_name}', fetch_one=True)
+                    table_list.append(f"{table_name}: {count[0] if count else 0} rows")
+                except Exception as e:
+                    table_list.append(f"{table_name}: Error - {str(e)[:30]}")
+            
+            embed.add_field(
+                name="📊 Database Tables",
+                value="```" + "\n".join(table_list[:10]) + "```",  # Limit to 10 tables
+                inline=False
+            )
+        
+        # Test subscription table specifically
+        try:
+            sub_count = db_manager.execute_query(
+                'SELECT COUNT(*) FROM user_subscriptions', 
+                fetch_one=True
+            )
+            embed.add_field(
+                name="💳 Subscriptions Table",
+                value=f"✅ Ready ({sub_count[0] if sub_count else 0} subscriptions)",
+                inline=True
+            )
+        except Exception as e:
+            embed.add_field(
+                name="💳 Subscriptions Table",
+                value=f"❌ Error: {str(e)[:50]}",
+                inline=True
+            )
+        
+        # Test database health
+        health = db_manager.health_check()
+        embed.add_field(
+            name="🏥 Health Status",
+            value=f"Status: {health.get('status', 'unknown').title()}",
+            inline=True
+        )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        error_embed = discord.Embed(
+            title="❌ Database Test Failed",
+            description=f"```{str(e)}```",
+            color=0xff0000
+        )
+        await ctx.send(embed=error_embed)
+
+@bot.command(name='init_subscription_tables')
+@commands.has_permissions(administrator=True)
+async def init_subscription_tables_command(ctx):
+    """Initialize subscription tables (run this once)"""
+    await ctx.send("🔧 Initializing subscription tables...")
+    
+    try:
+        success = init_subscription_tables()
+        
+        if success:
+            embed = discord.Embed(
+                title="✅ Subscription Tables Initialized",
+                description="All subscription tracking tables have been created successfully.",
+                color=0x00ff00
+            )
+            
+            # Show the table structure
+            columns = db_manager.execute_query('''
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'user_subscriptions'
+                ORDER BY ordinal_position
+            ''', fetch_all=True)
+            
+            if columns:
+                column_info = "\n".join([f"{col[0]}: {col[1]}" for col in columns])
+                embed.add_field(
+                    name="Table Structure",
+                    value=f"```{column_info}```",
+                    inline=False
+                )
+        else:
+            embed = discord.Embed(
+                title="❌ Initialization Failed",
+                description="Failed to initialize subscription tables. Check logs for details.",
+                color=0xff0000
+            )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
 @bot.command(name='bookmarks')
 async def bookmarks_command(ctx):
     """Show user's bookmarked listings"""
@@ -1973,9 +2096,24 @@ async def list_channels_command(ctx):
 def run_flask():
     app.run(host='0.0.0.0', port=8000, debug=False)
 
+d# Update your main() function in secure_discordbot.py
+
 def main():
     print("🔧 Initializing database...")
+    
+    # Test PostgreSQL connection first
+    print("🔍 Testing PostgreSQL connection...")
+    if not test_postgres_connection():
+        print("❌ PostgreSQL connection failed - exiting")
+        return
+    
+    # Initialize all database tables
     db_manager.init_database()
+    
+    # Initialize subscription tables
+    if not init_subscription_tables():
+        print("❌ Failed to initialize subscription tables - exiting")
+        return
     
     print("🔒 SECURITY: Performing startup security checks...")
     
@@ -1994,6 +2132,7 @@ def main():
     print(f"🧠 AI learning system: Enabled")
     print(f"📚 Auto-bookmarking: Enabled")
     print(f"💎 Premium tier system: Ready")
+    print(f"🗄️ Database: PostgreSQL")
     
     print("🌐 Starting webhook server...")
     flask_thread = threading.Thread(target=run_flask, daemon=True)
