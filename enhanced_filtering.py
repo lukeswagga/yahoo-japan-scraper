@@ -52,11 +52,8 @@ class EnhancedSpamDetector:
                 r'kids', r'child', r'children', r'baby', r'infant', r'toddler',
                 r'キッズ', r'子供', r'ベビー', r'幼児', r'こども', r'子ども',
                 r'boys', r'girls', r'youth', r'junior'
-            ],
-            'shoes_general': [
-                r'shoes', r'boot', r'sneaker', r'loafer', r'oxford',
-                r'靴', r'シューズ', r'ブーツ', r'スニーカー', r'ローファー'
             ]
+            # REMOVED: 'shoes_general' filter - too aggressive, blocks legitimate items
         }
         
         # Brand-specific spam patterns
@@ -70,10 +67,7 @@ class EnhancedSpamDetector:
             ],
             'celine': ['wallet', '財布', 'bag', 'バッグ', 'purse', 'handbag'],
             'bottega_veneta': ['wallet', '財布', 'bag', 'バッグ', 'clutch'],
-            'undercover': ['cb400', 'vtr250', 'motorcycle', 'バイク', 'engine'],
             'miu_miu': [
-                'shoes', 'heel', 'pump', 'sandal', 'boot', 'sneaker',
-                '靴', 'シューズ', 'ヒール', 'パンプス', 'サンダル', 'ブーツ',
                 'dress', 'skirt', 'blouse', 'femme', 'women', 'ladies',
                 'ドレス', 'スカート', 'ブラウス', 'レディース'
             ],
@@ -84,7 +78,24 @@ class EnhancedSpamDetector:
         # Special allowed terms that override spam detection
         self.brand_specific_allowed = {
             'maison_margiela': ['replica', 'レプリカ'],
-            'margiela': ['replica', 'レプリカ']
+            'margiela': ['replica', 'レプリカ'],
+            'undercover': ['cb400', 'vtr250', 'motorcycle', 'バイク', 'engine', 'cb', 'vtr'],  # Allow motorcycle themes for Undercover
+            'rick_owens': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Rick Owens
+            'balenciaga': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Balenciaga
+            'prada': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Prada
+            'celine': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Celine
+            'bottega_veneta': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Bottega Veneta
+            'maison_margiela': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Margiela
+            'comme_des_garcons': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for CDG
+            'raf_simons': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Raf Simons
+            'martine_rose': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Martine Rose
+            'alyx': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Alyx
+            'kiko_kostadinov': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Kiko
+            'chrome_hearts': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Chrome Hearts
+            'hysteric_glamour': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Hysteric Glamour
+            'junya_watanabe': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Junya
+            'vetements': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Vetements
+            'jean_paul_gaultier': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ']  # Allow shoes for JPG
         }
         
         # Universal exclusions
@@ -109,16 +120,45 @@ class EnhancedSpamDetector:
                 print(f"🚫 Kids clothing detected: {pattern} in '{title[:30]}...'")
                 return True, "kids_clothing"
         
-        # Check for women's clothing ONLY for Miu Miu
-        if 'miu_miu' in brand_lower or 'miu miu' in brand_lower:
+        # Check for women's clothing ONLY for Miu Miu and Jean Paul Gaultier
+        if 'miu_miu' in brand_lower or 'miu miu' in brand_lower or 'jean_paul_gaultier' in brand_lower or 'jean paul gaultier' in brand_lower:
             for pattern in self.spam_patterns['womens_clothing']:
                 if re.search(pattern, title_lower):
-                    print(f"🚫 Women's clothing detected for Miu Miu: {pattern} in '{title[:30]}...'")
+                    print(f"🚫 Women's clothing detected for {brand}: {pattern} in '{title[:30]}...'")
                     return True, "womens_clothing"
         
-        # Check general spam patterns
+        # Check motorcycle parts - but allow Undercover to have motorcycle themes
+        for pattern in self.spam_patterns['motorcycle_parts']:
+            if re.search(pattern, title_lower) or re.search(pattern, brand_lower):
+                # Allow Undercover to have motorcycle themes
+                if 'undercover' in brand_lower:
+                    print(f"✅ Motorcycle theme allowed for Undercover: {pattern} in '{title[:30]}...'")
+                    continue
+                else:
+                    print(f"🚫 Motorcycle parts detected: {pattern} in '{title[:30]}...'")
+                    return True, "motorcycle_parts"
+        
+        # Check luxury accessories - but allow shoes for fashion brands
+        for pattern in self.spam_patterns['luxury_accessories']:
+            if re.search(pattern, title_lower) or re.search(pattern, brand_lower):
+                # Check if this is a shoe-related term that should be allowed for fashion brands
+                shoe_terms = ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ']
+                if any(shoe_term in pattern for shoe_term in shoe_terms):
+                    # Allow shoes for fashion brands
+                    fashion_brands = ['rick_owens', 'balenciaga', 'prada', 'celine', 'bottega_veneta', 
+                                     'maison_margiela', 'comme_des_garcons', 'raf_simons', 'martine_rose',
+                                     'alyx', 'kiko_kostadinov', 'chrome_hearts', 'hysteric_glamour',
+                                     'junya_watanabe', 'vetements', 'jean_paul_gaultier']
+                    if any(fashion_brand in brand_lower for fashion_brand in fashion_brands):
+                        print(f"✅ Shoes allowed for fashion brand {brand}: {pattern} in '{title[:30]}...'")
+                        continue
+                
+                print(f"🚫 Luxury accessory detected: {pattern} in '{title[:30]}...'")
+                return True, "luxury_accessories"
+        
+        # Check general spam patterns (excluding motorcycle_parts and luxury_accessories which are handled above)
         for category, patterns in self.spam_patterns.items():
-            if category in ['kids_clothing', 'womens_clothing']:
+            if category in ['kids_clothing', 'womens_clothing', 'motorcycle_parts', 'luxury_accessories']:
                 continue  # Already checked above
             for pattern in patterns:
                 if re.search(pattern, title_lower) or re.search(pattern, brand_lower):
@@ -384,14 +424,24 @@ def test_spam_detection():
     
     test_cases = [
         ("Raf Simons Archive Tee Shirt Size 50", "raf_simons", False),
-        ("CB400SF Engine Parts Motorcycle", "undercover", True),
-        ("Celine Wallet Leather Handbag", "celine", True),
+        ("CB400SF Engine Parts Motorcycle", "undercover", False),  # Motorcycle themes allowed for Undercover
+        ("Celine Wallet Leather Handbag", "celine", True),  # Still blocked - luxury accessory
         ("Rick Owens DRKSHDW Jacket Black", "rick_owens", False),
-        ("Computer Server RAM Memory", "maison_margiela", True),
-        ("Miu Miu Dress Women's Size 38", "miu_miu", True),
-        ("Jean Paul Gaultier Femme Blouse", "jean_paul_gaultier", True),
-        ("Balenciaga Kids T-Shirt Size 10", "balenciaga", True),
-        ("Martine Rose Shirt Size L", "martine_rose", False)
+        ("Rick Owens Boots Size 42", "rick_owens", False),  # Shoes allowed for Rick Owens
+        ("Computer Server RAM Memory", "maison_margiela", True),  # Electronics blocked
+        ("Miu Miu Dress Women's Size 38", "miu_miu", True),  # Women's clothing blocked for Miu Miu
+        ("Jean Paul Gaultier Femme Blouse", "jean_paul_gaultier", True),  # Women's clothing blocked for JPG
+        ("Balenciaga Kids T-Shirt Size 10", "balenciaga", True),  # Kids clothing blocked
+        ("Balenciaga Triple S Sneakers", "balenciaga", False),  # Shoes allowed for Balenciaga
+        ("Martine Rose Shirt Size L", "martine_rose", False),
+        ("Undercover Motorcycle Jacket", "undercover", False),  # Motorcycle themes allowed for Undercover
+        ("Random Brand CB400 Engine Parts", "random_brand", True),  # Motorcycle parts blocked for non-fashion brands
+        ("Prada Boots Leather", "prada", False),  # Shoes allowed for Prada
+        ("Celine Sneakers White", "celine", False),  # Shoes allowed for Celine
+        ("Celine Wallet Brown", "celine", True),  # Wallet still blocked for Celine
+        ("Prada Bag Black", "prada", True),  # Bag still blocked for Prada
+        ("Undercover CB400 Jacket", "undercover", False),  # CB400 allowed for Undercover
+        ("Random Brand CB400 Parts", "random_brand", True)  # CB400 blocked for non-Undercover
     ]
     
     for title, brand, should_be_spam in test_cases:
