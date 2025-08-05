@@ -104,9 +104,10 @@ class OptimizedTieredSystem:
             }
         }
         
+        # CRITICAL FIX: Initialize ALL tier names in performance_tracker
         self.performance_tracker = {}
-        for tier in self.tier_config.keys():
-            self.performance_tracker[tier] = {
+        for tier_name in self.tier_config.keys():
+            self.performance_tracker[tier_name] = {
                 'total_searches': 0,
                 'successful_finds': 0,
                 'last_find': None,
@@ -138,6 +139,15 @@ class OptimizedTieredSystem:
         return (self.iteration_counter % frequency) == 0
     
     def update_performance(self, tier_name, searches_made, finds_count):
+        # Safety check to prevent KeyError
+        if tier_name not in self.performance_tracker:
+            self.performance_tracker[tier_name] = {
+                'total_searches': 0,
+                'successful_finds': 0,
+                'last_find': None,
+                'avg_efficiency': 0.0
+            }
+        
         tracker = self.performance_tracker[tier_name]
         tracker['total_searches'] += searches_made
         tracker['successful_finds'] += finds_count
