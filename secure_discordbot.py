@@ -117,7 +117,7 @@ BRAND_CHANNEL_MAP = {
     "Rick Owens": "rick-owens",
     "Undercover": "undercover",
     "Jean Paul Gaultier": "jean-paul-gaultier",
-    "Yohji Yamamoto": "yohji-yamamoto"  # Fixed mapping
+    "Yohji Yamamoto": "yohji_yamamoto"  # Fixed mapping to match actual channel name
 }
 
 intents = discord.Intents.default()
