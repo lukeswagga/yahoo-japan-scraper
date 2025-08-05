@@ -2096,7 +2096,6 @@ async def list_channels_command(ctx):
 def run_flask():
     app.run(host='0.0.0.0', port=8000, debug=False)
 
-d# Update your main() function in secure_discordbot.py
 
 def main():
     print("🔧 Initializing database...")
