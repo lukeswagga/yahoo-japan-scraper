@@ -1129,12 +1129,6 @@ def main_loop():
             print(f"❌ Errors: {total_errors}")
             print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
             print(f"🎯 Conversion rate: {conversion_rate:.1f}% (target: 25-30%)")
-
-            if tiered_system.iteration_counter % 10 == 0:  # Every 10 cycles
-    print(f"🗑️ FORCE CLEARING seen items to refresh search results...")
-    seen_ids.clear()
-    save_seen_ids()
-    print(f"✅ Cleared {len(seen_ids)} seen items - fresh searches incoming!")
             
             if USE_DISCORD_BOT:
                 bot_stats = get_discord_bot_stats()
