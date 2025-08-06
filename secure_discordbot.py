@@ -1070,7 +1070,7 @@ async def volume_debug_command(ctx):
             )
         
         # Channel-specific volume
-         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
+        main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
         if main_channel:
             embed = create_listing_embed(auction_data)
             main_message = await main_channel.send(embed=embed)
