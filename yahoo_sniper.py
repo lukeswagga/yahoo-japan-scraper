@@ -9,7 +9,7 @@ import re
 import sqlite3
 from flask import Flask
 import threading
-from enhanced_filtering import EnhancedSpamDetector
+from enhanced_filtering import EnhancedSpamDetector, QualityChecker
 import statistics
 import random
 
@@ -39,11 +39,11 @@ BRANDS_FILE = "brands.json"
 EXCHANGE_RATE_FILE = "exchange_rate.json"
 SCRAPER_DB = "auction_tracking.db"
 
-MAX_PRICE_USD = 1500
-MIN_PRICE_USD = 2
+MAX_PRICE_USD = 1200
+MIN_PRICE_USD = 5
 MAX_LISTINGS_PER_BRAND = 50
 ONLY_BUY_IT_NOW = False
-PRICE_QUALITY_THRESHOLD = 0.08
+PRICE_QUALITY_THRESHOLD = 0.25
 ENABLE_RESALE_BOOST = True
 ENABLE_INTELLIGENT_FILTERING = True
 
@@ -514,10 +514,10 @@ def calculate_deal_quality(price_usd, brand, title):
         item_type = "other"
     
     brand_multipliers = {
-        "raf_simons": 2.0,
-        "rick_owens": 1.8,
-        "maison_margiela": 1.7,
-        "jean_paul_gaultier": 1.6,
+        "raf_simons": 3.0,
+        "rick_owens": 2.5,
+        "maison_margiela": 2.2,
+        "jean_paul_gaultier": 2.0,
         "yohji_yamamoto": 1.5,
         "junya_watanabe": 1.4,
         "comme_des_garcons": 1.3,
@@ -553,24 +553,28 @@ def calculate_deal_quality(price_usd, brand, title):
 
 def is_quality_listing(price_usd, brand, title):
     if price_usd < MIN_PRICE_USD or price_usd > MAX_PRICE_USD:
-        return False, f"Price ${price_usd:.2f} outside range ${MIN_PRICE_USD}-{MAX_PRICE_USD}"
+        return False, f"Price ${price_usd:.2f} outside range"
     
     if not is_clothing_item(title):
         return False, f"Not clothing item"
     
     deal_quality = calculate_deal_quality(price_usd, brand, title)
     
-    # Much more permissive thresholds
+    # STRICTER THRESHOLDS
     brand_key = brand.lower().replace(" ", "_") if brand else "unknown"
-    high_resale_brands = ["raf_simons", "rick_owens", "maison_margiela", "jean_paul_gaultier", "martine_rose"]
+    high_resale_brands = ["raf_simons", "rick_owens", "maison_margiela", "jean_paul_gaultier"]
     
     if any(hrb in brand_key for hrb in high_resale_brands):
-        threshold = 0.05  # Very low threshold for high-resale brands
+        threshold = 0.20  # Increased from 0.05 to 0.20
     else:
-        threshold = PRICE_QUALITY_THRESHOLD  # 0.08 now
+        threshold = 0.30  # Increased from 0.08 to 0.30
     
     if deal_quality < threshold:
         return False, f"Deal quality {deal_quality:.1%} below threshold {threshold:.1%}"
+    
+    # ADDITIONAL SELECTIVITY
+    if price_usd > 200 and deal_quality < 0.4:
+        return False, f"High price needs higher quality"
     
     return True, f"Quality listing: {deal_quality:.1%} deal quality"
 
@@ -647,8 +651,9 @@ def extract_seller_info(soup, item):
         return "unknown"
 
 def search_yahoo_multi_page_optimized(keyword_combo, max_pages, brand, keyword_manager):
-    """Multi-page search with intelligent stopping and performance tracking"""
-    
+    # Add at the beginning
+    spam_detector = EnhancedSpamDetector()
+    quality_checker = QualityChecker()
     start_time = time.time()
     all_listings = []
     total_errors = 0
@@ -708,8 +713,20 @@ def search_yahoo_multi_page_optimized(keyword_combo, max_pages, brand, keyword_m
 
                     is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
                     if is_spam:
+                    print(f"🚫 Enhanced spam filter blocked: {spam_category}")
                         skipped_spam += 1
                         continue
+
+                    quality_result = quality_checker.check_listing_quality({
+        'title': title,
+        'brand': matched_brand,
+        'price_usd': usd_price,
+        'deal_quality': deal_quality
+    })
+    
+    if quality_result['should_block']:
+        print(f"🚫 Quality checker blocked: {', '.join(quality_result['issues'])}")
+        continue
 
                     price_tag = item.select_one(".Product__priceValue")
                     if not price_tag:
@@ -962,6 +979,14 @@ def generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, c
     return keywords[:max_keywords]
 
 def main_loop():
+    print("🎯 Starting OPTIMIZED Yahoo Japan Sniper...")
+    
+    # Add these lines
+    spam_detector = EnhancedSpamDetector()
+    quality_checker = QualityChecker()
+    
+    # ... rest of your existing code
+
     print("🎯 Starting OPTIMIZED Yahoo Japan Sniper with FULL FUNCTIONALITY...")
     
     health_thread = threading.Thread(target=run_health_server, daemon=True)

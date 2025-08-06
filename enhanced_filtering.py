@@ -324,6 +324,73 @@ class SimpleTrendAnalyzer:
             print(f"Error getting trending brands: {e}")
             conn.close()
             return []
+
+    def update_quality_thresholds():
+    """Make quality filtering much more strict"""
+    
+    # Add to QualityChecker class
+    def check_listing_quality(self, auction_data):
+        issues = []
+        confidence = 0.0
+        
+        title = auction_data.get('title', '')
+        brand = auction_data.get('brand', '')
+        price_usd = auction_data.get('price_usd', 0)
+        
+        # MUCH STRICTER PRICE FILTERING
+        if price_usd < 10:  # Increased from 5
+            issues.append("Price too low - likely fake/damaged")
+            confidence += 0.6
+        elif price_usd > 1000:  # Decreased from 2000
+            issues.append("Price very high - needs verification")
+            confidence += 0.3
+        
+        # STRICTER TITLE REQUIREMENTS
+        if len(title) < 15:  # Increased from 10
+            issues.append("Title too short - insufficient detail")
+            confidence += 0.4
+        
+        # REQUIRE CLOTHING KEYWORDS
+        clothing_keywords = [
+            'shirt', 'tee', 'jacket', 'pants', 'hoodie', 'sweater', 'coat',
+            'シャツ', 'Tシャツ', 'ジャケット', 'パンツ', 'パーカー', 'セーター'
+        ]
+        
+        has_clothing_keyword = any(keyword in title.lower() for keyword in clothing_keywords)
+        if not has_clothing_keyword:
+            issues.append("No clear clothing category identified")
+            confidence += 0.5
+        
+        # BLOCK SUSPICIOUS PATTERNS
+        suspicious_patterns = [
+            'まとめ売り', 'セット', 'ジャンク', 'parts only', 'for parts',
+            'damaged', 'broken', '破れ', '汚れ', '難あり'
+        ]
+        
+        for pattern in suspicious_patterns:
+            if pattern in title.lower():
+                issues.append(f"Suspicious pattern detected: {pattern}")
+                confidence += 0.7
+        
+        # REQUIRE ARCHIVE/QUALITY INDICATORS FOR EXPENSIVE ITEMS
+        if price_usd > 200:
+            quality_indicators = [
+                'archive', 'rare', 'vintage', 'runway', 'collection',
+                'アーカイブ', 'レア', 'ヴィンテージ', 'コレクション'
+            ]
+            has_quality_indicator = any(indicator in title.lower() for indicator in quality_indicators)
+            if not has_quality_indicator:
+                issues.append("Expensive item lacks quality indicators")
+                confidence += 0.4
+        
+        should_block = confidence > 0.5  # Stricter threshold
+        
+        return {
+            'should_block': should_block,
+            'confidence': confidence,
+            'issues': issues,
+            'action': 'block' if should_block else 'allow'
+        }
     
     def get_recent_deals(self, hours=24):
         """Get recent good deals"""
