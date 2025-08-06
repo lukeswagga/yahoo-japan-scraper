@@ -39,11 +39,11 @@ BRANDS_FILE = "brands.json"
 EXCHANGE_RATE_FILE = "exchange_rate.json"
 SCRAPER_DB = "auction_tracking.db"
 
-MAX_PRICE_USD = 800
-MIN_PRICE_USD = 10
+MAX_PRICE_USD = 1200
+MIN_PRICE_USD = 3
 MAX_LISTINGS_PER_BRAND = 50
 ONLY_BUY_IT_NOW = False
-PRICE_QUALITY_THRESHOLD = 0.25
+PRICE_QUALITY_THRESHOLD = 0.05
 ENABLE_RESALE_BOOST = True
 ENABLE_INTELLIGENT_FILTERING = True
 
@@ -60,7 +60,7 @@ class OptimizedTieredSystem:
                 'max_pages': 5,
                 'search_frequency': 1,
                 'delay': 1,
-                'max_listings': 5
+                'max_listings': 25
             },
             'tier_1_high': {
                 'brands': ['Maison Margiela', 'Jean Paul Gaultier'],
@@ -68,7 +68,7 @@ class OptimizedTieredSystem:
                 'max_pages': 4,
                 'search_frequency': 1,
                 'delay': 1.5,
-                'max_listings': 4
+                'max_listings': 20
             },
             'tier_2': {
                 'brands': ['Yohji Yamamoto', 'Junya Watanabe', 'Undercover', 'Vetements'],
@@ -76,7 +76,7 @@ class OptimizedTieredSystem:
                 'max_pages': 3,
                 'search_frequency': 1,
                 'delay': 2,
-                'max_listings': 3
+                'max_listings': 15
             },
             'tier_3': {
                 'brands': ['Comme Des Garcons', 'Martine Rose', 'Balenciaga', 'Alyx'],
@@ -84,7 +84,7 @@ class OptimizedTieredSystem:
                 'max_pages': 3,
                 'search_frequency': 1,
                 'delay': 2.5,
-                'max_listings': 3
+                'max_listings': 10
             },
             'tier_4': {
                 'brands': ['Celine', 'Bottega Veneta', 'Kiko Kostadinov'],
@@ -92,7 +92,7 @@ class OptimizedTieredSystem:
                 'max_pages': 2,
                 'search_frequency': 2,
                 'delay': 3,
-                'max_listings': 2
+                'max_listings': 20
             },
             'tier_5_minimal': {
                 'brands': ['Prada', 'Miu Miu', 'Chrome Hearts', 'Hysteric Glamour'],
@@ -100,7 +100,7 @@ class OptimizedTieredSystem:
                 'max_pages': 2,
                 'search_frequency': 3,
                 'delay': 4,
-                'max_listings': 2
+                'max_listings': 20
             }
         }
         
@@ -551,26 +551,18 @@ def calculate_deal_quality(price_usd, brand, title):
 
 def is_quality_listing(price_usd, brand, title):
     if price_usd < MIN_PRICE_USD or price_usd > MAX_PRICE_USD:
-        return False, f"Price ${price_usd:.2f} outside range ${MIN_PRICE_USD}-{MAX_PRICE_USD}"
+        return False, f"Price ${price_usd:.2f} outside range"
     
     if not is_clothing_item(title):
         return False, f"Not clothing item"
     
     deal_quality = calculate_deal_quality(price_usd, brand, title)
     
-    brand_key = brand.lower().replace(" ", "_") if brand else "unknown"
-    high_resale_brands = ["raf_simons", "rick_owens", "maison_margiela", "jean_paul_gaultier"]
-    
-    if any(hrb in brand_key for hrb in high_resale_brands):
-        threshold = 0.20
-    else:
-        threshold = PRICE_QUALITY_THRESHOLD
+    # MUCH MORE PERMISSIVE THRESHOLDS
+    threshold = 0.02  # Very low threshold for all brands
     
     if deal_quality < threshold:
         return False, f"Deal quality {deal_quality:.1%} below threshold {threshold:.1%}"
-    
-    if price_usd > 200 and deal_quality < 0.4:
-        return False, f"High price needs higher quality"
     
     return True, f"Quality listing: {deal_quality:.1%} deal quality"
 
@@ -706,12 +698,12 @@ def search_yahoo_multi_page_optimized(keyword_combo, max_pages, brand, keyword_m
                         continue
 
                     # Enhanced spam detection with proper indentation
-                    is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
-                    if is_spam:
-                        skipped_spam += 1
-                        print(f"🚫 Enhanced spam filter blocked: {spam_category}")
-                        continue
-
+              ##      is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
+               ##     if is_spam:
+                 ##       skipped_spam += 1
+                   ##     print(f"🚫 Enhanced spam filter blocked: {spam_category}")
+                     ##   continue
+                    #
                     price_tag = item.select_one(".Product__priceValue")
                     if not price_tag:
                         continue
@@ -732,16 +724,16 @@ def search_yahoo_multi_page_optimized(keyword_combo, max_pages, brand, keyword_m
                         continue
 
                     # Additional quality check using enhanced filtering
-                    quality_result = quality_checker.check_listing_quality({
-                        'title': title,
-                        'brand': matched_brand,
-                        'price_usd': usd_price,
-                        'deal_quality': calculate_deal_quality(usd_price, matched_brand, title)
-                    })
+             #       quality_result = quality_checker.check_listing_quality({
+              #          'title': title,
+               #         'brand': matched_brand,
+                #        'price_usd': usd_price,
+                 #       'deal_quality': calculate_deal_quality(usd_price, matched_brand, title)
+                  #  })
                     
-                    if quality_result['should_block']:
-                        print(f"🚫 Quality checker blocked: {', '.join(quality_result['issues'])}")
-                        continue
+                   # if quality_result['should_block']:
+                    #    print(f"🚫 Quality checker blocked: {', '.join(quality_result['issues'])}")
+                     #   continue
 
                     img_tag = item.select_one("img")
                     img = img_tag["src"] if img_tag and img_tag.has_attr("src") else ""
@@ -1137,6 +1129,12 @@ def main_loop():
             print(f"❌ Errors: {total_errors}")
             print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
             print(f"🎯 Conversion rate: {conversion_rate:.1f}% (target: 25-30%)")
+
+            if tiered_system.iteration_counter % 10 == 0:  # Every 10 cycles
+    print(f"🗑️ FORCE CLEARING seen items to refresh search results...")
+    seen_ids.clear()
+    save_seen_ids()
+    print(f"✅ Cleared {len(seen_ids)} seen items - fresh searches incoming!")
             
             if USE_DISCORD_BOT:
                 bot_stats = get_discord_bot_stats()
