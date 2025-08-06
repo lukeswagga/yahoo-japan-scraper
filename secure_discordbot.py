@@ -1,27 +1,25 @@
 import discord
 from discord.ext import commands
 import re
-from datetime import datetime, timezone, timedelta  # Add timedelta here
+from datetime import datetime, timezone, timedelta
 import asyncio
 from flask import Flask, request, jsonify
 import threading
 import os
 import logging
 import time
-import json  # Add this if missing
-import hmac  # Add this if missing
-import hashlib  # Add this if missing
+import json
+import hmac
+import hashlib
 from database_manager import (
     db_manager, get_user_proxy_preference, set_user_proxy_preference, 
     add_listing, add_reaction, add_bookmark, get_user_bookmarks, clear_user_bookmarks,
-    init_subscription_tables, test_postgres_connection  # Add these
+    init_subscription_tables, test_postgres_connection
 )
 
-# Initialize Flask app BEFORE using @app.route
 app = Flask(__name__)
 start_time = time.time()
 
-# Update the health endpoint to be more Railway-friendly
 @app.route('/health', methods=['GET'])
 def health():
     try:
@@ -44,9 +42,7 @@ def root():
         "timestamp": datetime.now(timezone.utc).isoformat()
     }), 200
 
-# === SECURE CONFIG LOADING ===
 def load_secure_config():
-    """Load sensitive configuration from environment variables ONLY"""
     bot_token = os.getenv('DISCORD_BOT_TOKEN')
     guild_id = os.getenv('GUILD_ID')
     
@@ -78,7 +74,6 @@ except Exception as e:
     print(f"❌ SECURITY FAILURE: Could not load secure config: {e}")
     exit(1)
 
-# === CONFIGURATION ===
 AUCTION_CATEGORY_NAME = "🎯 AUCTION SNIPES"
 AUCTION_CHANNEL_NAME = "🎯-auction-alerts"
 
@@ -87,7 +82,6 @@ BATCH_SIZE = 4
 BATCH_TIMEOUT = 30
 last_batch_time = None
 
-# === PROXY CONFIGURATION ===
 SUPPORTED_PROXIES = {
     "zenmarket": {
         "name": "ZenMarket",
@@ -132,7 +126,7 @@ BRAND_CHANNEL_MAP = {
     "Rick Owens": "rick-owens",
     "Undercover": "undercover",
     "Jean Paul Gaultier": "jean-paul-gaultier",
-    "Yohji Yamamoto": "yohji_yamamoto"  # Fixed mapping to match actual channel name
+    "Yohji Yamamoto": "yohji_yamamoto"
 }
 
 intents = discord.Intents.default()
@@ -502,20 +496,19 @@ async def get_or_create_brand_channel(brand_name):
             brand_channels_cache[full_channel_name] = channel
             print(f"✅ Found existing channel: {full_channel_name}")
             
-            # Update permissions to make it read-only for users
             try:
                 overwrites = {
                     guild.default_role: discord.PermissionOverwrite(
-                        send_messages=False,  # Users cannot send messages
-                        add_reactions=True,   # Users CAN react (for bookmarks)
-                        read_messages=True,   # Users can read
-                        use_slash_commands=False  # Users cannot use commands
+                        send_messages=False,
+                        add_reactions=True,
+                        read_messages=True,
+                        use_slash_commands=False
                     ),
                     guild.me: discord.PermissionOverwrite(
-                        send_messages=True,   # Bot can send messages
-                        manage_messages=True, # Bot can manage messages
-                        add_reactions=True,   # Bot can react
-                        read_messages=True    # Bot can read
+                        send_messages=True,
+                        manage_messages=True,
+                        add_reactions=True,
+                        read_messages=True
                     )
                 }
                 await channel.edit(overwrites=overwrites)
@@ -529,7 +522,6 @@ async def get_or_create_brand_channel(brand_name):
     return None
 
 async def create_bookmark_for_user(user_id, auction_data, original_message):
-    """Create a bookmark in user's private channel using the EXACT original embed"""
     try:
         user = bot.get_user(user_id)
         if not user:
@@ -541,17 +533,14 @@ async def create_bookmark_for_user(user_id, auction_data, original_message):
         
         print(f"📚 Creating bookmark for user: {user.name} ({user_id})")
         
-        # Get or create user's private bookmark channel
         bookmark_channel = await get_or_create_user_bookmark_channel(user)
         if not bookmark_channel:
             print(f"❌ Could not create bookmark channel for {user.name}")
             return False
         
-        # Copy the EXACT embed from the original message
         if original_message.embeds:
             original_embed = original_message.embeds[0]
             
-            # Create a new embed with the same data
             embed = discord.Embed(
                 title=original_embed.title,
                 url=original_embed.url,
@@ -560,19 +549,16 @@ async def create_bookmark_for_user(user_id, auction_data, original_message):
                 timestamp=datetime.now(timezone.utc)
             )
             
-            # Copy the thumbnail (image) from original
             if original_embed.thumbnail:
                 embed.set_thumbnail(url=original_embed.thumbnail.url)
                 print(f"✅ Copied thumbnail from original: {original_embed.thumbnail.url}")
             
-            # Different footer to indicate it's bookmarked
             embed.set_footer(text=f"📚 Bookmarked from ID: {auction_data['auction_id']} | {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
             
         else:
             print(f"❌ No embeds found in original message")
             return False
         
-        # Send to user's private bookmark channel
         try:
             bookmark_message = await bookmark_channel.send(embed=embed)
             print(f"✅ Successfully sent bookmark to #{bookmark_channel.name}")
@@ -580,7 +566,6 @@ async def create_bookmark_for_user(user_id, auction_data, original_message):
             print(f"❌ Failed to send bookmark message: {e}")
             return False
         
-        # Store bookmark in database
         success = add_bookmark(user_id, auction_data['auction_id'], bookmark_message.id, bookmark_channel.id)
         
         if success:
@@ -595,22 +580,18 @@ async def create_bookmark_for_user(user_id, auction_data, original_message):
         return False
 
 async def get_or_create_user_bookmark_channel(user):
-    """Get or create a private bookmark channel for a user"""
     try:
         if not guild:
             print("❌ No guild available for bookmark channel creation")
             return None
         
-        # Channel name format: bookmarks-username
-        safe_username = re.sub(r'[^a-zA-Z0-9]', '', user.name.lower())[:20]  # Clean username
+        safe_username = re.sub(r'[^a-zA-Z0-9]', '', user.name.lower())[:20]
         channel_name = f"bookmarks-{safe_username}"
         
         print(f"🔍 Looking for existing bookmark channel: #{channel_name}")
         
-        # Check if channel already exists by name
         existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
         if existing_channel:
-            # Double-check that this user has access to it
             user_permissions = existing_channel.permissions_for(user)
             if user_permissions.read_messages:
                 print(f"✅ Found existing bookmark channel: #{channel_name}")
@@ -618,10 +599,8 @@ async def get_or_create_user_bookmark_channel(user):
             else:
                 print(f"⚠️ Found channel #{channel_name} but user doesn't have access")
         
-        # If we get here, we need to create a new channel
         print(f"📚 Creating new bookmark channel: #{channel_name}")
         
-        # Create bookmark category if it doesn't exist
         category = None
         for cat in guild.categories:
             if cat.name == "📚 USER BOOKMARKS":
@@ -629,7 +608,6 @@ async def get_or_create_user_bookmark_channel(user):
                 break
         
         if not category:
-            # Create category with restricted permissions
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_messages=True)
@@ -637,7 +615,6 @@ async def get_or_create_user_bookmark_channel(user):
             category = await guild.create_category("📚 USER BOOKMARKS", overwrites=overwrites)
             print("✅ Created bookmark category")
         
-        # Create private channel for the user
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             user: discord.PermissionOverwrite(read_messages=True, send_messages=False, add_reactions=True),
@@ -651,7 +628,6 @@ async def get_or_create_user_bookmark_channel(user):
             topic=f"Private bookmark channel for {user.name} - Your liked auction listings will appear here!"
         )
         
-        # Send welcome message
         welcome_embed = discord.Embed(
             title="📚 Welcome to Your Personal Bookmark Channel!",
             description=f"Hi {user.mention}! This is your private bookmark channel.\n\nWhenever you react 👍 to auction listings, they'll be automatically saved here for easy reference.",
@@ -710,12 +686,10 @@ async def send_single_listing(auction_data):
         
         print(f"🔄 Processing listing: {title[:50]}...")
         
-        # Check for spam
         if preference_learner and preference_learner.is_likely_spam(title, brand):
             print(f"🚫 Blocking spam listing: {title[:50]}...")
             return False
         
-        # Check for duplicates using database manager
         print(f"🔍 Checking for duplicates: {auction_data['auction_id']}")
         existing = db_manager.execute_query(
             'SELECT message_id FROM listings WHERE auction_id = ?', 
@@ -729,17 +703,14 @@ async def send_single_listing(auction_data):
         
         print(f"✅ No duplicate found, proceeding with listing")
         
-        # STEP 1: ALWAYS send to main "everything" channel first
         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
         if main_channel:
             embed = create_listing_embed(auction_data)
             main_message = await main_channel.send(embed=embed)
             print(f"📤 Sent to MAIN channel: {title[:30]}...")
             
-            # Add to database with main message ID
             add_listing(auction_data, main_message.id)
         
-        # STEP 2: Send to appropriate brand channel (if exists)
         brand_channel = None
         if brand and brand in BRAND_CHANNEL_MAP:
             brand_channel = await get_or_create_brand_channel(brand)
@@ -748,7 +719,6 @@ async def send_single_listing(auction_data):
                 await brand_channel.send(embed=embed)
                 print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
         
-        # STEP 3: Send to budget-steals if under $100
         if price_usd <= 100:
             budget_channel = discord.utils.get(guild.text_channels, name="💰-budget-steals")
             if budget_channel:
@@ -757,7 +727,6 @@ async def send_single_listing(auction_data):
                 await budget_channel.send(embed=embed)
                 print(f"💰 Also sent to budget-steals: ${price_usd:.2f}")
         
-        # STEP 4: Send to hourly-drops for consistent flow
         hourly_channel = discord.utils.get(guild.text_channels, name="⏰-hourly-drops")
         if hourly_channel:
             embed = create_listing_embed(auction_data)
@@ -798,10 +767,8 @@ async def on_ready():
         print(f'🎯 Connected to server: {guild.name}')
         auction_channel = await get_or_create_auction_channel()
         
-        # Initialize preference learner
         preference_learner = UserPreferenceLearner()
         
-        # Initialize tier system
         tier_manager = PremiumTierManager(bot)
         delayed_manager = DelayedListingManager()
         
@@ -856,7 +823,6 @@ async def on_reaction_add(reaction, user):
     auction_id = auction_id_match.group(1)
     reaction_type = "thumbs_up" if str(reaction.emoji) == "👍" else "thumbs_down"
     
-    # Get listing data using database manager
     result = db_manager.execute_query('''
         SELECT title, brand, price_jpy, price_usd, seller_id, yahoo_url, deal_quality
         FROM listings WHERE auction_id = ?
@@ -874,7 +840,7 @@ async def on_reaction_add(reaction, user):
             'seller_id': seller_id,
             'deal_quality': deal_quality,
             'zenmarket_url': generate_proxy_url(auction_id, proxy_service),
-            'image_url': ''  # We'll need to get this if we stored it
+            'image_url': ''
         }
         
         if preference_learner:
@@ -882,17 +848,16 @@ async def on_reaction_add(reaction, user):
         
         add_reaction(user.id, auction_id, reaction_type)
         
-        # Create bookmark for thumbs up reactions
         if reaction_type == "thumbs_up":
             print(f"👍 User {user.name} liked {auction_data['title'][:30]}... - Creating bookmark")
             bookmark_success = await create_bookmark_for_user(user.id, auction_data, reaction.message)
             
             if bookmark_success:
-                await reaction.message.add_reaction("📚")  # Bookmark emoji
+                await reaction.message.add_reaction("📚")
                 await reaction.message.add_reaction("✅")
                 print(f"✅ Bookmark created successfully for {user.name}")
             else:
-                await reaction.message.add_reaction("⚠️")  # Warning emoji if bookmark failed
+                await reaction.message.add_reaction("⚠️")
                 print(f"⚠️ Bookmark failed for {user.name}")
         else:
             await reaction.message.add_reaction("❌")
@@ -951,7 +916,6 @@ async def setup_command(ctx):
             color=0x00ff00
         )
         
-        # Show bookmark count
         bookmark_count = db_manager.execute_query(
             'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
             (user_id,),
@@ -1001,14 +965,10 @@ async def setup_command(ctx):
     for proxy in SUPPORTED_PROXIES.values():
         await message.add_reaction(proxy['emoji'])
 
-# Add this command to secure_discordbot.py
-
 @bot.command(name='volume_debug')
 @commands.has_permissions(administrator=True)
 async def volume_debug_command(ctx):
-    """Debug listing volume and scraper performance"""
     try:
-        # Get recent listings count
         recent_listings = db_manager.execute_query('''
             SELECT COUNT(*) FROM listings 
             WHERE created_at > datetime('now', '-1 hour')
@@ -1025,7 +985,6 @@ async def volume_debug_command(ctx):
             WHERE created_at > NOW() - INTERVAL '1 day'
         ''', fetch_one=True)[0] or 0
         
-        # Get scraper efficiency
         scraper_stats = db_manager.execute_query('''
             SELECT 
                 sent_to_discord,
@@ -1051,7 +1010,7 @@ async def volume_debug_command(ctx):
         
         if scraper_stats:
             latest_cycle = scraper_stats[0]
-            efficiency = latest_cycle[0] / max(1, latest_cycle[1])  # sent / searched
+            efficiency = latest_cycle[0] / max(1, latest_cycle[1])
             
             embed.add_field(
                 name="🤖 Latest Scraper Cycle",
@@ -1059,7 +1018,6 @@ async def volume_debug_command(ctx):
                 inline=True
             )
             
-            # Show trend
             recent_sent = [stat[0] for stat in scraper_stats]
             avg_sent = sum(recent_sent) / len(recent_sent)
             
@@ -1069,56 +1027,18 @@ async def volume_debug_command(ctx):
                 inline=True
             )
         
-        # Channel-specific volume
         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
         if main_channel:
-            embed = create_listing_embed(auction_data)
-            main_message = await main_channel.send(embed=embed)
-            print(f"📤 Sent to MAIN channel: {title[:30]}...")
+            recent_messages = 0
+            async for message in main_channel.history(after=datetime.now(timezone.utc) - timedelta(hours=1)):
+                recent_messages += 1
             
-            # Add to database with main message ID
-            add_listing(auction_data, main_message.id)
-
-            brand_channel = None
-        if brand and brand in BRAND_CHANNEL_MAP:
-            brand_channel = await get_or_create_brand_channel(brand)
-            if brand_channel:
-                embed = create_listing_embed(auction_data)
-                await brand_channel.send(embed=embed)
-                print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
-        
-        # STEP 3: Send to budget-steals if under $100
-        if price_usd <= 100:
-            budget_channel = discord.utils.get(guild.text_channels, name="💰-budget-steals")
-            if budget_channel:
-                embed = create_listing_embed(auction_data)
-                embed.set_footer(text=f"Budget Steal - Under $100 | ID: {auction_data['auction_id']}")
-                await budget_channel.send(embed=embed)
-                print(f"💰 Also sent to budget-steals: ${price_usd:.2f}")
-        
-        # STEP 4: Send to hourly-drops for consistent flow
-        hourly_channel = discord.utils.get(guild.text_channels, name="⏰-hourly-drops")
-        if hourly_channel:
-            embed = create_listing_embed(auction_data)
-            await hourly_channel.send(embed=embed)
-            print(f"⏰ Also sent to hourly-drops")
-
-             print(f"✅ Successfully sent listing to multiple channels")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error sending listing: {e}")
-        import traceback
-        print(f"❌ Full traceback: {traceback.format_exc()}")
-        return False
-
             embed.add_field(
                 name="📺 Main Channel Activity",
                 value=f"Messages last hour: {recent_messages}\nTarget: 20+ per hour",
                 inline=False
             )
         
-        # Recommendations
         recommendations = []
         if recent_listings < 20:
             recommendations.append("🚨 Low volume - check scraper settings")
@@ -1140,7 +1060,6 @@ async def volume_debug_command(ctx):
 @bot.command(name='force_high_volume')
 @commands.has_permissions(administrator=True)
 async def force_high_volume_command(ctx):
-    """Emergency command to force high volume settings"""
     await ctx.send("""
 🚨 **EMERGENCY HIGH VOLUME MODE INSTRUCTIONS:**
 
@@ -1162,7 +1081,6 @@ MIN_PRICE_USD = 1               # Lower minimum
 @bot.command(name='channel_status')
 @commands.has_permissions(administrator=True)
 async def channel_status_command(ctx):
-    """Check which channels exist vs which are needed"""
     required_channels = [
         "🎯-auction-alerts", "💰-budget-steals", "⏰-hourly-drops",
         "🏷️-raf-simons", "🏷️-rick-owens", "🏷️-maison-margiela",
@@ -1204,7 +1122,6 @@ async def channel_status_command(ctx):
 
 @bot.command(name='bookmarks')
 async def bookmarks_command(ctx):
-    """Show user's bookmarked listings"""
     user_id = ctx.author.id
     
     bookmarks = get_user_bookmarks(user_id, limit=10)
@@ -1236,7 +1153,6 @@ async def bookmarks_command(ctx):
 
 @bot.command(name='clear_bookmarks')
 async def clear_bookmarks_command(ctx):
-    """Clear user's bookmarks"""
     user_id = ctx.author.id
     
     count = clear_user_bookmarks(user_id)
@@ -1254,7 +1170,6 @@ async def clear_bookmarks_command(ctx):
 
 @bot.command(name='db_debug')
 async def db_debug_command(ctx):
-    """Debug database connection"""
     try:
         await ctx.send(f"PostgreSQL available: {db_manager.use_postgres}")
         await ctx.send(f"Database URL exists: {bool(db_manager.database_url)}")
@@ -1265,11 +1180,9 @@ async def db_debug_command(ctx):
         result2 = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
         await ctx.send(f"Reactions count: {result2[0] if result2 else 'Error'}")
         
-        # Check total listings count
         listings_count = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
         await ctx.send(f"Total listings in DB: {listings_count[0] if listings_count else 'Error'}")
         
-        # Check recent listings (last 24 hours)
         recent_listings = db_manager.execute_query('''
             SELECT COUNT(*) FROM listings 
             WHERE created_at > NOW() - INTERVAL '1 day'
@@ -1279,7 +1192,6 @@ async def db_debug_command(ctx):
         ''', fetch_one=True)
         await ctx.send(f"Recent listings (24h): {recent_listings[0] if recent_listings else 'Error'}")
         
-        # Show some recent auction IDs
         recent_ids = db_manager.execute_query('''
             SELECT auction_id, title, created_at FROM listings 
             ORDER BY created_at DESC LIMIT 5
@@ -1301,9 +1213,7 @@ async def db_debug_command(ctx):
 @bot.command(name='clear_recent_listings')
 @commands.has_permissions(administrator=True)
 async def clear_recent_listings_command(ctx):
-    """Clear listings from today to fix duplicate detection"""
     try:
-        # Count recent listings first
         recent_count = db_manager.execute_query('''
             SELECT COUNT(*) FROM listings 
             WHERE created_at > NOW() - INTERVAL '6 hours'
@@ -1318,7 +1228,6 @@ async def clear_recent_listings_command(ctx):
             await ctx.send("✅ No recent listings to clear!")
             return
         
-        # Delete recent listings
         db_manager.execute_query('''
             DELETE FROM listings 
             WHERE created_at > NOW() - INTERVAL '6 hours'
@@ -1327,13 +1236,11 @@ async def clear_recent_listings_command(ctx):
             WHERE created_at > datetime('now', '-6 hours')
         ''')
         
-        # Also clear reactions for deleted listings
         db_manager.execute_query('''
             DELETE FROM reactions 
             WHERE auction_id NOT IN (SELECT auction_id FROM listings)
         ''')
         
-        # Clear bookmarks for deleted listings  
         db_manager.execute_query('''
             DELETE FROM user_bookmarks 
             WHERE auction_id NOT IN (SELECT auction_id FROM listings)
@@ -1352,9 +1259,7 @@ async def clear_recent_listings_command(ctx):
 @bot.command(name='force_clear_all')
 @commands.has_permissions(administrator=True)
 async def force_clear_all_command(ctx):
-    """Emergency command to clear ALL listings"""
     try:
-        # Count all listings
         total_count = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
         total_listings = total_count[0] if total_count else 0
         
@@ -1362,13 +1267,8 @@ async def force_clear_all_command(ctx):
             await ctx.send("✅ No listings to clear!")
             return
         
-        # Delete ALL listings
         db_manager.execute_query('DELETE FROM listings')
-        
-        # Clear all reactions
         db_manager.execute_query('DELETE FROM reactions')
-        
-        # Clear all bookmarks
         db_manager.execute_query('DELETE FROM user_bookmarks WHERE user_id = ?', (ctx.author.id,))
         
         embed = discord.Embed(
@@ -1387,7 +1287,6 @@ async def test_command(ctx):
 
 @bot.command(name='stats')
 async def stats_command(ctx):
-    # Get reaction stats using database manager
     stats = db_manager.execute_query('''
         SELECT 
             COUNT(*) as total,
@@ -1654,7 +1553,6 @@ def webhook():
 
 @app.route('/check_duplicate/<auction_id>', methods=['GET'])
 def check_duplicate(auction_id):
-    """Check if auction ID already exists in database"""
     try:
         existing = db_manager.execute_query(
             'SELECT auction_id FROM listings WHERE auction_id = ?',
@@ -1671,6 +1569,9 @@ def check_duplicate(auction_id):
             'error': str(e),
             'exists': False
         }), 500
+
+@app.route('/stats', methods=['GET'])
+def stats():
     total_listings = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
     total_reactions = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
     active_users = db_manager.execute_query('SELECT COUNT(DISTINCT user_id) FROM user_preferences WHERE setup_complete = TRUE', fetch_one=True)
@@ -1682,15 +1583,13 @@ def check_duplicate(auction_id):
         "buffer_size": len(batch_buffer)
     }), 200
 
-# === PREMIUM TIER SYSTEM ===
-
 class PremiumTierManager:
     def __init__(self, bot):
         self.bot = bot
         self.tier_roles = {
             'free': 'Free User',
-            'pro': 'Pro User',  # $20/month
-            'elite': 'Elite User'  # $50/month
+            'pro': 'Pro User',
+            'elite': 'Elite User'
         }
         
         self.tier_channels = {
@@ -1702,12 +1601,10 @@ class PremiumTierManager:
                 '💡-style-advice'
             ],
             'pro': [
-                # All free channels plus:
                 '⏰-hourly-drops',
                 '🔔-size-alerts',
                 '📊-price-tracker',
                 '🔍-sold-listings',
-                # All brand channels
                 '🏷️-raf-simons', '🏷️-rick-owens', '🏷️-maison-margiela',
                 '🏷️-jean-paul-gaultier', '🏷️-yohji_yamamoto', '🏷️-junya-watanabe',
                 '🏷️-undercover', '🏷️-vetements', '🏷️-martine-rose',
@@ -1716,7 +1613,6 @@ class PremiumTierManager:
                 '🏷️-prada', '🏷️-miu-miu', '🏷️-hysteric-glamour'
             ],
             'elite': [
-                # All pro channels plus:
                 '⚡-instant-alerts',
                 '🔥-grail-hunter', 
                 '🎯-personal-alerts',
@@ -1731,21 +1627,21 @@ class PremiumTierManager:
         
         self.tier_features = {
             'free': {
-                'delay_multiplier': 8.0,  # 8x delay (2+ hours behind)
+                'delay_multiplier': 8.0,
                 'daily_limit': 10,
                 'bookmark_limit': 25,
                 'ai_personalized': False,
                 'priority_support': False
             },
             'pro': {
-                'delay_multiplier': 0.0,  # Real-time
+                'delay_multiplier': 0.0,
                 'daily_limit': None,
                 'bookmark_limit': 500,
                 'ai_personalized': True,
                 'priority_support': False
             },
             'elite': {
-                'delay_multiplier': 0.0,  # Real-time
+                'delay_multiplier': 0.0,
                 'daily_limit': None,
                 'bookmark_limit': None,
                 'ai_personalized': True,
@@ -1755,15 +1651,14 @@ class PremiumTierManager:
         }
     
     async def setup_tier_roles(self, guild):
-        """Create tier roles if they don't exist"""
         for tier, role_name in self.tier_roles.items():
             existing_role = discord.utils.get(guild.roles, name=role_name)
             if not existing_role:
                 try:
                     color = {
-                        'free': 0x808080,    # Gray
-                        'pro': 0x3498db,     # Blue  
-                        'elite': 0xf1c40f    # Gold
+                        'free': 0x808080,
+                        'pro': 0x3498db,
+                        'elite': 0xf1c40f
                     }[tier]
                     
                     role = await guild.create_role(
@@ -1777,10 +1672,8 @@ class PremiumTierManager:
                     print(f"❌ Error creating role {role_name}: {e}")
     
     async def setup_channel_permissions(self, guild):
-        """Set up permissions for all channels based on tiers"""
         print("🔧 Setting up channel permissions...")
         
-        # Get all existing channels
         existing_channels = [channel.name for channel in guild.text_channels]
         print(f"📋 Found {len(existing_channels)} existing channels")
         
@@ -1790,7 +1683,6 @@ class PremiumTierManager:
                 print(f"⚠️ Role {self.tier_roles[tier]} not found, skipping")
                 continue
             
-            # Add permissions for channels this tier can access
             accessible_channels = []
             if tier == 'free':
                 accessible_channels = self.tier_channels['free']
@@ -1801,7 +1693,6 @@ class PremiumTierManager:
                                      self.tier_channels['pro'] + 
                                      self.tier_channels['elite'])
             
-            # Filter to only include existing channels
             existing_accessible_channels = [ch for ch in accessible_channels if ch in existing_channels]
             missing_channels = [ch for ch in accessible_channels if ch not in existing_channels]
             
@@ -1817,7 +1708,6 @@ class PremiumTierManager:
                     except Exception as e:
                         print(f"❌ Error setting permissions for #{channel_name}: {e}")
         
-        # Deny access to premium channels for free users (only existing ones)
         free_role = discord.utils.get(guild.roles, name=self.tier_roles['free'])
         if free_role:
             premium_channels = self.tier_channels['pro'] + self.tier_channels['elite']
@@ -1835,7 +1725,6 @@ class PremiumTierManager:
         print("✅ Channel permissions setup complete!")
     
     def get_user_tier(self, member):
-        """Get user's current tier based on roles"""
         user_roles = [role.name for role in member.roles]
         
         if self.tier_roles['elite'] in user_roles:
@@ -1846,21 +1735,17 @@ class PremiumTierManager:
             return 'free'
     
     async def upgrade_user(self, member, new_tier):
-        """Upgrade user to new tier"""
         guild = member.guild
         
-        # Remove old tier roles
         for tier_role_name in self.tier_roles.values():
             role = discord.utils.get(guild.roles, name=tier_role_name)
             if role in member.roles:
                 await member.remove_roles(role)
         
-        # Add new tier role
         new_role = discord.utils.get(guild.roles, name=self.tier_roles[new_tier])
         if new_role:
             await member.add_roles(new_role)
             
-            # Update database
             db_manager.execute_query('''
                 INSERT OR REPLACE INTO user_subscriptions 
                 (user_id, tier, upgraded_at, expires_at)
@@ -1869,28 +1754,25 @@ class PremiumTierManager:
                 member.id, 
                 new_tier, 
                 datetime.now().isoformat(),
-                (datetime.now() + timedelta(days=30)).isoformat()  # Monthly
+                (datetime.now() + timedelta(days=30)).isoformat()
             ))
             
             return True
         return False
     
     def should_delay_listing(self, user_tier, listing_priority):
-        """Determine if listing should be delayed for user tier"""
         if user_tier in ['pro', 'elite']:
-            return False  # Real-time for paying users
+            return False
         
-        # Free users get delayed listings
         features = self.tier_features['free']
         delay_hours = features['delay_multiplier']
         
-        # High priority items get less delay
         if listing_priority >= 100:
             delay_hours *= 0.5
         elif listing_priority >= 70:
             delay_hours *= 0.75
         
-        return delay_hours * 3600  # Convert to seconds
+        return delay_hours * 3600
 
 class DelayedListingManager:
     def __init__(self):
@@ -1898,7 +1780,6 @@ class DelayedListingManager:
         self.running = False
     
     async def queue_for_free_users(self, listing_data, delay_seconds):
-        """Queue listing for delayed delivery to free users"""
         delivery_time = datetime.now() + timedelta(seconds=delay_seconds)
         
         self.delayed_queue.append({
@@ -1907,35 +1788,30 @@ class DelayedListingManager:
             'target_channels': ['📦-daily-digest', '💰-budget-steals']
         })
         
-        # Sort by delivery time
         self.delayed_queue.sort(key=lambda x: x['delivery_time'])
     
     async def process_delayed_queue(self):
-        """Background task to process delayed listings"""
         self.running = True
         while self.running:
             try:
                 now = datetime.now()
                 ready_items = []
                 
-                # Find items ready for delivery
                 for item in self.delayed_queue:
                     if item['delivery_time'] <= now:
                         ready_items.append(item)
                 
-                # Remove ready items from queue
                 for item in ready_items:
                     self.delayed_queue.remove(item)
                     await self.deliver_to_free_channels(item)
                 
-                await asyncio.sleep(60)  # Check every minute
+                await asyncio.sleep(60)
                 
             except Exception as e:
                 print(f"❌ Delayed queue error: {e}")
                 await asyncio.sleep(300)
     
     async def deliver_to_free_channels(self, queued_item):
-        """Deliver listing to free user channels"""
         listing = queued_item['listing']
         
         for channel_name in queued_item['target_channels']:
@@ -1949,12 +1825,10 @@ class DelayedListingManager:
                 except Exception as e:
                     print(f"❌ Error delivering to #{channel_name}: {e}")
 
-# Initialize the systems
 tier_manager = None
 delayed_manager = None
 
 def create_listing_embed(listing_data):
-    """Create a Discord embed for a listing"""
     title = listing_data.get('title', '')
     brand = listing_data.get('brand', '')
     price_jpy = listing_data.get('price_jpy', 0)
@@ -2011,7 +1885,6 @@ def create_listing_embed(listing_data):
 @bot.command(name='setup_tiers')
 @commands.has_permissions(administrator=True)
 async def setup_tiers_command(ctx):
-    """Admin command to set up tier system"""
     global tier_manager
     tier_manager = PremiumTierManager(bot)
     
@@ -2023,7 +1896,6 @@ async def setup_tiers_command(ctx):
 @bot.command(name='upgrade_user')
 @commands.has_permissions(administrator=True)
 async def upgrade_user_command(ctx, member: discord.Member, tier: str):
-    """Admin command to upgrade user tier"""
     if tier not in ['free', 'pro', 'elite']:
         await ctx.send("❌ Invalid tier. Use: free, pro, or elite")
         return
@@ -2045,7 +1917,6 @@ async def upgrade_user_command(ctx, member: discord.Member, tier: str):
 
 @bot.command(name='my_tier')
 async def my_tier_command(ctx):
-    """Show user's current tier and benefits"""
     if not tier_manager:
         await ctx.send("❌ Tier system not initialized")
         return
@@ -2096,7 +1967,6 @@ async def my_tier_command(ctx):
 @bot.command(name='update_channels')
 @commands.has_permissions(administrator=True)
 async def update_channels_command(ctx):
-    """Update channel permissions for newly added channels"""
     if not tier_manager:
         await ctx.send("❌ Tier system not initialized. Run `!setup_tiers` first")
         return
@@ -2108,7 +1978,6 @@ async def update_channels_command(ctx):
 @bot.command(name='list_channels')
 @commands.has_permissions(administrator=True)
 async def list_channels_command(ctx):
-    """List all channels and their tier assignments"""
     if not tier_manager:
         await ctx.send("❌ Tier system not initialized")
         return
@@ -2138,26 +2007,26 @@ async def list_channels_command(ctx):
     await ctx.send(embed=embed)
 
 def run_flask():
-    app.run(host='0.0.0.0', port=8000, debug=False)
-
-# Replace your main() function in secure_discordbot.py with this safer version
+    try:
+        app.run(host='0.0.0.0', port=8000, debug=False)
+    except Exception as e:
+        print(f"❌ Flask server error: {e}")
+        time.sleep(5)
+        run_flask()
 
 def main():
     try:
         print("🚀 Starting Discord bot...")
         
-        # Start Flask server first for health checks
         print("🌐 Starting webhook server...")
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
         print("🌐 Webhook server started on port 8000")
         
-        # Basic security checks
         print("🔒 SECURITY: Performing startup security checks...")
         
         if not BOT_TOKEN or len(BOT_TOKEN) < 50:
             print("❌ SECURITY FAILURE: Invalid bot token!")
-            # Don't exit - keep Flask running for health checks
             print("🌐 Keeping webhook server alive for health checks...")
             while True:
                 time.sleep(60)
@@ -2172,7 +2041,6 @@ def main():
         print(f"🎯 Target server ID: {GUILD_ID}")
         print(f"📦 Batch size: {BATCH_SIZE} listings per message")
         
-        # Try database initialization (but don't fail if it doesn't work)
         try:
             print("🔧 Attempting database initialization...")
             db_manager.init_database()
@@ -2195,23 +2063,12 @@ def main():
         import traceback
         print(f"❌ Traceback: {traceback.format_exc()}")
         
-        # Keep Flask alive for health checks even if Discord fails
         print("🌐 Emergency mode - keeping webhook server alive")
         try:
             while True:
                 time.sleep(60)
         except KeyboardInterrupt:
             print("👋 Shutting down...")
-
-def run_flask():
-    """Run Flask server"""
-    try:
-        app.run(host='0.0.0.0', port=8000, debug=False)
-    except Exception as e:
-        print(f"❌ Flask server error: {e}")
-        # Try to restart Flask
-        time.sleep(5)
-        run_flask()
 
 if __name__ == "__main__":
     main()
