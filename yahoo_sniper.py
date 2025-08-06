@@ -696,12 +696,12 @@ def search_yahoo_multi_page_optimized(keyword_combo, max_pages, brand, keyword_m
                         continue
 
                     # Enhanced spam detection with proper indentation
-              ##      is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
-               ##     if is_spam:
-                 ##       skipped_spam += 1
-                   ##     print(f"🚫 Enhanced spam filter blocked: {spam_category}")
-                     ##   continue
-                    #
+                   is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
+                    if is_spam:
+                       skipped_spam += 1
+                       print(f"🚫 Enhanced spam filter blocked: {spam_category}")
+                       continue
+                    
                     price_tag = item.select_one(".Product__priceValue")
                     if not price_tag:
                         continue
@@ -1018,7 +1018,6 @@ def main_loop():
                     total_errors += errors
                     total_searches += 1
                     
-                    # SEND ALL EMERGENCY LISTINGS (NO LIMITS)
                     for listing_data in listings:
                         quality_filtered += 1
                         
@@ -1042,19 +1041,12 @@ def main_loop():
                 emergency_manager.deactivate_emergency_mode(sent_to_discord)
             
             else:
-                # CONCURRENT TIER PROCESSING WITH NO ARTIFICIAL LIMITS
-                from concurrent.futures import ThreadPoolExecutor
-                import random
-                
-                all_tier_results = []
-                
-                def process_single_tier(tier_data):
-                    tier_name, tier_config = tier_data
+                # SEQUENTIAL PROCESSING (REMOVED CONCURRENT THREADING)
+                for tier_name, tier_config in tiered_system.tier_config.items():
                     if not tiered_system.should_search_tier(tier_name):
-                        return [], 0, 0
+                        continue
                     
-                    print(f"🎯 Processing {tier_name.upper()} - {len(tier_config['brands'])} brands")
-                    tier_listings = []
+                    print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config['brands'])} brands")
                     tier_searches = 0
                     tier_finds = 0
                     
@@ -1072,11 +1064,15 @@ def main_loop():
                                 print(f"⏭️ Skipping dead keyword: {keyword}")
                                 continue
                             
-                            print(f"🔍 {tier_name}: Searching {keyword} (up to {tier_config['max_pages']} pages)")
+                            print(f"🔍 Searching: {keyword} (up to {tier_config['max_pages']} pages)")
                             
                             listings, errors = search_yahoo_multi_page_optimized(keyword, tier_config['max_pages'], brand, keyword_manager)
-                            brand_listings.extend(listings)
+                            total_found += len(listings)
+                            total_errors += errors
+                            total_searches += 1
                             tier_searches += 1
+                            
+                            brand_listings.extend(listings)
                             
                             if len(listings) > 0:
                                 tier_finds += len(listings)
@@ -1084,65 +1080,44 @@ def main_loop():
                             
                             time.sleep(tier_config['delay'])
                         
-                        # SORT BY PRIORITY BUT DON'T LIMIT
+                        # Sort by priority but send ALL listings
                         brand_listings.sort(key=lambda x: x["priority"], reverse=True)
-                        tier_listings.extend(brand_listings)  # ADD ALL LISTINGS, NO LIMITS
+                        
+                        for listing_data in brand_listings:
+                            quality_filtered += 1
+                            
+                            success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
+                                listing_data["title"], 
+                                listing_data["price_jpy"], 
+                                listing_data["zenmarket_url"], 
+                                listing_data["image_url"], 
+                                listing_data["auction_id"]
+                            )
+                            
+                            if success:
+                                seen_ids.add(listing_data["auction_id"])
+                                sent_to_discord += 1
+                                
+                                priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
+                                print(f"{priority_emoji} {tier_name.upper()}: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f}) - {listing_data['deal_quality']:.1%} deal")
+                            else:
+                                print(f"❌ Failed to send: {listing_data['title'][:30]}...")
+                            
+                            time.sleep(0.5)
                     
                     tiered_system.update_performance(tier_name, tier_searches, tier_finds)
                     
                     if tier_finds > 0:
                         efficiency = tier_finds / max(1, tier_searches)
                         print(f"📊 {tier_name.upper()}: {tier_finds} finds from {tier_searches} searches (efficiency: {efficiency:.2f})")
-                    
-                    return tier_listings, tier_searches, tier_finds
-                
-                # Process all tiers concurrently (3 threads for 6 tiers)
-                with ThreadPoolExecutor(max_workers=3) as executor:
-                    tier_futures = []
-                    for tier_name, tier_config in tiered_system.tier_config.items():
-                        future = executor.submit(process_single_tier, (tier_name, tier_config))
-                        tier_futures.append(future)
-                    
-                    # Collect all results
-                    for future in tier_futures:
-                        tier_listings, tier_searches, tier_finds = future.result()
-                        all_tier_results.extend(tier_listings)
-                        total_searches += tier_searches
-                        total_found += len(tier_listings)
-                
-                # Shuffle all results so brands are mixed together
-                random.shuffle(all_tier_results)
-                print(f"🎯 MIXED RESULTS: {len(all_tier_results)} total listings from all tiers, shuffled together")
-                
-                # Send ALL results to Discord (NO ARTIFICIAL LIMITS)
-                for listing_data in all_tier_results:
-                    quality_filtered += 1
-                    
-                    success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
-                        listing_data["title"], 
-                        listing_data["price_jpy"], 
-                        listing_data["zenmarket_url"], 
-                        listing_data["image_url"], 
-                        listing_data["auction_id"]
-                    )
-                    
-                    if success:
-                        seen_ids.add(listing_data["auction_id"])
-                        sent_to_discord += 1
-                        
-                        priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
-                        print(f"{priority_emoji} MIXED: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f}) - {listing_data['deal_quality']:.1%} deal")
-                    
-                    time.sleep(0.5)
             
-            # FORCE CLEAR SEEN ITEMS EVERY 35 CYCLES
+            # Clear seen items every 35 cycles to prevent blocking new finds
             if tiered_system.iteration_counter % 35 == 0:
                 items_before = len(seen_ids)
                 print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Force clearing {items_before} seen items to refresh search results...")
                 seen_ids.clear()
                 save_seen_ids()
                 
-                # Also clear the database tracking
                 try:
                     conn = sqlite3.connect(SCRAPER_DB)
                     cursor = conn.cursor()
@@ -1154,7 +1129,8 @@ def main_loop():
                     print(f"⚠️ Could not clear database: {e}")
             
             save_seen_ids()
-            keyword_manager.save_keyword_data()
+            if keyword_manager:
+                keyword_manager.save_keyword_data()
             tiered_system.save_performance_data()
             
             cycle_end_time = datetime.now()
@@ -1181,17 +1157,18 @@ def main_loop():
             if tiered_system.iteration_counter % 10 == 0:
                 print(f"\n🧠 PERFORMANCE INSIGHTS (Every 10 cycles):")
                 
-                active_keywords = len([k for k, v in keyword_manager.keyword_performance.items() if v.get('consecutive_fails', 0) < 5])
-                dead_keywords = len(keyword_manager.dead_keywords)
-                hot_keywords = len(keyword_manager.hot_keywords)
-                
-                print(f"📈 Keywords: {active_keywords} active, {hot_keywords} hot, {dead_keywords} dead")
+                if keyword_manager and keyword_manager.keyword_performance:
+                    active_keywords = len([k for k, v in keyword_manager.keyword_performance.items() if v.get('consecutive_fails', 0) < 5])
+                    dead_keywords = len(keyword_manager.dead_keywords)
+                    hot_keywords = len(keyword_manager.hot_keywords)
+                    
+                    print(f"📈 Keywords: {active_keywords} active, {hot_keywords} hot, {dead_keywords} dead")
                 
                 for tier_name, tracker in tiered_system.performance_tracker.items():
                     if tracker['total_searches'] > 0:
                         print(f"📊 {tier_name.upper()}: {tracker['avg_efficiency']:.2f} avg efficiency")
                 
-                if keyword_manager.hot_keywords:
+                if keyword_manager and keyword_manager.hot_keywords:
                     best_keywords = sorted(
                         [(k, v['finds']/v['searches']) for k, v in keyword_manager.keyword_performance.items() 
                          if k in keyword_manager.hot_keywords and v['searches'] > 0],
@@ -1220,7 +1197,8 @@ def main_loop():
             
     except KeyboardInterrupt:
         save_seen_ids()
-        keyword_manager.save_keyword_data()
+        if keyword_manager:
+            keyword_manager.save_keyword_data()
         tiered_system.save_performance_data()
         print("✅ Exiting gracefully with all data saved.")
 
