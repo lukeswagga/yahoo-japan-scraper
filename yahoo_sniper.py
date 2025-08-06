@@ -39,11 +39,11 @@ BRANDS_FILE = "brands.json"
 EXCHANGE_RATE_FILE = "exchange_rate.json"
 SCRAPER_DB = "auction_tracking.db"
 
-MAX_PRICE_USD = 1200
-MIN_PRICE_USD = 3
+MAX_PRICE_USD = 1500
+MIN_PRICE_USD = 2
 MAX_LISTINGS_PER_BRAND = 50
 ONLY_BUY_IT_NOW = False
-PRICE_QUALITY_THRESHOLD = 0.05
+PRICE_QUALITY_THRESHOLD = 0.02
 ENABLE_RESALE_BOOST = True
 ENABLE_INTELLIGENT_FILTERING = True
 
@@ -60,7 +60,7 @@ class OptimizedTieredSystem:
                 'max_pages': 5,
                 'search_frequency': 1,
                 'delay': 1,
-                'max_listings': 25
+                'max_listings': 999
             },
             'tier_1_high': {
                 'brands': ['Maison Margiela', 'Jean Paul Gaultier'],
@@ -68,7 +68,7 @@ class OptimizedTieredSystem:
                 'max_pages': 4,
                 'search_frequency': 1,
                 'delay': 1.5,
-                'max_listings': 20
+                'max_listings': 999
             },
             'tier_2': {
                 'brands': ['Yohji Yamamoto', 'Junya Watanabe', 'Undercover', 'Vetements'],
@@ -76,7 +76,7 @@ class OptimizedTieredSystem:
                 'max_pages': 3,
                 'search_frequency': 1,
                 'delay': 2,
-                'max_listings': 15
+                'max_listings': 999
             },
             'tier_3': {
                 'brands': ['Comme Des Garcons', 'Martine Rose', 'Balenciaga', 'Alyx'],
@@ -84,7 +84,7 @@ class OptimizedTieredSystem:
                 'max_pages': 3,
                 'search_frequency': 1,
                 'delay': 2.5,
-                'max_listings': 10
+                'max_listings': 999
             },
             'tier_4': {
                 'brands': ['Celine', 'Bottega Veneta', 'Kiko Kostadinov'],
@@ -92,7 +92,7 @@ class OptimizedTieredSystem:
                 'max_pages': 2,
                 'search_frequency': 2,
                 'delay': 3,
-                'max_listings': 20
+                'max_listings': 999
             },
             'tier_5_minimal': {
                 'brands': ['Prada', 'Miu Miu', 'Chrome Hearts', 'Hysteric Glamour'],
@@ -100,7 +100,7 @@ class OptimizedTieredSystem:
                 'max_pages': 2,
                 'search_frequency': 3,
                 'delay': 4,
-                'max_listings': 20
+                'max_listings': 999
             }
         }
         
@@ -551,15 +551,14 @@ def calculate_deal_quality(price_usd, brand, title):
 
 def is_quality_listing(price_usd, brand, title):
     if price_usd < MIN_PRICE_USD or price_usd > MAX_PRICE_USD:
-        return False, f"Price ${price_usd:.2f} outside range"
+        return False, f"Price outside range"
     
     if not is_clothing_item(title):
-        return False, f"Not clothing item"
+        return False, f"Not clothing"
     
     deal_quality = calculate_deal_quality(price_usd, brand, title)
-    
-    # MUCH MORE PERMISSIVE THRESHOLDS
-    threshold = 0.02  # Very low threshold for all brands
+    threshold = 0.01  # Very permissive
+      return deal_quality >= threshold, f"Quality: {deal_quality:.1%}"
     
     if deal_quality < threshold:
         return False, f"Deal quality {deal_quality:.1%} below threshold {threshold:.1%}"
@@ -964,7 +963,7 @@ def generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, c
     return keywords[:max_keywords]
 
 def main_loop():
-    print("🎯 Starting OPTIMIZED Yahoo Japan Sniper with ENHANCED FILTERING...")
+    print("🎯 Starting OPTIMIZED Yahoo Japan Sniper with HIGH VOLUME MODE...")
     
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
@@ -978,13 +977,13 @@ def main_loop():
     keyword_manager = AdaptiveKeywordManager()
     emergency_manager = EmergencyModeManager()
     
-    print("\n🏆 ENHANCED FILTERING SYSTEM:")
+    print("\n🏆 HIGH VOLUME SYSTEM:")
     print("✅ Enhanced spam detection enabled")
-    print("✅ Quality checker initialized")
-    print("✅ Stricter price thresholds applied")
+    print("✅ Quality checker initialized") 
+    print("✅ REMOVED artificial listing limits")
     print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
     print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
-    print(f"🎯 Target conversion: 25-30% (improved from 7%)")
+    print(f"🎯 Target: MAXIMUM VOLUME with quality items")
     
     get_usd_jpy_rate()
     
@@ -1020,7 +1019,8 @@ def main_loop():
                     total_errors += errors
                     total_searches += 1
                     
-                    for listing_data in listings[:3]:
+                    # SEND ALL EMERGENCY LISTINGS (NO LIMITS)
+                    for listing_data in listings:
                         quality_filtered += 1
                         
                         success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
@@ -1043,11 +1043,19 @@ def main_loop():
                 emergency_manager.deactivate_emergency_mode(sent_to_discord)
             
             else:
-                for tier_name, tier_config in tiered_system.tier_config.items():
+                # CONCURRENT TIER PROCESSING WITH NO ARTIFICIAL LIMITS
+                from concurrent.futures import ThreadPoolExecutor
+                import random
+                
+                all_tier_results = []
+                
+                def process_single_tier(tier_data):
+                    tier_name, tier_config = tier_data
                     if not tiered_system.should_search_tier(tier_name):
-                        continue
+                        return [], 0, 0
                     
-                    print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config['brands'])} brands")
+                    print(f"🎯 Processing {tier_name.upper()} - {len(tier_config['brands'])} brands")
+                    tier_listings = []
                     tier_searches = 0
                     tier_finds = 0
                     
@@ -1065,15 +1073,11 @@ def main_loop():
                                 print(f"⏭️ Skipping dead keyword: {keyword}")
                                 continue
                             
-                            print(f"🔍 Searching: {keyword} (up to {tier_config['max_pages']} pages)")
+                            print(f"🔍 {tier_name}: Searching {keyword} (up to {tier_config['max_pages']} pages)")
                             
                             listings, errors = search_yahoo_multi_page_optimized(keyword, tier_config['max_pages'], brand, keyword_manager)
-                            total_found += len(listings)
-                            total_errors += errors
-                            total_searches += 1
-                            tier_searches += 1
-                            
                             brand_listings.extend(listings)
+                            tier_searches += 1
                             
                             if len(listings) > 0:
                                 tier_finds += len(listings)
@@ -1081,34 +1085,74 @@ def main_loop():
                             
                             time.sleep(tier_config['delay'])
                         
+                        # SORT BY PRIORITY BUT DON'T LIMIT
                         brand_listings.sort(key=lambda x: x["priority"], reverse=True)
-                        limited_brand_listings = brand_listings[:tier_config['max_listings']]
-                        
-                        for listing_data in limited_brand_listings:
-                            quality_filtered += 1
-                            
-                            success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
-                                listing_data["title"], 
-                                listing_data["price_jpy"], 
-                                listing_data["zenmarket_url"], 
-                                listing_data["image_url"], 
-                                listing_data["auction_id"]
-                            )
-                            
-                            if success:
-                                seen_ids.add(listing_data["auction_id"])
-                                sent_to_discord += 1
-                                
-                                priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
-                                print(f"{priority_emoji} {tier_name.upper()}: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f}) - {listing_data['deal_quality']:.1%} deal")
-                            
-                            time.sleep(0.5)
+                        tier_listings.extend(brand_listings)  # ADD ALL LISTINGS, NO LIMITS
                     
                     tiered_system.update_performance(tier_name, tier_searches, tier_finds)
                     
                     if tier_finds > 0:
                         efficiency = tier_finds / max(1, tier_searches)
                         print(f"📊 {tier_name.upper()}: {tier_finds} finds from {tier_searches} searches (efficiency: {efficiency:.2f})")
+                    
+                    return tier_listings, tier_searches, tier_finds
+                
+                # Process all tiers concurrently (3 threads for 6 tiers)
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    tier_futures = []
+                    for tier_name, tier_config in tiered_system.tier_config.items():
+                        future = executor.submit(process_single_tier, (tier_name, tier_config))
+                        tier_futures.append(future)
+                    
+                    # Collect all results
+                    for future in tier_futures:
+                        tier_listings, tier_searches, tier_finds = future.result()
+                        all_tier_results.extend(tier_listings)
+                        total_searches += tier_searches
+                        total_found += len(tier_listings)
+                
+                # Shuffle all results so brands are mixed together
+                random.shuffle(all_tier_results)
+                print(f"🎯 MIXED RESULTS: {len(all_tier_results)} total listings from all tiers, shuffled together")
+                
+                # Send ALL results to Discord (NO ARTIFICIAL LIMITS)
+                for listing_data in all_tier_results:
+                    quality_filtered += 1
+                    
+                    success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
+                        listing_data["title"], 
+                        listing_data["price_jpy"], 
+                        listing_data["zenmarket_url"], 
+                        listing_data["image_url"], 
+                        listing_data["auction_id"]
+                    )
+                    
+                    if success:
+                        seen_ids.add(listing_data["auction_id"])
+                        sent_to_discord += 1
+                        
+                        priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
+                        print(f"{priority_emoji} MIXED: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f}) - {listing_data['deal_quality']:.1%} deal")
+                    
+                    time.sleep(0.5)
+            
+            # FORCE CLEAR SEEN ITEMS EVERY 35 CYCLES
+            if tiered_system.iteration_counter % 35 == 0:
+                items_before = len(seen_ids)
+                print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Force clearing {items_before} seen items to refresh search results...")
+                seen_ids.clear()
+                save_seen_ids()
+                
+                # Also clear the database tracking
+                try:
+                    conn = sqlite3.connect(SCRAPER_DB)
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM scraped_items')
+                    conn.commit()
+                    conn.close()
+                    print(f"✅ Cleared seen items cache and database - fresh searches incoming!")
+                except Exception as e:
+                    print(f"⚠️ Could not clear database: {e}")
             
             save_seen_ids()
             keyword_manager.save_keyword_data()
@@ -1128,7 +1172,7 @@ def main_loop():
             print(f"📤 Sent to Discord: {sent_to_discord}")
             print(f"❌ Errors: {total_errors}")
             print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
-            print(f"🎯 Conversion rate: {conversion_rate:.1f}% (target: 25-30%)")
+            print(f"🎯 Conversion rate: {conversion_rate:.1f}% (target: 80%+ volume)")
             
             if USE_DISCORD_BOT:
                 bot_stats = get_discord_bot_stats()
