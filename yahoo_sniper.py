@@ -39,8 +39,8 @@ BRANDS_FILE = "brands.json"
 EXCHANGE_RATE_FILE = "exchange_rate.json"
 SCRAPER_DB = "auction_tracking.db"
 
-MAX_PRICE_USD = 1200
-MIN_PRICE_USD = 5
+MAX_PRICE_USD = 800
+MIN_PRICE_USD = 10
 MAX_LISTINGS_PER_BRAND = 50
 ONLY_BUY_IT_NOW = False
 PRICE_QUALITY_THRESHOLD = 0.25
@@ -56,55 +56,54 @@ class OptimizedTieredSystem:
         self.tier_config = {
             'tier_1_premium': {
                 'brands': ['Raf Simons', 'Rick Owens'],
-                'max_keywords': 8,      # Increased from 6
-                'max_pages': 5,         # Increased from 4
+                'max_keywords': 8,
+                'max_pages': 5,
                 'search_frequency': 1,
-                'delay': 1,             # Decreased from 1.5
-                'max_listings': 15      # Increased from 8
+                'delay': 1,
+                'max_listings': 5
             },
             'tier_1_high': {
                 'brands': ['Maison Margiela', 'Jean Paul Gaultier'],
-                'max_keywords': 7,      # Increased from 5
-                'max_pages': 4,         # Increased from 3
+                'max_keywords': 7,
+                'max_pages': 4,
                 'search_frequency': 1,
-                'delay': 1.5,           # Decreased from 2
-                'max_listings': 12      # Increased from 6
+                'delay': 1.5,
+                'max_listings': 4
             },
             'tier_2': {
                 'brands': ['Yohji Yamamoto', 'Junya Watanabe', 'Undercover', 'Vetements'],
-                'max_keywords': 6,      # Increased from 4
-                'max_pages': 3,         # Increased from 2
-                'search_frequency': 1,  # Decreased from 2 (search every cycle)
-                'delay': 2,             # Decreased from 2.5
-                'max_listings': 10      # Increased from 5
+                'max_keywords': 6,
+                'max_pages': 3,
+                'search_frequency': 1,
+                'delay': 2,
+                'max_listings': 3
             },
             'tier_3': {
                 'brands': ['Comme Des Garcons', 'Martine Rose', 'Balenciaga', 'Alyx'],
-                'max_keywords': 5,      # Increased from 3
-                'max_pages': 3,         # Increased from 2
-                'search_frequency': 1,  # Decreased from 3 (search every cycle)
-                'delay': 2.5,           # Decreased from 3
-                'max_listings': 8       # Increased from 4
+                'max_keywords': 5,
+                'max_pages': 3,
+                'search_frequency': 1,
+                'delay': 2.5,
+                'max_listings': 3
             },
             'tier_4': {
                 'brands': ['Celine', 'Bottega Veneta', 'Kiko Kostadinov'],
-                'max_keywords': 4,      # Increased from 2
-                'max_pages': 2,         # Increased from 1
-                'search_frequency': 2,  # Decreased from 4
-                'delay': 3,             # Decreased from 4
-                'max_listings': 6       # Increased from 3
+                'max_keywords': 4,
+                'max_pages': 2,
+                'search_frequency': 2,
+                'delay': 3,
+                'max_listings': 2
             },
             'tier_5_minimal': {
                 'brands': ['Prada', 'Miu Miu', 'Chrome Hearts', 'Hysteric Glamour'],
-                'max_keywords': 3,      # Increased from 1
-                'max_pages': 2,         # Increased from 1
-                'search_frequency': 3,  # Decreased from 6
-                'delay': 4,             # Decreased from 5
-                'max_listings': 5       # Increased from 2
+                'max_keywords': 3,
+                'max_pages': 2,
+                'search_frequency': 3,
+                'delay': 4,
+                'max_listings': 2
             }
         }
         
-        # CRITICAL FIX: Initialize ALL tier names in performance_tracker
         self.performance_tracker = {}
         for tier_name in self.tier_config.keys():
             self.performance_tracker[tier_name] = {
@@ -139,7 +138,6 @@ class OptimizedTieredSystem:
         return (self.iteration_counter % frequency) == 0
     
     def update_performance(self, tier_name, searches_made, finds_count):
-        # Safety check to prevent KeyError
         if tier_name not in self.performance_tracker:
             self.performance_tracker[tier_name] = {
                 'total_searches': 0,
@@ -518,21 +516,21 @@ def calculate_deal_quality(price_usd, brand, title):
         "rick_owens": 2.5,
         "maison_margiela": 2.2,
         "jean_paul_gaultier": 2.0,
-        "yohji_yamamoto": 1.5,
-        "junya_watanabe": 1.4,
-        "comme_des_garcons": 1.3,
-        "undercover": 1.2,
-        "martine_rose": 1.3,
-        "miu_miu": 1.1,
-        "vetements": 1.2,
-        "balenciaga": 1.1,
-        "chrome_hearts": 1.2,
-        "celine": 1.0,
-        "bottega_veneta": 1.0,
-        "alyx": 1.1,
-        "kiko_kostadinov": 1.1,
-        "prada": 1.0,
-        "hysteric_glamour": 0.9
+        "yohji_yamamoto": 1.8,
+        "junya_watanabe": 1.6,
+        "comme_des_garcons": 1.5,
+        "undercover": 1.4,
+        "martine_rose": 1.5,
+        "miu_miu": 1.3,
+        "vetements": 1.4,
+        "balenciaga": 1.3,
+        "chrome_hearts": 1.4,
+        "celine": 1.2,
+        "bottega_veneta": 1.2,
+        "alyx": 1.3,
+        "kiko_kostadinov": 1.3,
+        "prada": 1.2,
+        "hysteric_glamour": 1.0
     }
     
     brand_key = brand.lower().replace(" ", "_") if brand else "unknown"
@@ -553,26 +551,24 @@ def calculate_deal_quality(price_usd, brand, title):
 
 def is_quality_listing(price_usd, brand, title):
     if price_usd < MIN_PRICE_USD or price_usd > MAX_PRICE_USD:
-        return False, f"Price ${price_usd:.2f} outside range"
+        return False, f"Price ${price_usd:.2f} outside range ${MIN_PRICE_USD}-{MAX_PRICE_USD}"
     
     if not is_clothing_item(title):
         return False, f"Not clothing item"
     
     deal_quality = calculate_deal_quality(price_usd, brand, title)
     
-    # STRICTER THRESHOLDS
     brand_key = brand.lower().replace(" ", "_") if brand else "unknown"
     high_resale_brands = ["raf_simons", "rick_owens", "maison_margiela", "jean_paul_gaultier"]
     
     if any(hrb in brand_key for hrb in high_resale_brands):
-        threshold = 0.20  # Increased from 0.05 to 0.20
+        threshold = 0.20
     else:
-        threshold = 0.30  # Increased from 0.08 to 0.30
+        threshold = PRICE_QUALITY_THRESHOLD
     
     if deal_quality < threshold:
         return False, f"Deal quality {deal_quality:.1%} below threshold {threshold:.1%}"
     
-    # ADDITIONAL SELECTIVITY
     if price_usd > 200 and deal_quality < 0.4:
         return False, f"High price needs higher quality"
     
@@ -651,15 +647,13 @@ def extract_seller_info(soup, item):
         return "unknown"
 
 def search_yahoo_multi_page_optimized(keyword_combo, max_pages, brand, keyword_manager):
-    # Add at the beginning
-    spam_detector = EnhancedSpamDetector()
-    quality_checker = QualityChecker()
     start_time = time.time()
     all_listings = []
     total_errors = 0
     
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     spam_detector = EnhancedSpamDetector()
+    quality_checker = QualityChecker()
     
     for page in range(1, max_pages + 1):
         try:
@@ -711,22 +705,12 @@ def search_yahoo_multi_page_optimized(keyword_combo, max_pages, brand, keyword_m
                     if not is_valid:
                         continue
 
+                    # Enhanced spam detection with proper indentation
                     is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
                     if is_spam:
-                    print(f"🚫 Enhanced spam filter blocked: {spam_category}")
                         skipped_spam += 1
+                        print(f"🚫 Enhanced spam filter blocked: {spam_category}")
                         continue
-
-                    quality_result = quality_checker.check_listing_quality({
-        'title': title,
-        'brand': matched_brand,
-        'price_usd': usd_price,
-        'deal_quality': deal_quality
-    })
-    
-    if quality_result['should_block']:
-        print(f"🚫 Quality checker blocked: {', '.join(quality_result['issues'])}")
-        continue
 
                     price_tag = item.select_one(".Product__priceValue")
                     if not price_tag:
@@ -745,6 +729,18 @@ def search_yahoo_multi_page_optimized(keyword_combo, max_pages, brand, keyword_m
 
                     is_quality, quality_reason = is_quality_listing(usd_price, matched_brand, title)
                     if not is_quality:
+                        continue
+
+                    # Additional quality check using enhanced filtering
+                    quality_result = quality_checker.check_listing_quality({
+                        'title': title,
+                        'brand': matched_brand,
+                        'price_usd': usd_price,
+                        'deal_quality': calculate_deal_quality(usd_price, matched_brand, title)
+                    })
+                    
+                    if quality_result['should_block']:
+                        print(f"🚫 Quality checker blocked: {', '.join(quality_result['issues'])}")
                         continue
 
                     img_tag = item.select_one("img")
@@ -916,15 +912,12 @@ class EmergencyModeManager:
             print("✅ Emergency mode deactivated - normal operation resumed")
 
 def generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, cycle_count):
-    """Generate optimized keywords using performance data and rotation"""
-    
     if brand not in BRAND_DATA:
         return [brand.lower()]
     
     max_keywords = tier_config['max_keywords']
     
     if keyword_manager and keyword_manager.keyword_performance:
-        # Only use performance-based filtering if we have actual performance data
         learned_keywords = keyword_manager.get_best_keywords_for_brand(brand, max_keywords)
         
         performance_filtered = []
@@ -979,38 +972,27 @@ def generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, c
     return keywords[:max_keywords]
 
 def main_loop():
-    print("🎯 Starting OPTIMIZED Yahoo Japan Sniper...")
-    
-    # Add these lines
-    spam_detector = EnhancedSpamDetector()
-    quality_checker = QualityChecker()
-    
-    # ... rest of your existing code
-
-    print("🎯 Starting OPTIMIZED Yahoo Japan Sniper with FULL FUNCTIONALITY...")
+    print("🎯 Starting OPTIMIZED Yahoo Japan Sniper with ENHANCED FILTERING...")
     
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
     print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
     
+    # Initialize enhanced filtering components
+    spam_detector = EnhancedSpamDetector()
+    quality_checker = QualityChecker()
+    
     tiered_system = OptimizedTieredSystem()
     keyword_manager = AdaptiveKeywordManager()
     emergency_manager = EmergencyModeManager()
     
-    print("\n🏆 OPTIMIZED TIERED MONITORING SYSTEM:")
-    print("Tier 1 Premium: Raf Simons, Rick Owens (6 keywords, 4 pages, every cycle)")
-    print("Tier 1 High: Margiela, JPG (5 keywords, 3 pages, every cycle)")
-    print("Tier 2: Yohji, Junya, Undercover, Vetements (4 keywords, 2 pages, every 2nd cycle)")
-    print("Tier 3: CDG, Martine Rose, Balenciaga, Alyx (3 keywords, 2 pages, every 3rd cycle)")
-    print("Tier 4: Celine, Bottega, Kiko (2 keywords, 1 page, every 4th cycle)")
-    print("Tier 5: Prada, Miu Miu, Chrome Hearts (1 keyword, 1 page, every 6th cycle)")
-    print(f"🚫 Enhanced spam filtering: Women's, Kids, Shoes, Non-clothing")
-    print(f"💰 Max Price: ¥{MAX_PRICE_YEN:,} (~${convert_jpy_to_usd(MAX_PRICE_YEN):.2f} USD)")
-    print(f"🔥 Multi-page scraping: Up to 4 pages for top brands")
-    print(f"🧠 Adaptive learning: Dead keyword detection + performance optimization")
-    print(f"🚨 Emergency mode: Proven keywords when efficiency drops")
-    print(f"💾 Currently tracking {len(seen_ids)} seen items")
-    print(f"🤖 Discord Bot Mode: {'Enabled' if USE_DISCORD_BOT else 'Disabled'}")
+    print("\n🏆 ENHANCED FILTERING SYSTEM:")
+    print("✅ Enhanced spam detection enabled")
+    print("✅ Quality checker initialized")
+    print("✅ Stricter price thresholds applied")
+    print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
+    print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
+    print(f"🎯 Target conversion: 25-30% (improved from 7%)")
     
     get_usd_jpy_rate()
     
@@ -1086,7 +1068,6 @@ def main_loop():
                         brand_listings = []
                         
                         for keyword in keywords:
-                            # Only skip dead keywords if we have performance data to base the decision on
                             if (keyword_manager and keyword_manager.keyword_performance and 
                                 keyword in keyword_manager.dead_keywords):
                                 print(f"⏭️ Skipping dead keyword: {keyword}")
@@ -1145,6 +1126,7 @@ def main_loop():
             cycle_duration = (cycle_end_time - cycle_start_time).total_seconds()
             
             cycle_efficiency = sent_to_discord / max(1, total_searches)
+            conversion_rate = (quality_filtered / max(1, total_found)) * 100 if total_found > 0 else 0
             
             print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
             print(f"⏱️  Duration: {cycle_duration:.1f}s")
@@ -1154,6 +1136,7 @@ def main_loop():
             print(f"📤 Sent to Discord: {sent_to_discord}")
             print(f"❌ Errors: {total_errors}")
             print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
+            print(f"🎯 Conversion rate: {conversion_rate:.1f}% (target: 25-30%)")
             
             if USE_DISCORD_BOT:
                 bot_stats = get_discord_bot_stats()
