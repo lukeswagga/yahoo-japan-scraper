@@ -558,7 +558,6 @@ def is_quality_listing(price_usd, brand, title):
     
     deal_quality = calculate_deal_quality(price_usd, brand, title)
     threshold = 0.01  # Very permissive
-      return deal_quality >= threshold, f"Quality: {deal_quality:.1%}"
     
     if deal_quality < threshold:
         return False, f"Deal quality {deal_quality:.1%} below threshold {threshold:.1%}"
