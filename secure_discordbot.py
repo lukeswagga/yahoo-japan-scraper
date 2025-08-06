@@ -691,34 +691,12 @@ async def send_single_listing(auction_data):
     try:
         brand = auction_data.get('brand', '')
         title = auction_data.get('title', '')
+        price_usd = auction_data.get('price_usd', 0)
         
         print(f"🔄 Processing listing: {title[:50]}...")
         
         if preference_learner and preference_learner.is_likely_spam(title, brand):
             print(f"🚫 Blocking spam listing: {title[:50]}...")
-            return False
-        
-        print(f"🏷️ Processing brand: '{brand}' -> Channel mapping exists: {brand in BRAND_CHANNEL_MAP}")
-        
-        target_channel = None
-        if brand and brand in BRAND_CHANNEL_MAP:
-            target_channel = await get_or_create_brand_channel(brand)
-            if target_channel:
-                print(f"📍 Target brand channel: {target_channel.name}")
-            else:
-                print(f"❌ Failed to create brand channel for: {brand}")
-        else:
-            print(f"⚠️ Brand '{brand}' not in channel map or empty")
-        
-        if not target_channel:
-            if not auction_channel:
-                target_channel = await get_or_create_auction_channel()
-            else:
-                target_channel = auction_channel
-            print(f"📍 Fallback to main channel: {target_channel.name if target_channel else 'None'}")
-        
-        if not target_channel:
-            print("❌ No target channel available")
             return False
         
         # Check for duplicates using database manager
@@ -734,80 +712,6 @@ async def send_single_listing(auction_data):
             return False
         
         print(f"✅ No duplicate found, proceeding with listing")
-        
-        price_usd = auction_data['price_usd']
-        deal_quality = auction_data.get('deal_quality', 0.5)
-        priority = auction_data.get('priority', 0.0)
-        
-        if deal_quality >= 0.8 or priority >= 100:
-            color = 0x00ff00
-            quality_emoji = "🔥"
-        elif deal_quality >= 0.6 or priority >= 70:
-            color = 0xffa500
-            quality_emoji = "🌟"
-        else:
-            color = 0xff4444
-            quality_emoji = "⭐"
-        
-        display_title = title
-        if len(display_title) > 100:
-            display_title = display_title[:97] + "..."
-        
-        # Create embed using the helper function
-        embed = create_listing_embed(auction_data)
-        
-        # Tier-based sending logic
-        if tier_manager and target_channel:
-            # Check if this is a premium channel that requires tier access
-            channel_name = target_channel.name
-            is_premium_channel = False
-            
-            # Check if it's a brand channel (premium)
-            if channel_name.startswith('🏷️-'):
-                is_premium_channel = True
-            # Check if it's in pro or elite channels
-            elif channel_name in tier_manager.tier_channels['pro'] or channel_name in tier_manager.tier_channels['elite']:
-                is_premium_channel = True
-            
-            if is_premium_channel:
-                # Send to premium users only
-                print(f"💎 Sending to premium channel: #{channel_name}")
-                message = await target_channel.send(embed=embed)
-                print(f"✅ Message sent to premium channel, ID: {message.id}")
-                
-                # Queue for free users with delay
-                if delayed_manager:
-                    delay_seconds = tier_manager.should_delay_listing('free', priority)
-                    if delay_seconds > 0:
-                        await delayed_manager.queue_for_free_users(auction_data, delay_seconds)
-                        print(f"⏳ Queued for free users with {delay_seconds/3600:.1f} hour delay")
-            else:
-                # Send to all users (free channel)
-                print(f"📤 Sending to free channel: #{channel_name}")
-                message = await target_channel.send(embed=embed)
-                print(f"✅ Message sent to free channel, ID: {message.id}")
-        else:
-            # Fallback to original behavior
-            print(f"📤 Sending message to #{target_channel.name}")
-            message = await target_channel.send(embed=embed)
-            print(f"✅ Message sent successfully, ID: {message.id}")
-        
-        # Add to database
-        print(f"💾 Adding to database with image URL: {auction_data.get('image_url', 'No image')}")
-        db_result = add_listing(auction_data, message.id)
-        if db_result:
-            print(f"✅ Successfully added to database")
-        else:
-            print(f"⚠️ Database add failed, but message was sent")
-        
-        print(f"✅ Sent to #{target_channel.name}: {display_title}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error sending individual listing: {e}")
-        import traceback
-        print(f"❌ Full traceback: {traceback.format_exc()}")
-        return False
 
 async def send_individual_listings_with_rate_limit(batch_data):
     try:
@@ -1036,6 +940,207 @@ async def setup_command(ctx):
     
     for proxy in SUPPORTED_PROXIES.values():
         await message.add_reaction(proxy['emoji'])
+
+# Add this command to secure_discordbot.py
+
+@bot.command(name='volume_debug')
+@commands.has_permissions(administrator=True)
+async def volume_debug_command(ctx):
+    """Debug listing volume and scraper performance"""
+    try:
+        # Get recent listings count
+        recent_listings = db_manager.execute_query('''
+            SELECT COUNT(*) FROM listings 
+            WHERE created_at > datetime('now', '-1 hour')
+        ''' if not db_manager.use_postgres else '''
+            SELECT COUNT(*) FROM listings 
+            WHERE created_at > NOW() - INTERVAL '1 hour'
+        ''', fetch_one=True)[0] or 0
+        
+        daily_listings = db_manager.execute_query('''
+            SELECT COUNT(*) FROM listings 
+            WHERE created_at > datetime('now', '-1 day')
+        ''' if not db_manager.use_postgres else '''
+            SELECT COUNT(*) FROM listings 
+            WHERE created_at > NOW() - INTERVAL '1 day'
+        ''', fetch_one=True)[0] or 0
+        
+        # Get scraper efficiency
+        scraper_stats = db_manager.execute_query('''
+            SELECT 
+                sent_to_discord,
+                keywords_searched,
+                total_found,
+                quality_filtered,
+                timestamp
+            FROM scraper_stats 
+            ORDER BY timestamp DESC 
+            LIMIT 5
+        ''', fetch_all=True)
+        
+        embed = discord.Embed(
+            title="📊 Listing Volume Debug",
+            color=0xff9900
+        )
+        
+        embed.add_field(
+            name="📦 Recent Volume",
+            value=f"Last Hour: {recent_listings}\nLast 24h: {daily_listings}\nTarget: 50+ per hour",
+            inline=True
+        )
+        
+        if scraper_stats:
+            latest_cycle = scraper_stats[0]
+            efficiency = latest_cycle[0] / max(1, latest_cycle[1])  # sent / searched
+            
+            embed.add_field(
+                name="🤖 Latest Scraper Cycle",
+                value=f"Sent: {latest_cycle[0]}\nSearched: {latest_cycle[1]}\nFound: {latest_cycle[2]}\nFiltered: {latest_cycle[3]}\nEfficiency: {efficiency:.1%}",
+                inline=True
+            )
+            
+            # Show trend
+            recent_sent = [stat[0] for stat in scraper_stats]
+            avg_sent = sum(recent_sent) / len(recent_sent)
+            
+            embed.add_field(
+                name="📈 5-Cycle Average",
+                value=f"Avg Sent: {avg_sent:.1f}\nTotal in 5 cycles: {sum(recent_sent)}",
+                inline=True
+            )
+        
+        # Channel-specific volume
+         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
+        if main_channel:
+            embed = create_listing_embed(auction_data)
+            main_message = await main_channel.send(embed=embed)
+            print(f"📤 Sent to MAIN channel: {title[:30]}...")
+            
+            # Add to database with main message ID
+            add_listing(auction_data, main_message.id)
+
+            brand_channel = None
+        if brand and brand in BRAND_CHANNEL_MAP:
+            brand_channel = await get_or_create_brand_channel(brand)
+            if brand_channel:
+                embed = create_listing_embed(auction_data)
+                await brand_channel.send(embed=embed)
+                print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
+        
+        # STEP 3: Send to budget-steals if under $100
+        if price_usd <= 100:
+            budget_channel = discord.utils.get(guild.text_channels, name="💰-budget-steals")
+            if budget_channel:
+                embed = create_listing_embed(auction_data)
+                embed.set_footer(text=f"Budget Steal - Under $100 | ID: {auction_data['auction_id']}")
+                await budget_channel.send(embed=embed)
+                print(f"💰 Also sent to budget-steals: ${price_usd:.2f}")
+        
+        # STEP 4: Send to hourly-drops for consistent flow
+        hourly_channel = discord.utils.get(guild.text_channels, name="⏰-hourly-drops")
+        if hourly_channel:
+            embed = create_listing_embed(auction_data)
+            await hourly_channel.send(embed=embed)
+            print(f"⏰ Also sent to hourly-drops")
+
+             print(f"✅ Successfully sent listing to multiple channels")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error sending listing: {e}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
+        return False
+
+            embed.add_field(
+                name="📺 Main Channel Activity",
+                value=f"Messages last hour: {recent_messages}\nTarget: 20+ per hour",
+                inline=False
+            )
+        
+        # Recommendations
+        recommendations = []
+        if recent_listings < 20:
+            recommendations.append("🚨 Low volume - check scraper settings")
+        if daily_listings < 200:
+            recommendations.append("📈 Consider lowering quality thresholds")
+        
+        if recommendations:
+            embed.add_field(
+                name="💡 Recommendations",
+                value="\n".join(recommendations),
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error getting volume debug: {e}")
+
+@bot.command(name='force_high_volume')
+@commands.has_permissions(administrator=True)
+async def force_high_volume_command(ctx):
+    """Emergency command to force high volume settings"""
+    await ctx.send("""
+🚨 **EMERGENCY HIGH VOLUME MODE INSTRUCTIONS:**
+
+**Update these settings in yahoo_sniper.py:**
+```python
+PRICE_QUALITY_THRESHOLD = 0.05  # Much lower
+MAX_LISTINGS_PER_BRAND = 100    # Much higher
+MIN_PRICE_USD = 1               # Lower minimum
+```
+
+**And set all tiers to search every cycle:**
+```python
+'search_frequency': 1  # For ALL tiers
+```
+
+**Then redeploy the scraper immediately.**
+    """)
+
+@bot.command(name='channel_status')
+@commands.has_permissions(administrator=True)
+async def channel_status_command(ctx):
+    """Check which channels exist vs which are needed"""
+    required_channels = [
+        "🎯-auction-alerts", "💰-budget-steals", "⏰-hourly-drops",
+        "🏷️-raf-simons", "🏷️-rick-owens", "🏷️-maison-margiela",
+        "🏷️-jean-paul-gaultier", "🏷️-yohji-yamamoto", "🏷️-junya-watanabe",
+        "🏷️-undercover", "🏷️-vetements", "🏷️-martine-rose",
+        "🏷️-balenciaga", "🏷️-alyx", "🏷️-celine",
+        "🏷️-bottega-veneta", "🏷️-kiko-kostadinov", "🏷️-chrome-hearts",
+        "🏷️-comme-des-garcons", "🏷️-prada", "🏷️-miu-miu", "🏷️-hysteric-glamour"
+    ]
+    
+    existing_channels = [ch.name for ch in guild.text_channels]
+    
+    missing = [ch for ch in required_channels if ch not in existing_channels]
+    existing = [ch for ch in required_channels if ch in existing_channels]
+    
+    embed = discord.Embed(title="📺 Channel Status", color=0x0099ff)
+    
+    if existing:
+        embed.add_field(
+            name=f"✅ Existing ({len(existing)})",
+            value="\n".join(existing[:10]) + ("..." if len(existing) > 10 else ""),
+            inline=True
+        )
+    
+    if missing:
+        embed.add_field(
+            name=f"❌ Missing ({len(missing)})",
+            value="\n".join(missing[:10]) + ("..." if len(missing) > 10 else ""),
+            inline=True
+        )
+    
+    embed.add_field(
+        name="📊 Summary",
+        value=f"Total Required: {len(required_channels)}\nExisting: {len(existing)}\nMissing: {len(missing)}",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
 
 @bot.command(name='bookmarks')
 async def bookmarks_command(ctx):

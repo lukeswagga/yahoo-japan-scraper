@@ -39,11 +39,11 @@ BRANDS_FILE = "brands.json"
 EXCHANGE_RATE_FILE = "exchange_rate.json"
 SCRAPER_DB = "auction_tracking.db"
 
-MAX_PRICE_USD = 1200
-MIN_PRICE_USD = 3
-MAX_LISTINGS_PER_BRAND = 25
+MAX_PRICE_USD = 1500
+MIN_PRICE_USD = 2
+MAX_LISTINGS_PER_BRAND = 50
 ONLY_BUY_IT_NOW = False
-PRICE_QUALITY_THRESHOLD = 0.15
+PRICE_QUALITY_THRESHOLD = 0.08
 ENABLE_RESALE_BOOST = True
 ENABLE_INTELLIGENT_FILTERING = True
 
@@ -56,51 +56,51 @@ class OptimizedTieredSystem:
         self.tier_config = {
             'tier_1_premium': {
                 'brands': ['Raf Simons', 'Rick Owens'],
-                'max_keywords': 6,
-                'max_pages': 4,
+                'max_keywords': 8,      # Increased from 6
+                'max_pages': 5,         # Increased from 4
                 'search_frequency': 1,
-                'delay': 1.5,
-                'max_listings': 8
+                'delay': 1,             # Decreased from 1.5
+                'max_listings': 15      # Increased from 8
             },
             'tier_1_high': {
                 'brands': ['Maison Margiela', 'Jean Paul Gaultier'],
-                'max_keywords': 5,
-                'max_pages': 3,
+                'max_keywords': 7,      # Increased from 5
+                'max_pages': 4,         # Increased from 3
                 'search_frequency': 1,
-                'delay': 2,
-                'max_listings': 6
+                'delay': 1.5,           # Decreased from 2
+                'max_listings': 12      # Increased from 6
             },
             'tier_2': {
                 'brands': ['Yohji Yamamoto', 'Junya Watanabe', 'Undercover', 'Vetements'],
-                'max_keywords': 4,
-                'max_pages': 2,
-                'search_frequency': 2,
-                'delay': 2.5,
-                'max_listings': 5
+                'max_keywords': 6,      # Increased from 4
+                'max_pages': 3,         # Increased from 2
+                'search_frequency': 1,  # Decreased from 2 (search every cycle)
+                'delay': 2,             # Decreased from 2.5
+                'max_listings': 10      # Increased from 5
             },
             'tier_3': {
                 'brands': ['Comme Des Garcons', 'Martine Rose', 'Balenciaga', 'Alyx'],
-                'max_keywords': 3,
-                'max_pages': 2,
-                'search_frequency': 3,
-                'delay': 3,
-                'max_listings': 4
+                'max_keywords': 5,      # Increased from 3
+                'max_pages': 3,         # Increased from 2
+                'search_frequency': 1,  # Decreased from 3 (search every cycle)
+                'delay': 2.5,           # Decreased from 3
+                'max_listings': 8       # Increased from 4
             },
             'tier_4': {
                 'brands': ['Celine', 'Bottega Veneta', 'Kiko Kostadinov'],
-                'max_keywords': 2,
-                'max_pages': 1,
-                'search_frequency': 4,
-                'delay': 4,
-                'max_listings': 3
+                'max_keywords': 4,      # Increased from 2
+                'max_pages': 2,         # Increased from 1
+                'search_frequency': 2,  # Decreased from 4
+                'delay': 3,             # Decreased from 4
+                'max_listings': 6       # Increased from 3
             },
             'tier_5_minimal': {
                 'brands': ['Prada', 'Miu Miu', 'Chrome Hearts', 'Hysteric Glamour'],
-                'max_keywords': 1,
-                'max_pages': 1,
-                'search_frequency': 6,
-                'delay': 5,
-                'max_listings': 2
+                'max_keywords': 3,      # Increased from 1
+                'max_pages': 2,         # Increased from 1
+                'search_frequency': 3,  # Decreased from 6
+                'delay': 4,             # Decreased from 5
+                'max_listings': 5       # Increased from 2
             }
         }
         
@@ -560,13 +560,14 @@ def is_quality_listing(price_usd, brand, title):
     
     deal_quality = calculate_deal_quality(price_usd, brand, title)
     
+    # Much more permissive thresholds
     brand_key = brand.lower().replace(" ", "_") if brand else "unknown"
     high_resale_brands = ["raf_simons", "rick_owens", "maison_margiela", "jean_paul_gaultier", "martine_rose"]
     
     if any(hrb in brand_key for hrb in high_resale_brands):
-        threshold = 0.1
+        threshold = 0.05  # Very low threshold for high-resale brands
     else:
-        threshold = PRICE_QUALITY_THRESHOLD
+        threshold = PRICE_QUALITY_THRESHOLD  # 0.08 now
     
     if deal_quality < threshold:
         return False, f"Deal quality {deal_quality:.1%} below threshold {threshold:.1%}"
