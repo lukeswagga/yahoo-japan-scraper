@@ -710,6 +710,7 @@ async def send_single_listing(auction_data):
         
         print(f"🔄 Processing listing: {title[:50]}...")
         
+        # Check for spam
         if preference_learner and preference_learner.is_likely_spam(title, brand):
             print(f"🚫 Blocking spam listing: {title[:50]}...")
             return False
@@ -727,6 +728,50 @@ async def send_single_listing(auction_data):
             return False
         
         print(f"✅ No duplicate found, proceeding with listing")
+        
+        # STEP 1: ALWAYS send to main "everything" channel first
+        main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
+        if main_channel:
+            embed = create_listing_embed(auction_data)
+            main_message = await main_channel.send(embed=embed)
+            print(f"📤 Sent to MAIN channel: {title[:30]}...")
+            
+            # Add to database with main message ID
+            add_listing(auction_data, main_message.id)
+        
+        # STEP 2: Send to appropriate brand channel (if exists)
+        brand_channel = None
+        if brand and brand in BRAND_CHANNEL_MAP:
+            brand_channel = await get_or_create_brand_channel(brand)
+            if brand_channel:
+                embed = create_listing_embed(auction_data)
+                await brand_channel.send(embed=embed)
+                print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
+        
+        # STEP 3: Send to budget-steals if under $100
+        if price_usd <= 100:
+            budget_channel = discord.utils.get(guild.text_channels, name="💰-budget-steals")
+            if budget_channel:
+                embed = create_listing_embed(auction_data)
+                embed.set_footer(text=f"Budget Steal - Under $100 | ID: {auction_data['auction_id']}")
+                await budget_channel.send(embed=embed)
+                print(f"💰 Also sent to budget-steals: ${price_usd:.2f}")
+        
+        # STEP 4: Send to hourly-drops for consistent flow
+        hourly_channel = discord.utils.get(guild.text_channels, name="⏰-hourly-drops")
+        if hourly_channel:
+            embed = create_listing_embed(auction_data)
+            await hourly_channel.send(embed=embed)
+            print(f"⏰ Also sent to hourly-drops")
+        
+        print(f"✅ Successfully sent listing to multiple channels")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error sending listing: {e}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
+        return False
 
 async def send_individual_listings_with_rate_limit(batch_data):
     try:
