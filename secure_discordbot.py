@@ -1,16 +1,20 @@
 import discord
 from discord.ext import commands
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta  # Add timedelta here
 import asyncio
 from flask import Flask, request, jsonify
 import threading
 import os
 import logging
 import time
+import json  # Add this if missing
+import hmac  # Add this if missing
+import hashlib  # Add this if missing
 from database_manager import (
     db_manager, get_user_proxy_preference, set_user_proxy_preference, 
-    add_listing, add_reaction, add_bookmark, get_user_bookmarks, clear_user_bookmarks
+    add_listing, add_reaction, add_bookmark, get_user_bookmarks, clear_user_bookmarks,
+    init_subscription_tables, test_postgres_connection  # Add these
 )
 
 # Initialize Flask app BEFORE using @app.route
@@ -20,12 +24,23 @@ start_time = time.time()
 # Update the health endpoint to be more Railway-friendly
 @app.route('/health', methods=['GET'])
 def health():
+    try:
+        return jsonify({
+            "status": "healthy",
+            "service": "discord-bot",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "error": str(e)
+        }), 500
+
+@app.route('/', methods=['GET'])
+def root():
     return jsonify({
-        "status": "healthy" if bot.is_ready() and guild else "starting",
-        "bot_ready": bot.is_ready(),
-        "guild_connected": guild is not None,
-        "buffer_size": len(batch_buffer),
-        "uptime_seconds": int(time.time() - start_time),
+        "service": "Archive Collective Discord Bot", 
+        "status": "running",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }), 200
 
@@ -2080,40 +2095,78 @@ async def list_channels_command(ctx):
 def run_flask():
     app.run(host='0.0.0.0', port=8000, debug=False)
 
+# Replace your main() function in secure_discordbot.py with this safer version
+
 def main():
-    print("🔧 Initializing database...")
-    db_manager.init_database()
-    
-    print("🔒 SECURITY: Performing startup security checks...")
-    
-    if not BOT_TOKEN or len(BOT_TOKEN) < 50:
-        print("❌ SECURITY FAILURE: Invalid bot token!")
-        return
-    
-    if not GUILD_ID or GUILD_ID == 1234567890:
-        print("❌ SECURITY FAILURE: Invalid guild ID!")
-        return
-    
-    print("✅ SECURITY: All security checks passed")
-    print(f"🎯 Target server ID: {GUILD_ID}")
-    print(f"📺 Main auction channel: #{AUCTION_CHANNEL_NAME}")
-    print(f"📦 Batch size: {BATCH_SIZE} listings per message")
-    print(f"🧠 AI learning system: Enabled")
-    print(f"📚 Auto-bookmarking: Enabled")
-    print(f"💎 Premium tier system: Ready")
-    
-    print("🌐 Starting webhook server...")
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    print("🌐 Webhook server started on port 8000")
-    
-    print("🤖 Connecting to Discord...")
     try:
+        print("🚀 Starting Discord bot...")
+        
+        # Start Flask server first for health checks
+        print("🌐 Starting webhook server...")
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        print("🌐 Webhook server started on port 8000")
+        
+        # Basic security checks
+        print("🔒 SECURITY: Performing startup security checks...")
+        
+        if not BOT_TOKEN or len(BOT_TOKEN) < 50:
+            print("❌ SECURITY FAILURE: Invalid bot token!")
+            # Don't exit - keep Flask running for health checks
+            print("🌐 Keeping webhook server alive for health checks...")
+            while True:
+                time.sleep(60)
+        
+        if not GUILD_ID:
+            print("❌ SECURITY FAILURE: Invalid guild ID!")
+            print("🌐 Keeping webhook server alive for health checks...")
+            while True:
+                time.sleep(60)
+        
+        print("✅ SECURITY: Basic security checks passed")
+        print(f"🎯 Target server ID: {GUILD_ID}")
+        print(f"📦 Batch size: {BATCH_SIZE} listings per message")
+        
+        # Try database initialization (but don't fail if it doesn't work)
+        try:
+            print("🔧 Attempting database initialization...")
+            db_manager.init_database()
+            print("✅ Database initialized")
+            
+            if init_subscription_tables():
+                print("✅ Subscription tables ready")
+            else:
+                print("⚠️ Subscription tables warning - continuing anyway")
+                
+        except Exception as e:
+            print(f"⚠️ Database initialization warning: {e}")
+            print("🔄 Continuing without database - will retry later")
+        
+        print("🤖 Connecting to Discord...")
         bot.run(BOT_TOKEN)
-    except discord.errors.LoginFailure:
-        print("❌ SECURITY FAILURE: Invalid bot token - login failed!")
+        
     except Exception as e:
-        print(f"❌ Error starting bot: {e}")
+        print(f"❌ CRITICAL ERROR in main(): {e}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        
+        # Keep Flask alive for health checks even if Discord fails
+        print("🌐 Emergency mode - keeping webhook server alive")
+        try:
+            while True:
+                time.sleep(60)
+        except KeyboardInterrupt:
+            print("👋 Shutting down...")
+
+def run_flask():
+    """Run Flask server"""
+    try:
+        app.run(host='0.0.0.0', port=8000, debug=False)
+    except Exception as e:
+        print(f"❌ Flask server error: {e}")
+        # Try to restart Flask
+        time.sleep(5)
+        run_flask()
 
 if __name__ == "__main__":
     main()

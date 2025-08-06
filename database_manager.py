@@ -539,3 +539,90 @@ def clear_user_bookmarks(user_id):
     except Exception as e:
         print(f"❌ Error clearing bookmarks: {e}")
         return 0
+
+
+# Add these functions to the END of your database_manager.py file
+
+def init_subscription_tables():
+    """Initialize subscription tracking tables for PostgreSQL"""
+    try:
+        print("🔧 Initializing subscription tables...")
+        
+        # Create user_subscriptions table
+        db_manager.execute_query('''
+            CREATE TABLE IF NOT EXISTS user_subscriptions (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT UNIQUE,
+                tier VARCHAR(20) DEFAULT 'free',
+                email VARCHAR(255),
+                payment_provider VARCHAR(50),
+                subscription_id VARCHAR(100),
+                status VARCHAR(20) DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP
+            )
+        ''' if db_manager.use_postgres else '''
+            CREATE TABLE IF NOT EXISTS user_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER UNIQUE,
+                tier TEXT DEFAULT 'free',
+                email TEXT,
+                payment_provider TEXT,
+                subscription_id TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP
+            )
+        ''')
+        
+        # Add indexes for faster lookups
+        db_manager.execute_query('''
+            CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_id ON user_subscriptions(user_id);
+        ''')
+        
+        db_manager.execute_query('''
+            CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status ON user_subscriptions(status);
+        ''')
+        
+        db_manager.execute_query('''
+            CREATE INDEX IF NOT EXISTS idx_user_subscriptions_tier ON user_subscriptions(tier);
+        ''')
+        
+        print("✅ Subscription tables initialized successfully")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error initializing subscription tables: {e}")
+        return False
+
+def test_postgres_connection():
+    """Test PostgreSQL connection and show database info"""
+    try:
+        # Test basic connection
+        result = db_manager.execute_query('SELECT version()', fetch_one=True)
+        if result:
+            print(f"✅ PostgreSQL connected: {result[0][:50]}...")
+        
+        # Show existing tables
+        tables = db_manager.execute_query('''
+            SELECT table_name FROM information_schema.tables 
+            WHERE table_schema = 'public'
+        ''', fetch_all=True)
+        
+        print(f"📊 Existing tables: {[table[0] for table in tables] if tables else 'None'}")
+        
+        # Show table counts
+        for table_name, in (tables or []):
+            try:
+                count = db_manager.execute_query(f'SELECT COUNT(*) FROM {table_name}', fetch_one=True)
+                print(f"   {table_name}: {count[0] if count else 0} rows")
+            except:
+                print(f"   {table_name}: Error counting rows")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ PostgreSQL connection test failed: {e}")
+        return False
