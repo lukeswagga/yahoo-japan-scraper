@@ -53,7 +53,6 @@ class EnhancedSpamDetector:
                 r'キッズ', r'子供', r'ベビー', r'幼児', r'こども', r'子ども',
                 r'boys', r'girls', r'youth', r'junior'
             ]
-            # REMOVED: 'shoes_general' filter - too aggressive, blocks legitimate items
         }
         
         # Brand-specific spam patterns
@@ -79,23 +78,23 @@ class EnhancedSpamDetector:
         self.brand_specific_allowed = {
             'maison_margiela': ['replica', 'レプリカ'],
             'margiela': ['replica', 'レプリカ'],
-            'undercover': ['cb400', 'vtr250', 'motorcycle', 'バイク', 'engine', 'cb', 'vtr'],  # Allow motorcycle themes for Undercover
-            'rick_owens': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Rick Owens
-            'balenciaga': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Balenciaga
-            'prada': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Prada
-            'celine': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Celine
-            'bottega_veneta': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Bottega Veneta
-            'maison_margiela': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Margiela
-            'comme_des_garcons': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for CDG
-            'raf_simons': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Raf Simons
-            'martine_rose': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Martine Rose
-            'alyx': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Alyx
-            'kiko_kostadinov': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Kiko
-            'chrome_hearts': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Chrome Hearts
-            'hysteric_glamour': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Hysteric Glamour
-            'junya_watanabe': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Junya
-            'vetements': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],  # Allow shoes for Vetements
-            'jean_paul_gaultier': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ']  # Allow shoes for JPG
+            'undercover': ['cb400', 'vtr250', 'motorcycle', 'バイク', 'engine', 'cb', 'vtr'],
+            'rick_owens': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'balenciaga': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'prada': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'celine': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'bottega_veneta': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'maison_margiela': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'comme_des_garcons': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'raf_simons': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'martine_rose': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'alyx': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'kiko_kostadinov': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'chrome_hearts': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'hysteric_glamour': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'junya_watanabe': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'vetements': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ'],
+            'jean_paul_gaultier': ['boot', 'sneaker', 'shoe', '靴', 'シューズ', 'ブーツ']
         }
         
         # Universal exclusions
@@ -324,73 +323,6 @@ class SimpleTrendAnalyzer:
             print(f"Error getting trending brands: {e}")
             conn.close()
             return []
-
-    def update_quality_thresholds():
-    """Make quality filtering much more strict"""
-    
-    # Add to QualityChecker class
-    def check_listing_quality(self, auction_data):
-        issues = []
-        confidence = 0.0
-        
-        title = auction_data.get('title', '')
-        brand = auction_data.get('brand', '')
-        price_usd = auction_data.get('price_usd', 0)
-        
-        # MUCH STRICTER PRICE FILTERING
-        if price_usd < 10:  # Increased from 5
-            issues.append("Price too low - likely fake/damaged")
-            confidence += 0.6
-        elif price_usd > 1000:  # Decreased from 2000
-            issues.append("Price very high - needs verification")
-            confidence += 0.3
-        
-        # STRICTER TITLE REQUIREMENTS
-        if len(title) < 15:  # Increased from 10
-            issues.append("Title too short - insufficient detail")
-            confidence += 0.4
-        
-        # REQUIRE CLOTHING KEYWORDS
-        clothing_keywords = [
-            'shirt', 'tee', 'jacket', 'pants', 'hoodie', 'sweater', 'coat',
-            'シャツ', 'Tシャツ', 'ジャケット', 'パンツ', 'パーカー', 'セーター'
-        ]
-        
-        has_clothing_keyword = any(keyword in title.lower() for keyword in clothing_keywords)
-        if not has_clothing_keyword:
-            issues.append("No clear clothing category identified")
-            confidence += 0.5
-        
-        # BLOCK SUSPICIOUS PATTERNS
-        suspicious_patterns = [
-            'まとめ売り', 'セット', 'ジャンク', 'parts only', 'for parts',
-            'damaged', 'broken', '破れ', '汚れ', '難あり'
-        ]
-        
-        for pattern in suspicious_patterns:
-            if pattern in title.lower():
-                issues.append(f"Suspicious pattern detected: {pattern}")
-                confidence += 0.7
-        
-        # REQUIRE ARCHIVE/QUALITY INDICATORS FOR EXPENSIVE ITEMS
-        if price_usd > 200:
-            quality_indicators = [
-                'archive', 'rare', 'vintage', 'runway', 'collection',
-                'アーカイブ', 'レア', 'ヴィンテージ', 'コレクション'
-            ]
-            has_quality_indicator = any(indicator in title.lower() for indicator in quality_indicators)
-            if not has_quality_indicator:
-                issues.append("Expensive item lacks quality indicators")
-                confidence += 0.4
-        
-        should_block = confidence > 0.5  # Stricter threshold
-        
-        return {
-            'should_block': should_block,
-            'confidence': confidence,
-            'issues': issues,
-            'action': 'block' if should_block else 'allow'
-        }
     
     def get_recent_deals(self, hours=24):
         """Get recent good deals"""
@@ -430,14 +362,14 @@ class SimpleTrendAnalyzer:
             return []
 
 class QualityChecker:
-    """Simple quality checking without ML dependencies"""
+    """Enhanced quality checking with stricter thresholds"""
     
     def __init__(self):
         self.spam_detector = EnhancedSpamDetector()
         self.price_analyzer = SimplePriceAnalytics()
     
     def check_listing_quality(self, auction_data):
-        """Run basic quality checks on a listing"""
+        """Run enhanced quality checks on a listing with much stricter standards"""
         issues = []
         confidence = 0.0
         
@@ -451,31 +383,76 @@ class QualityChecker:
             issues.append(f"Spam detected: {spam_type}")
             confidence += 0.8
         
-        # Price analysis
-        if price_usd < 5:
-            issues.append("Price suspiciously low")
+        # MUCH STRICTER PRICE FILTERING
+        if price_usd < 10:
+            issues.append("Price too low - likely fake/damaged")
+            confidence += 0.6
+        elif price_usd > 1000:
+            issues.append("Price very high - needs verification")
             confidence += 0.3
-        elif price_usd > 2000:
-            issues.append("Price very high")
-            confidence += 0.2
         
-        # Title analysis
-        if len(title) < 10:
-            issues.append("Title too short")
-            confidence += 0.2
+        # STRICTER TITLE REQUIREMENTS
+        if len(title) < 15:
+            issues.append("Title too short - insufficient detail")
+            confidence += 0.4
         
-        # Simple clothing detection
+        # REQUIRE CLOTHING KEYWORDS
         clothing_keywords = [
-            'shirt', 'tee', 'jacket', 'pants', 'hoodie', 'sweater',
-            'シャツ', 'Tシャツ', 'ジャケット', 'パンツ', 'パーカー'
+            'shirt', 'tee', 'jacket', 'pants', 'hoodie', 'sweater', 'coat',
+            'シャツ', 'Tシャツ', 'ジャケット', 'パンツ', 'パーカー', 'セーター'
         ]
         
         has_clothing_keyword = any(keyword in title.lower() for keyword in clothing_keywords)
         if not has_clothing_keyword:
-            issues.append("May not be clothing")
-            confidence += 0.1
+            issues.append("No clear clothing category identified")
+            confidence += 0.5
         
-        should_block = confidence > 0.7
+        # BLOCK SUSPICIOUS PATTERNS
+        suspicious_patterns = [
+            'まとめ売り', 'セット', 'ジャンク', 'parts only', 'for parts',
+            'damaged', 'broken', '破れ', '汚れ', '難あり', 'stain', 'hole'
+        ]
+        
+        for pattern in suspicious_patterns:
+            if pattern in title.lower():
+                issues.append(f"Suspicious pattern detected: {pattern}")
+                confidence += 0.7
+        
+        # REQUIRE ARCHIVE/QUALITY INDICATORS FOR EXPENSIVE ITEMS
+        if price_usd > 200:
+            quality_indicators = [
+                'archive', 'rare', 'vintage', 'runway', 'collection',
+                'アーカイブ', 'レア', 'ヴィンテージ', 'コレクション', 'fw', 'ss',
+                'mainline', 'メインライン', 'homme', 'オム'
+            ]
+            has_quality_indicator = any(indicator in title.lower() for indicator in quality_indicators)
+            if not has_quality_indicator:
+                issues.append("Expensive item lacks quality indicators")
+                confidence += 0.4
+        
+        # BLOCK VERY CHEAP ITEMS WITHOUT ARCHIVE KEYWORDS
+        if price_usd < 25:
+            archive_keywords = ['archive', 'rare', 'vintage', 'アーカイブ', 'レア', 'ヴィンテージ']
+            has_archive = any(keyword in title.lower() for keyword in archive_keywords)
+            if not has_archive:
+                issues.append("Very cheap item without archive justification")
+                confidence += 0.6
+        
+        # BLOCK ITEMS WITH TOO MANY SUSPICIOUS TERMS
+        suspicious_count = 0
+        suspicious_terms = [
+            'used', '中古', 'second hand', 'pre owned', 'worn', '着用',
+            'condition', 'コンディション', 'state', '状態'
+        ]
+        for term in suspicious_terms:
+            if term in title.lower():
+                suspicious_count += 1
+        
+        if suspicious_count >= 3:
+            issues.append("Too many condition-related terms")
+            confidence += 0.3
+        
+        should_block = confidence > 0.5  # Stricter threshold
         
         return {
             'should_block': should_block,
@@ -491,24 +468,24 @@ def test_spam_detection():
     
     test_cases = [
         ("Raf Simons Archive Tee Shirt Size 50", "raf_simons", False),
-        ("CB400SF Engine Parts Motorcycle", "undercover", False),  # Motorcycle themes allowed for Undercover
-        ("Celine Wallet Leather Handbag", "celine", True),  # Still blocked - luxury accessory
+        ("CB400SF Engine Parts Motorcycle", "undercover", False),
+        ("Celine Wallet Leather Handbag", "celine", True),
         ("Rick Owens DRKSHDW Jacket Black", "rick_owens", False),
-        ("Rick Owens Boots Size 42", "rick_owens", False),  # Shoes allowed for Rick Owens
-        ("Computer Server RAM Memory", "maison_margiela", True),  # Electronics blocked
-        ("Miu Miu Dress Women's Size 38", "miu_miu", True),  # Women's clothing blocked for Miu Miu
-        ("Jean Paul Gaultier Femme Blouse", "jean_paul_gaultier", True),  # Women's clothing blocked for JPG
-        ("Balenciaga Kids T-Shirt Size 10", "balenciaga", True),  # Kids clothing blocked
-        ("Balenciaga Triple S Sneakers", "balenciaga", False),  # Shoes allowed for Balenciaga
+        ("Rick Owens Boots Size 42", "rick_owens", False),
+        ("Computer Server RAM Memory", "maison_margiela", True),
+        ("Miu Miu Dress Women's Size 38", "miu_miu", True),
+        ("Jean Paul Gaultier Femme Blouse", "jean_paul_gaultier", True),
+        ("Balenciaga Kids T-Shirt Size 10", "balenciaga", True),
+        ("Balenciaga Triple S Sneakers", "balenciaga", False),
         ("Martine Rose Shirt Size L", "martine_rose", False),
-        ("Undercover Motorcycle Jacket", "undercover", False),  # Motorcycle themes allowed for Undercover
-        ("Random Brand CB400 Engine Parts", "random_brand", True),  # Motorcycle parts blocked for non-fashion brands
-        ("Prada Boots Leather", "prada", False),  # Shoes allowed for Prada
-        ("Celine Sneakers White", "celine", False),  # Shoes allowed for Celine
-        ("Celine Wallet Brown", "celine", True),  # Wallet still blocked for Celine
-        ("Prada Bag Black", "prada", True),  # Bag still blocked for Prada
-        ("Undercover CB400 Jacket", "undercover", False),  # CB400 allowed for Undercover
-        ("Random Brand CB400 Parts", "random_brand", True)  # CB400 blocked for non-Undercover
+        ("Undercover Motorcycle Jacket", "undercover", False),
+        ("Random Brand CB400 Engine Parts", "random_brand", True),
+        ("Prada Boots Leather", "prada", False),
+        ("Celine Sneakers White", "celine", False),
+        ("Celine Wallet Brown", "celine", True),
+        ("Prada Bag Black", "prada", True),
+        ("Undercover CB400 Jacket", "undercover", False),
+        ("Random Brand CB400 Parts", "random_brand", True)
     ]
     
     for title, brand, should_be_spam in test_cases:
