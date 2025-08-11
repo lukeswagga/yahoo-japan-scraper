@@ -1292,36 +1292,39 @@ def search_yahoo_multi_page_optimized(keyword, max_pages, brand, keyword_manager
     return all_listings, total_errors
 
 def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
-    """Parse Yahoo Japan page with enhanced error handling"""
+    """Parse with improved auction ID extraction"""
     listings = []
     skipped_spam = 0
     skipped_duplicates = 0
     processed_count = 0
+    no_id_count = 0
     
     try:
         # Find auction items with multiple possible selectors
         items = []
         
-        # Try different selectors for Yahoo Japan auctions
+        # Try multiple selectors for Yahoo items
         selectors = [
-            'div.Product',
-            'li.Product',
-            'div[data-auction-id]',
-            'div.Product__item',
-            '.Product'
+            'div[class*="Product"]',
+            'li[class*="Product"]', 
+            'div[class*="item"]',
+            'li[class*="item"]',
+            '.auctiontile',
+            '[data-auction-id]'
         ]
         
+        items = []
         for selector in selectors:
             items = soup.select(selector)
-            if items:
-                print(f"✅ Found {len(items)} items using selector: {selector}")
+            if items and len(items) > 10:  # Make sure we got a meaningful result
+                print(f"✅ Using selector: {selector} - found {len(items)} items")
                 break
         
         if not items:
-            print(f"❌ No items found with any selector on page")
+            print("❌ No items found with any selector")
             return []
         
-        for item in items:
+        for item in items[:50]:  # Limit to first 50 items
             try:
                 processed_count += 1
                 
@@ -1329,7 +1332,7 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
                 auction_id = extract_auction_id_safe(item)
                 
                 if not auction_id:
-                    print(f"⚠️ Could not extract auction ID from item {processed_count}")
+                    no_id_count += 1
                     continue
                 
                 # Skip if already seen
@@ -1447,11 +1450,7 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
                 print(f"❌ Error processing item {processed_count}: {str(e)}")
                 continue
         
-        print(f"📊 Page processing complete:")
-        print(f"   🔄 Processed: {processed_count} items")
-        print(f"   ✅ Valid listings: {len(listings)}")
-        print(f"   🚫 Spam filtered: {skipped_spam}")
-        print(f"   ♻️ Duplicates skipped: {skipped_duplicates}")
+        print(f"📊 Processed {processed_count} items, {no_id_count} without auction ID, {len(listings)} valid listings")
         
     except Exception as e:
         print(f"❌ Error parsing page: {str(e)}")
@@ -1461,24 +1460,38 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
     return listings
 
 def extract_auction_id_safe(item):
-    """Safely extract auction ID with better error handling"""
+    """Enhanced auction ID extraction for current Yahoo Japan structure"""
     try:
-        # Method 1: Look in href attributes
-        links = item.find_all('a', href=True)
-        for link in links:
-            href = str(link.get('href', ''))
-            match = re.search(r'[wab]\d{10}', href)
-            if match:
-                return match.group()
+        # Method 1: Check all anchor tags for auction URLs
+        for link in item.find_all('a', href=True):
+            href = link.get('href', '')
+            # Look for auction ID in various URL patterns
+            patterns = [
+                r'/auction/([wab]\d{10})',
+                r'auction\.aspx.*?itemCode=([wab]\d{10})',
+                r'([wab]\d{10})',
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, href)
+                if match:
+                    return match.group(1) if '/' in pattern else match.group(0)
         
-        # Method 2: Look in text content
+        # Method 2: Check data attributes
+        for attr, value in item.attrs.items():
+            if isinstance(value, str):
+                match = re.search(r'([wab]\d{10})', value)
+                if match:
+                    return match.group(0)
+        
+        # Method 3: Check all text content as last resort
         text = item.get_text()
-        match = re.search(r'[wab]\d{10}', text)
+        match = re.search(r'([wab]\d{10})', text)
         if match:
-            return match.group()
-            
+            return match.group(0)
+        
         return None
-    except Exception:
+        
+    except Exception as e:
         return None
 
 
