@@ -107,6 +107,17 @@ class DatabaseManager:
                 reminder_5m_sent BOOLEAN DEFAULT FALSE
             )
         ''')
+
+        # Ensure new columns exist for legacy installations
+        extra_columns = [
+            ("auction_end_time", "TIMESTAMP"),
+            ("reminder_1h_sent", "BOOLEAN DEFAULT FALSE"),
+            ("reminder_5m_sent", "BOOLEAN DEFAULT FALSE"),
+        ]
+        for col_name, col_def in extra_columns:
+            cursor.execute(
+                f"ALTER TABLE listings ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+            )
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reactions (
@@ -218,6 +229,21 @@ class DatabaseManager:
                 reminder_5m_sent BOOLEAN DEFAULT FALSE
             )
         ''')
+
+        # Ensure new columns exist for legacy installations
+        extra_columns = [
+            ("auction_end_time", "TIMESTAMP"),
+            ("reminder_1h_sent", "BOOLEAN DEFAULT FALSE"),
+            ("reminder_5m_sent", "BOOLEAN DEFAULT FALSE"),
+        ]
+        for col_name, col_def in extra_columns:
+            try:
+                cursor.execute(
+                    f"ALTER TABLE listings ADD COLUMN {col_name} {col_def}"
+                )
+            except Exception as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Column addition warning: {e}")
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reactions (
