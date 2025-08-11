@@ -222,21 +222,21 @@ def get_pending_reminders(reminder_type):
         
         if db_manager.use_postgres:
             reminders = db_manager.execute_query('''
-                SELECT ub.user_id, ub.auction_id, ub.bookmark_channel_id, l.title, l.zenmarket_url, ub.auction_end_time
+                SELECT ub.user_id, ub.auction_id, ub.bookmark_channel_id, l.title, l.zenmarket_url, l.auction_end_time
                 FROM user_bookmarks ub
                 JOIN listings l ON ub.auction_id = l.auction_id
-                WHERE ub.auction_end_time <= %s
+                WHERE l.auction_end_time <= %s
                 AND ub.reminder_1h_sent = FALSE
-                ORDER BY ub.auction_end_time ASC
+                ORDER BY l.auction_end_time ASC
             ''', (time_threshold,), fetch_all=True)
         else:
             reminders = db_manager.execute_query('''
-                SELECT ub.user_id, ub.auction_id, ub.bookmark_channel_id, l.title, l.zenmarket_url, ub.auction_end_time
+                SELECT ub.user_id, ub.auction_id, ub.bookmark_channel_id, l.title, l.zenmarket_url, l.auction_end_time
                 FROM user_bookmarks ub
                 JOIN listings l ON ub.auction_id = l.auction_id
-                WHERE ub.auction_end_time <= ?
+                WHERE l.auction_end_time <= ?
                 AND ub.reminder_1h_sent = 0
-                ORDER BY ub.auction_end_time ASC
+                ORDER BY l.auction_end_time ASC
             ''', (time_threshold,), fetch_all=True)
         
         return reminders

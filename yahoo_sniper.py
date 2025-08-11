@@ -1292,25 +1292,30 @@ def search_yahoo_multi_page_optimized(keyword, max_pages, brand, keyword_manager
     return all_listings, total_errors
 
 def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
-    """Parse with improved auction ID extraction"""
+    """Parse with enhanced debugging and extraction"""
     listings = []
     skipped_spam = 0
     skipped_duplicates = 0
     processed_count = 0
     no_id_count = 0
     
+    print(f"🔍 Parsing page for keyword: {keyword}")
+    
     try:
         # Find auction items with multiple possible selectors
         items = []
         
-        # Try multiple selectors for Yahoo items
+        # Enhanced selectors for current Yahoo structure
         selectors = [
+            'div.Product',  # Most common
+            'li.Product',
             'div[class*="Product"]',
-            'li[class*="Product"]', 
             'div[class*="item"]',
             'li[class*="item"]',
             '.auctiontile',
-            '[data-auction-id]'
+            '[data-auction-id]',
+            'div.Item',
+            'li.Item'
         ]
         
         items = []
@@ -1324,110 +1329,118 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
             print("❌ No items found with any selector")
             return []
         
-        for item in items[:50]:  # Limit to first 50 items
-            try:
-                processed_count += 1
-                
-                # Extract auction ID using improved extraction function
-                auction_id = extract_auction_id_safe(item)
-                
-                if not auction_id:
-                    no_id_count += 1
-                    continue
-                
-                # Skip if already seen
-                if auction_id in seen_ids:
-                    skipped_duplicates += 1
-                    continue
-                
-                # Extract title with fallback methods
-                title = None
-                title_selectors = [
-                    '.Product__title a',
-                    '.Product__title',
-                    'h3 a',
-                    'h3',
-                    '.title a',
-                    '.title',
-                    'a[title]'
-                ]
-                
-                for selector in title_selectors:
-                    title_elem = item.select_one(selector)
-                    if title_elem:
-                        title = title_elem.get('title') or title_elem.get_text(strip=True)
-                        if title:
+        for item in items[:50]:  # Process first 50
+            processed_count += 1
+            
+            # Debug first few items
+            if processed_count <= 3:
+                debug_item_structure(item, processed_count)
+            
+            # Extract auction ID with enhanced method
+            auction_id = extract_auction_id_from_item(item)
+            
+            if not auction_id:
+                no_id_count += 1
+                if processed_count <= 5:  # Debug first few failures
+                    print(f"⚠️ Item {processed_count}: No auction ID found")
+                continue
+            
+            print(f"✅ Found auction ID: {auction_id}")
+            
+            # Skip if already seen
+            if auction_id in seen_ids:
+                skipped_duplicates += 1
+                continue
+            
+            # Extract title with fallback methods
+            title = None
+            title_selectors = [
+                '.Product__title a',
+                '.Product__title',
+                'h3 a',
+                'h3',
+                '.title a',
+                '.title',
+                'a[title]'
+            ]
+            
+            for selector in title_selectors:
+                title_elem = item.select_one(selector)
+                if title_elem:
+                    title = title_elem.get('title') or title_elem.get_text(strip=True)
+                    if title:
+                        break
+            
+            if not title:
+                print(f"⚠️ Could not extract title for auction {auction_id}")
+                continue
+            
+            # Extract price with fallback methods
+            price_jpy = None
+            price_selectors = [
+                '.Product__price',
+                '.Price',
+                '.price',
+                '[class*="price"]',
+                '[class*="Price"]'
+            ]
+            
+            for selector in price_selectors:
+                price_elem = item.select_one(selector)
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    price_numbers = re.findall(r'[\d,]+', price_text)
+                    if price_numbers:
+                        try:
+                            price_jpy = int(price_numbers[0].replace(',', ''))
                             break
-                
-                if not title:
-                    print(f"⚠️ Could not extract title for auction {auction_id}")
-                    continue
-                
-                # Extract price with fallback methods
-                price_jpy = None
-                price_selectors = [
-                    '.Product__price',
-                    '.Price',
-                    '.price',
-                    '[class*="price"]',
-                    '[class*="Price"]'
-                ]
-                
-                for selector in price_selectors:
-                    price_elem = item.select_one(selector)
-                    if price_elem:
-                        price_text = price_elem.get_text(strip=True)
-                        price_numbers = re.findall(r'[\d,]+', price_text)
-                        if price_numbers:
-                            try:
-                                price_jpy = int(price_numbers[0].replace(',', ''))
-                                break
-                            except ValueError:
-                                continue
-                
-                if not price_jpy:
-                    print(f"⚠️ Could not extract price for auction {auction_id}")
-                    continue
-                
-                # Convert to USD
-                price_usd = price_jpy / current_usd_jpy_rate if current_usd_jpy_rate else price_jpy / 147.0
-                
-                # Skip if price is outside range
-                if price_usd < MIN_PRICE_USD or price_usd > MAX_PRICE_USD:
-                    continue
-                
-                # Enhanced spam detection (if enabled)
-                spam_detector = EnhancedSpamDetector()
-                matched_brand = detect_brand_in_title(title)
-                
-                is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
-                if is_spam:
-                    skipped_spam += 1
-                    print(f"🚫 Enhanced spam filter blocked: {spam_category}")
-                    continue
-                
-                # Quality check
-                is_quality, quality_reason = is_quality_listing(price_usd, matched_brand, title)
-                if not is_quality:
-                    print(f"❌ Quality check failed: {quality_reason}")
-                    continue
-                
-                # Extract image URL
-                image_url = None
-                img_elem = item.find('img')
-                if img_elem:
-                    image_url = img_elem.get('src') or img_elem.get('data-src')
-                    if image_url and image_url.startswith('//'):
-                        image_url = 'https:' + image_url
-                
-                # Build URLs
-                yahoo_url = f"https://auctions.yahoo.co.jp/jp/auction/{auction_id}"
-                zenmarket_url = f"https://zenmarket.jp/en/auction.aspx?itemCode={auction_id}"
-                
-                # Calculate deal quality and priority
-                deal_quality = calculate_deal_quality(price_usd, matched_brand, title)
-                priority = calculate_priority_score(price_usd, matched_brand, title, deal_quality)
-                
+                        except ValueError:
+                            continue
+            
+            if not price_jpy:
+                print(f"⚠️ Could not extract price for auction {auction_id}")
+                continue
+            
+            # Convert to USD
+            price_usd = price_jpy / current_usd_jpy_rate if current_usd_jpy_rate else price_jpy / 147.0
+            
+            # Skip if price is outside range
+            if price_usd < MIN_PRICE_USD or price_usd > MAX_PRICE_USD:
+                continue
+            
+            # Enhanced spam detection (if enabled)
+            spam_detector = EnhancedSpamDetector()
+            matched_brand = detect_brand_in_title(title)
+            
+            is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
+            if is_spam:
+                skipped_spam += 1
+                print(f"🚫 Enhanced spam filter blocked: {spam_category}")
+                continue
+            
+            # Quality check
+            is_quality, quality_reason = is_quality_listing(price_usd, matched_brand, title)
+            if not is_quality:
+                print(f"❌ Quality check failed: {quality_reason}")
+                continue
+            
+            # Extract image URL
+            image_url = None
+            img_elem = item.find('img')
+            if img_elem:
+                image_url = img_elem.get('src') or img_elem.get('data-src')
+                if image_url and image_url.startswith('//'):
+                    image_url = 'https:' + image_url
+            
+            # Build URLs
+            yahoo_url = f"https://auctions.yahoo.co.jp/jp/auction/{auction_id}"
+            zenmarket_url = f"https://zenmarket.jp/en/auction.aspx?itemCode={auction_id}"
+            
+            # Calculate deal quality and priority
+            deal_quality = calculate_deal_quality(price_usd, matched_brand, title)
+            priority = calculate_priority_score(price_usd, matched_brand, title, deal_quality)
+            
+            try:
                 listing_data = {
                     'auction_id': auction_id,
                     'title': title,
@@ -1459,40 +1472,78 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
     
     return listings
 
-def extract_auction_id_safe(item):
-    """Enhanced auction ID extraction for current Yahoo Japan structure"""
+def extract_auction_id_from_item(item):
+    """Extract auction ID from current Yahoo Japan structure"""
     try:
-        # Method 1: Check all anchor tags for auction URLs
+        # Method 1: Look for auction ID in href attributes (most reliable)
         for link in item.find_all('a', href=True):
             href = link.get('href', '')
-            # Look for auction ID in various URL patterns
-            patterns = [
-                r'/auction/([wab]\d{10})',
-                r'auction\.aspx.*?itemCode=([wab]\d{10})',
-                r'([wab]\d{10})',
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, href)
+            # Match Yahoo auction URLs
+            if 'auction' in href:
+                match = re.search(r'([wab]\d{10})', href)
                 if match:
-                    return match.group(1) if '/' in pattern else match.group(0)
+                    return match.group(1)
         
-        # Method 2: Check data attributes
-        for attr, value in item.attrs.items():
-            if isinstance(value, str):
+        # Method 2: Look for data-auction-id or similar attributes
+        auction_attrs = ['data-auction-id', 'data-auc-id', 'data-itemid']
+        for attr in auction_attrs:
+            if item.has_attr(attr):
+                value = item[attr]
+                if isinstance(value, str) and re.match(r'[wab]\d{10}', value):
+                    return value
+        
+        # Method 3: Look in onclick or other JavaScript attributes
+        for attr in item.attrs:
+            if 'click' in attr.lower() or 'action' in attr.lower():
+                value = str(item.attrs[attr])
                 match = re.search(r'([wab]\d{10})', value)
                 if match:
-                    return match.group(0)
+                    return match.group(1)
         
-        # Method 3: Check all text content as last resort
-        text = item.get_text()
-        match = re.search(r'([wab]\d{10})', text)
-        if match:
-            return match.group(0)
+        # Method 4: Look in nested elements for auction IDs
+        for nested in item.find_all(['span', 'div', 'p']):
+            for attr_name, attr_value in nested.attrs.items():
+                if isinstance(attr_value, str):
+                    match = re.search(r'([wab]\d{10})', attr_value)
+                    if match:
+                        return match.group(1)
+        
+        # Method 5: Look for auction ID in text content (last resort)
+        text_content = item.get_text()
+        # Only look for auction IDs that appear to be standalone (not part of larger numbers)
+        matches = re.findall(r'\b([wab]\d{10})\b', text_content)
+        if matches:
+            return matches[0]
         
         return None
         
     except Exception as e:
+        print(f"❌ Error extracting auction ID: {e}")
         return None
+
+
+def debug_item_structure(item, index):
+    """Debug function to understand item structure"""
+    if index <= 3:  # Only debug first few items
+        print(f"\n🔍 DEBUG Item {index}:")
+        print(f"   Tag: {item.name}")
+        print(f"   Classes: {item.get('class', [])}")
+        print(f"   Attributes: {list(item.attrs.keys())}")
+        
+        # Look for any links
+        links = item.find_all('a', href=True)
+        if links:
+            print(f"   Links found: {len(links)}")
+            for i, link in enumerate(links[:2]):  # First 2 links
+                print(f"     Link {i}: {link.get('href', '')[:100]}")
+        else:
+            print("   No links found")
+        
+        # Look for text that might contain auction ID
+        text = item.get_text()[:200]
+        auction_matches = re.findall(r'[wab]\d{10}', text)
+        if auction_matches:
+            print(f"   Auction IDs in text: {auction_matches}")
 
 
 def send_to_discord_bot(listing_data):
