@@ -2113,6 +2113,32 @@ def stats():
         "buffer_size": len(batch_buffer)
     }), 200
 
+@app.route('/webhook/listing', methods=['POST'])
+def webhook_listing():
+    """Receive listing from Yahoo sniper"""
+    try:
+        if not request.is_json:
+            return jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
+        
+        listing_data = request.get_json()
+        
+        if not listing_data or 'auction_id' not in listing_data:
+            return jsonify({"status": "error", "message": "Invalid listing data"}), 400
+        
+        # Run the async function in the bot's event loop
+        if bot.is_ready():
+            asyncio.run_coroutine_threadsafe(
+                send_single_listing_enhanced(listing_data), 
+                bot.loop
+            )
+            return jsonify({"status": "success", "message": "Listing received"}), 200
+        else:
+            return jsonify({"status": "error", "message": "Bot not ready"}), 503
+            
+    except Exception as e:
+        print(f"❌ Webhook error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 class PremiumTierManager:
     def __init__(self, bot):
         self.bot = bot
@@ -2906,17 +2932,9 @@ class HealthHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # Suppress HTTP logs
 
-def run_health_server():
-    """Run health check server on Railway's PORT"""
-    port = int(os.environ.get('PORT', 8000))
-    server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    print(f"🌐 Health server running on port {port}")
-    server.serve_forever()
 
-def start_health_server():
-    """Start health server in background thread"""
-    health_thread = threading.Thread(target=run_health_server, daemon=True)
-    health_thread.start()
+
+
 
 def run_flask():
     try:
@@ -2983,9 +3001,6 @@ def main():
             print("👋 Shutting down...")
 
 if __name__ == "__main__":
-    # Start health server for Railway
-    start_health_server()
-    
     # Initialize database
     if not test_postgres_connection():
         print("⚠️ Database connection issues detected")
