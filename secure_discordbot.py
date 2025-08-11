@@ -1031,7 +1031,20 @@ async def on_reaction_add(reaction, user):
     if str(reaction.emoji) not in ["👍", "👎"]:
         return
     
-    proxy_service, setup_complete = get_user_proxy_preference(user.id)
+    # Direct database check for setup completion
+    result = db_manager.execute_query(
+        'SELECT setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT setup_complete FROM user_preferences WHERE user_id = ?',
+        (user.id,),
+        fetch_one=True
+    )
+
+    setup_complete = False
+    if result:
+        if isinstance(result, dict):
+            setup_complete = result.get('setup_complete', False)
+        elif isinstance(result, (list, tuple)) and len(result) > 0:
+            setup_complete = bool(result[0])
+
     if not setup_complete:
         embed = discord.Embed(
             title="⚠️ Setup Required",
@@ -1195,6 +1208,12 @@ async def handle_setup_reaction(reaction, user):
     embed.add_field(
         name="📚 Bookmarks",
         value="When you react 👍 to listings, they'll be automatically bookmarked in your own private channel!",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📏 Next: Set Your Sizes (Optional)",
+        value="Use `!set_sizes S M L` to set size preferences for alerts!",
         inline=False
     )
     
