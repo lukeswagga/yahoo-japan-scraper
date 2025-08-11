@@ -1689,22 +1689,7 @@ async def bookmarks_command(ctx):
     embed.set_footer(text="Use !clear_bookmarks to remove all bookmarks")
     await ctx.send(embed=embed)
 
-@bot.command(name='clear_bookmarks')
-async def clear_bookmarks_command(ctx):
-    user_id = ctx.author.id
-    
-    count = clear_user_bookmarks(user_id)
-    
-    if count == 0:
-        await ctx.send("❌ You don't have any bookmarks to clear!")
-        return
-    
-    embed = discord.Embed(
-        title="🗑️ Bookmarks Cleared",
-        description=f"Successfully removed **{count}** bookmarks.",
-        color=0x00ff00
-    )
-    await ctx.send(embed=embed)
+
 
 @bot.command(name='db_debug')
 async def db_debug_command(ctx):
