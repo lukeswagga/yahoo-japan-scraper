@@ -34,6 +34,9 @@ DISCORD_BOT_WEBHOOK = os.getenv('DISCORD_BOT_WEBHOOK', "http://localhost:8000/we
 DISCORD_BOT_HEALTH = os.getenv('DISCORD_BOT_HEALTH', "http://localhost:8000/health") 
 DISCORD_BOT_STATS = os.getenv('DISCORD_BOT_STATS', "http://localhost:8000/stats")
 DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'http://localhost:8000')
+# Add this validation
+if DISCORD_BOT_URL and not DISCORD_BOT_URL.startswith(('http://', 'https://')):
+    DISCORD_BOT_URL = f"https://{DISCORD_BOT_URL}"
 USE_DISCORD_BOT = True
 
 MAX_PRICE_YEN = 100000
@@ -1002,9 +1005,9 @@ def search_yahoo_multi_page_intensive(keyword_combo, max_pages, brand, keyword_m
                     if "femme" in title.lower():
                         continue
                     
-                    auc_id = link.split("/")[-1].split("?")[0]
+                    auc_id = extract_auction_id_safe(item) or link.split("/")[-1].split("?")[0]
                     
-                    if auc_id in seen_ids:
+                    if not auc_id or auc_id in seen_ids:
                         continue
                     
                     if check_if_auction_exists_in_db(auc_id):
@@ -1322,28 +1325,8 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
             try:
                 processed_count += 1
                 
-                # Extract auction ID with fallback methods
-                auction_id = None
-                
-                # Method 1: data-auction-id attribute
-                auction_id = item.get('data-auction-id')
-                
-                # Method 2: href links
-                if not auction_id:
-                    link = item.find('a', href=True)
-                    if link:
-                        href = link['href']
-                        import re
-                        match = re.search(r'[wab]\d{10}', href)
-                        if match:
-                            auction_id = match.group()
-                
-                # Method 3: Look in text content
-                if not auction_id:
-                    text_content = item.get_text()
-                    match = re.search(r'[wab]\d{10}', text_content)
-                    if match:
-                        auction_id = match.group()
+                # Extract auction ID using improved extraction function
+                auction_id = extract_auction_id_safe(item)
                 
                 if not auction_id:
                     print(f"⚠️ Could not extract auction ID from item {processed_count}")
@@ -1477,6 +1460,26 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
     
     return listings
 
+def extract_auction_id_safe(item):
+    """Safely extract auction ID with better error handling"""
+    try:
+        # Method 1: Look in href attributes
+        links = item.find_all('a', href=True)
+        for link in links:
+            href = str(link.get('href', ''))
+            match = re.search(r'[wab]\d{10}', href)
+            if match:
+                return match.group()
+        
+        # Method 2: Look in text content
+        text = item.get_text()
+        match = re.search(r'[wab]\d{10}', text)
+        if match:
+            return match.group()
+            
+        return None
+    except Exception:
+        return None
 
 
 def send_to_discord_bot(listing_data):
