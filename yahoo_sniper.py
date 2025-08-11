@@ -33,6 +33,7 @@ def run_health_server():
 DISCORD_BOT_WEBHOOK = os.getenv('DISCORD_BOT_WEBHOOK', "http://localhost:8000/webhook")
 DISCORD_BOT_HEALTH = os.getenv('DISCORD_BOT_HEALTH', "http://localhost:8000/health") 
 DISCORD_BOT_STATS = os.getenv('DISCORD_BOT_STATS', "http://localhost:8000/stats")
+DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'http://localhost:8000')
 USE_DISCORD_BOT = True
 
 MAX_PRICE_YEN = 100000
@@ -1479,7 +1480,7 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
 
 
 def send_to_discord_bot(listing_data):
-    """Send listing to Discord bot with better error handling"""
+    """Send listing to Discord bot with correct URL"""
     try:
         if not USE_DISCORD_BOT:
             return False
@@ -1491,8 +1492,11 @@ def send_to_discord_bot(listing_data):
         if 'seller_id' not in listing_data:
             listing_data['seller_id'] = 'unknown'
         
+        # FIXED: Use correct webhook endpoint
+        webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
+        
         response = requests.post(
-            f"{DISCORD_BOT_WEBHOOK}/webhook/listing",
+            webhook_url,
             json=listing_data,
             timeout=10,
             headers={'Content-Type': 'application/json'}
@@ -1503,14 +1507,9 @@ def send_to_discord_bot(listing_data):
         else:
             print(f"❌ Discord bot responded with status {response.status_code}")
             print(f"❌ Response: {response.text}")
+            print(f"❌ URL used: {webhook_url}")
             return False
             
-    except requests.exceptions.Timeout:
-        print(f"⏰ Timeout sending to Discord bot: {listing_data.get('auction_id', 'unknown')}")
-        return False
-    except requests.exceptions.ConnectionError:
-        print(f"🔌 Connection error sending to Discord bot")
-        return False
     except Exception as e:
         print(f"❌ Error sending to Discord bot: {e}")
         return False
