@@ -990,16 +990,10 @@ async def on_reaction_add(reaction, user):
     if user.bot:
         return
     
-    if reaction.message.embeds and len(reaction.message.embeds) > 0:
-        embed = reaction.message.embeds[0]
-        if embed.title and "Setup" in embed.title:
-            await handle_setup_reaction(reaction, user)
-            return
-    
     if str(reaction.emoji) not in ["👍", "👎"]:
         return
     
-    # Direct database check for setup completion
+    # Setup check (existing code)
     result = db_manager.execute_query(
         'SELECT setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT setup_complete FROM user_preferences WHERE user_id = ?',
         (user.id,),
@@ -1014,19 +1008,13 @@ async def on_reaction_add(reaction, user):
             setup_complete = bool(result[0])
 
     if not setup_complete:
-        embed = discord.Embed(
-            title="⚠️ Setup Required",
-            description="Please complete your setup first using `!setup`!",
-            color=0xff9900
-        )
-        dm_channel = await user.create_dm()
-        await dm_channel.send(embed=embed)
+        try:
+            await user.send("⚠️ Please complete your setup first using `!setup`!")
+        except:
+            pass
         return
     
-    if not (reaction.message.channel.name == AUCTION_CHANNEL_NAME or 
-            reaction.message.channel.name.startswith("🏷️-")):
-        return
-    
+    # Extract auction ID
     if not reaction.message.embeds:
         return
     
@@ -1040,42 +1028,23 @@ async def on_reaction_add(reaction, user):
     auction_id = auction_id_match.group(1)
     reaction_type = "thumbs_up" if str(reaction.emoji) == "👍" else "thumbs_down"
     
-    result = db_manager.execute_query('''
-        SELECT title, brand, price_jpy, price_usd, seller_id, yahoo_url, deal_quality
-        FROM listings WHERE auction_id = ?
-    ''', (auction_id,), fetch_one=True)
+    # Save reaction to database
+    try:
+        db_manager.execute_query('''
+            INSERT INTO reactions (user_id, auction_id, reaction_type)
+            VALUES (%s, %s, %s)
+        ''' if db_manager.use_postgres else '''
+            INSERT INTO reactions (user_id, auction_id, reaction_type)
+            VALUES (?, ?, ?)
+        ''', (user.id, auction_id, reaction_type))
+        print(f"✅ Saved {reaction_type} reaction for {user.name}")
+    except Exception as e:
+        print(f"❌ Error saving reaction: {e}")
     
-    if result:
-        title, brand, price_jpy, price_usd, seller_id, yahoo_url, deal_quality = result
-        
-        auction_data = {
-            'auction_id': auction_id,
-            'title': title,
-            'brand': brand,
-            'price_jpy': price_jpy,
-            'price_usd': price_usd,
-            'seller_id': seller_id,
-            'deal_quality': deal_quality,
-            'zenmarket_url': generate_proxy_url(auction_id, proxy_service),
-            'image_url': ''
-        }
-        
-        if preference_learner:
-            preference_learner.learn_from_reaction(user.id, auction_data, reaction_type)
-        
-        # Note: User reaction logged via preference_learner above
-        
-        if reaction_type == "thumbs_up":
-            # Save reaction to database
-            db_manager.execute_query('''
-                INSERT INTO reactions (user_id, auction_id, reaction_type)
-                VALUES (%s, %s, 'thumbs_up')
-            ''' if db_manager.use_postgres else '''
-                INSERT INTO reactions (user_id, auction_id, reaction_type)
-                VALUES (?, ?, 'thumbs_up')
-            ''', (user.id, auction_id))
-            
-            # Get auction data
+    # For thumbs up, create bookmark channel
+    if str(reaction.emoji) == "👍":
+        try:
+            # FIXED QUERY - use the correct column names from your database
             result = db_manager.execute_query('''
                 SELECT title, brand, price_jpy, price_usd, seller_id, zenmarket_url, deal_quality
                 FROM listings WHERE auction_id = %s
@@ -1088,34 +1057,29 @@ async def on_reaction_add(reaction, user):
                 auction_data = {
                     'auction_id': auction_id,
                     'title': result[0],
-                    'brand': result[1], 
+                    'brand': result[1],
                     'price_jpy': result[2],
                     'price_usd': result[3],
                     'seller_id': result[4],
-                    'zenmarket_url': result[5],
+                    'zenmarket_url': result[5],  # Changed from yahoo_url to zenmarket_url
                     'deal_quality': result[6]
                 }
                 
-                # Create bookmark channel and save
+                # Create bookmark channel
                 success = await create_bookmark_channel_for_user(user, auction_data)
                 
                 if success:
                     await reaction.message.add_reaction("✅")
+                    print(f"✅ Created bookmark for {user.name}")
                 else:
                     await reaction.message.add_reaction("⚠️")
-        else:
-            # Save thumbs down reaction to database
-            db_manager.execute_query('''
-                INSERT INTO reactions (user_id, auction_id, reaction_type)
-                VALUES (%s, %s, 'thumbs_down')
-            ''' if db_manager.use_postgres else '''
-                INSERT INTO reactions (user_id, auction_id, reaction_type)
-                VALUES (?, ?, 'thumbs_down')
-            ''', (user.id, auction_id))
-            
-            await reaction.message.add_reaction("❌")
-        
-        print(f"✅ Learned from {user.name}'s {reaction_type} on {brand} item")
+                    print(f"⚠️ Bookmark failed for {user.name}")
+            else:
+                print(f"❌ No listing found for auction ID: {auction_id}")
+                
+        except Exception as e:
+            print(f"❌ Error in thumbs up handler: {e}")
+            await reaction.message.add_reaction("⚠️")
 
 
 
@@ -1805,6 +1769,68 @@ async def create_bookmark_channel_for_user(user, auction_data):
         print(f"❌ Error creating bookmark channel: {e}")
         return False
 
+async def create_bookmark_channel_for_user(user, auction_data):
+    """Create private bookmark channel for user"""
+    try:
+        # Create channel name like: bookmarks-lukeswagga
+        channel_name = f"bookmarks-{user.name.lower()}"
+        
+        # Check if channel already exists
+        existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
+        
+        if not existing_channel:
+            # Create private channel with proper permissions
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            }
+            
+            bookmark_channel = await guild.create_text_channel(
+                channel_name,
+                overwrites=overwrites,
+                topic=f"Private bookmark channel for {user.display_name}"
+            )
+            
+            # Send welcome message
+            welcome_embed = discord.Embed(
+                title="📚 Welcome to Your Personal Bookmark Channel!",
+                description=f"Hi {user.mention}! This is your private bookmark channel.\n\nWhenever you react 👍 to auction listings, they'll be automatically saved here.",
+                color=0x0099ff
+            )
+            await bookmark_channel.send(embed=welcome_embed)
+            
+        else:
+            bookmark_channel = existing_channel
+        
+        # Create the bookmark embed
+        embed = discord.Embed(
+            title=f"📌 {auction_data['brand']} {auction_data['title'][:50]}...",
+            url=auction_data['zenmarket_url'],
+            color=0x00ff00
+        )
+        
+        embed.add_field(name="💰 Price", value=f"¥{auction_data['price_jpy']:,} (~${auction_data['price_usd']:.2f})", inline=True)
+        embed.add_field(name="🏷️ Brand", value=auction_data['brand'], inline=True)
+        embed.add_field(name="📊 Quality", value=f"{auction_data.get('deal_quality', 0.5):.1%}", inline=True)
+        embed.add_field(name="👤 Seller", value=auction_data.get('seller_id', 'unknown'), inline=True)
+        
+        current_time = datetime.now().strftime('%Y-%m-%d at %H:%M:%S UTC')
+        embed.set_footer(text=f"📌 Bookmarked from ID: {auction_data['auction_id']} | {current_time}")
+        
+        # Send to bookmark channel
+        await bookmark_channel.send(embed=embed)
+        
+        # Save to database
+        add_user_bookmark(user.id, auction_data['auction_id'], 0, bookmark_channel.id)
+        
+        print(f"✅ Created bookmark in #{channel_name} for {user.name}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error creating bookmark channel: {e}")
+        return False
+
 @bot.command(name='preferences')
 async def preferences_command(ctx):
     user_id = ctx.author.id
@@ -1857,59 +1883,63 @@ async def preferences_command(ctx):
 
 @bot.command(name='export')
 async def export_command(ctx):
-    all_reactions = db_manager.execute_query('''
-        SELECT r.reaction_type, r.created_at, l.title, l.brand, l.price_jpy, 
-               l.price_usd, l.seller_id, l.zenmarket_url, l.yahoo_url, l.auction_id,
-               l.deal_quality, l.priority_score
-        FROM reactions r
-        JOIN listings l ON r.auction_id = l.auction_id
-        WHERE r.user_id = %s
-        ORDER BY r.created_at DESC
-    ''' if db_manager.use_postgres else '''
-        SELECT r.reaction_type, r.created_at, l.title, l.brand, l.price_jpy, 
-               l.price_usd, l.seller_id, l.zenmarket_url, l.yahoo_url, l.auction_id,
-               l.deal_quality, l.priority_score
-        FROM reactions r
-        JOIN listings l ON r.auction_id = l.auction_id
-        WHERE r.user_id = ?
-        ORDER BY r.created_at DESC
-    ''', (ctx.author.id,), fetch_all=True)
-    
-    if not all_reactions:
-        await ctx.send("❌ No reactions found!")
-        return
-    
-    export_text = f"# {ctx.author.display_name}'s Auction Reactions Export\n"
-    export_text += f"# Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
-    export_text += f"# Total Reactions: {len(all_reactions)}\n\n"
-    
-    liked_count = sum(1 for r in all_reactions if r[0] == 'thumbs_up')
-    disliked_count = len(all_reactions) - liked_count
-    
-    export_text += f"## Summary\n"
-    export_text += f"👍 Liked: {liked_count}\n"
-    export_text += f"👎 Disliked: {disliked_count}\n"
-    export_text += f"Positivity Rate: {liked_count/len(all_reactions)*100:.1f}%\n\n"
-    
-    for reaction_type in ['thumbs_up', 'thumbs_down']:
-        emoji = "👍 LIKED" if reaction_type == 'thumbs_up' else "👎 DISLIKED"
-        export_text += f"## {emoji} LISTINGS\n\n"
-        
-        filtered_reactions = [r for r in all_reactions if r[0] == reaction_type]
-        
-        for i, (_, created_at, title, brand, price_jpy, price_usd, seller_id, zenmarket_url, yahoo_url, auction_id, deal_quality, priority) in enumerate(filtered_reactions, 1):
-            export_text += f"{i}. **{title}**\n"
-            export_text += f"   Brand: {brand.replace('_', ' ').title()}\n"
-            export_text += f"   Price: ¥{price_jpy:,} (~${price_usd:.2f})\n"
-            export_text += f"   Quality: {deal_quality:.1%} | Priority: {priority:.0f}\n"
-            export_text += f"   Seller: {seller_id}\n"
-            export_text += f"   Date: {created_at}\n"
-            export_text += f"   ZenMarket: {zenmarket_url}\n"
-            export_text += f"   Yahoo: {yahoo_url}\n\n"
-    
-    filename = f"auction_reactions_{ctx.author.id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.txt"
-    
     try:
+        all_reactions = db_manager.execute_query('''
+            SELECT r.reaction_type, r.created_at, l.title, l.brand, l.price_jpy, 
+                   l.price_usd, l.seller_id, l.zenmarket_url, l.yahoo_url, l.auction_id,
+                   l.deal_quality, l.priority_score
+            FROM reactions r
+            JOIN listings l ON r.auction_id = l.auction_id
+            WHERE r.user_id = %s
+            ORDER BY r.created_at DESC
+        ''' if db_manager.use_postgres else '''
+            SELECT r.reaction_type, r.created_at, l.title, l.brand, l.price_jpy, 
+                   l.price_usd, l.seller_id, l.zenmarket_url, l.yahoo_url, l.auction_id,
+                   l.deal_quality, l.priority_score
+            FROM reactions r
+            JOIN listings l ON r.auction_id = l.auction_id
+            WHERE r.user_id = ?
+            ORDER BY r.created_at DESC
+        ''', (ctx.author.id,), fetch_all=True)
+        
+        if not all_reactions:
+            await ctx.send("❌ No reactions found! React to some listings first.")
+            return
+        
+        export_text = f"# {ctx.author.display_name}'s Auction Reactions Export\n"
+        export_text += f"# Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
+        export_text += f"# Total Reactions: {len(all_reactions)}\n\n"
+        
+        liked_count = sum(1 for r in all_reactions if r[0] == 'thumbs_up')
+        disliked_count = len(all_reactions) - liked_count
+        
+        export_text += f"## Summary\n"
+        export_text += f"👍 Liked: {liked_count}\n"
+        export_text += f"👎 Disliked: {disliked_count}\n"
+        export_text += f"Positivity Rate: {liked_count/len(all_reactions)*100:.1f}%\n\n"
+        
+        for reaction_type in ['thumbs_up', 'thumbs_down']:
+            emoji = "👍 LIKED" if reaction_type == 'thumbs_up' else "👎 DISLIKED"
+            export_text += f"## {emoji} LISTINGS\n\n"
+            
+            filtered_reactions = [r for r in all_reactions if r[0] == reaction_type]
+            
+            for i, reaction_data in enumerate(filtered_reactions, 1):
+                (_, created_at, title, brand, price_jpy, price_usd, seller_id, zenmarket_url, yahoo_url, auction_id, deal_quality, priority) = reaction_data
+                export_text += f"{i}. **{title}**\n"
+                export_text += f"   Brand: {brand}\n"
+                export_text += f"   Price: ¥{price_jpy:,} (~${price_usd:.2f})\n"
+                export_text += f"   Quality: {deal_quality:.1%} | Priority: {priority:.0f}\n"
+                export_text += f"   Seller: {seller_id}\n"
+                export_text += f"   Date: {created_at}\n"
+                export_text += f"   ZenMarket: {zenmarket_url}\n"
+                if yahoo_url:
+                    export_text += f"   Yahoo: {yahoo_url}\n"
+                export_text += f"\n"
+        
+        # Send as file
+        filename = f"auction_reactions_{ctx.author.id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.txt"
+        
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(export_text)
         
@@ -1922,10 +1952,13 @@ async def export_command(ctx):
             )
             await ctx.send(embed=embed, file=file)
         
+        # Clean up file
+        import os
         os.remove(filename)
         
     except Exception as e:
-        await ctx.send(f"❌ Error creating export file: {e}")
+        print(f"❌ Export error: {e}")
+        await ctx.send(f"❌ Error creating export: {e}")
 
 @bot.command(name='scraper_stats')
 async def scraper_stats_command(ctx):
