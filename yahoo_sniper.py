@@ -1473,41 +1473,28 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
     return listings
 
 def extract_auction_id_from_item(item):
-    """Extract auction ID - the issue is we're not extracting from the right place"""
+    """Simple auction ID extraction - stop overthinking it"""
     try:
-        # Method 1: Extract from href (this should work for your case)
         for link in item.find_all('a', href=True):
             href = link.get('href', '')
-            print(f"🔍 Checking href: {href}")
             
-            # Direct extraction from URL path
-            if '/auction/' in href:
-                # Extract from URL like: https://auctions.yahoo.co.jp/jp/auction/c1192768539
+            # Skip dummy links
+            if href == '#dummy' or 'dummy' in href:
+                continue
+                
+            # Extract auction ID from Yahoo auction URLs
+            if 'auctions.yahoo.co.jp' in href and '/auction/' in href:
+                # Get everything after /auction/
                 auction_id = href.split('/auction/')[-1]
-                if re.match(r'^[wab]\d{10}$', auction_id):
-                    print(f"✅ Found auction ID: {auction_id}")
-                    return auction_id
-            
-            # Regex extraction as backup
-            match = re.search(r'([wab]\d{10})', href)
-            if match:
-                auction_id = match.group(1)
-                print(f"✅ Found auction ID via regex: {auction_id}")
+                
+                # Remove any query parameters or fragments
+                auction_id = auction_id.split('?')[0].split('#')[0]
+                
                 return auction_id
         
-        # Method 2: Check text content
-        text = item.get_text()
-        match = re.search(r'([wab]\d{10})', text)
-        if match:
-            auction_id = match.group(1)
-            print(f"✅ Found auction ID in text: {auction_id}")
-            return auction_id
-        
-        print(f"❌ No auction ID found in item")
         return None
         
     except Exception as e:
-        print(f"❌ Error extracting auction ID: {e}")
         return None
 
 
