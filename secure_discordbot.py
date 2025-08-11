@@ -1003,19 +1003,16 @@ async def on_ready():
         delayed_manager = DelayedListingManager()
         
         # Initialize new systems
-        reminder_system = BookmarkReminderSystem(bot)
         size_alert_system = SizeAlertSystem(bot)
         
         # Start background tasks
         bot.loop.create_task(process_batch_buffer())
         bot.loop.create_task(delayed_manager.process_delayed_queue())
-        bot.loop.create_task(reminder_system.start_reminder_loop())
         
         print("⏰ Started batch buffer processor")
         print("🧠 User preference learning system initialized")
         print("💎 Premium tier system initialized")
         print("⏳ Delayed listing manager started")
-        print("🔔 Bookmark reminder system started")
         print("📏 Size alert system initialized")
     else:
         print(f'❌ Could not find server with ID: {GUILD_ID}')
