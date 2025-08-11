@@ -1098,8 +1098,6 @@ async def on_reaction_add(reaction, user):
         # Note: User reaction logged via preference_learner above
         
         if reaction_type == "thumbs_up":
-            print(f"👍 User {user.name} liked {auction_data['title'][:30]}... - Creating bookmark")
-            
             # Save reaction to database
             db_manager.execute_query('''
                 INSERT INTO reactions (user_id, auction_id, reaction_type)
@@ -1109,16 +1107,34 @@ async def on_reaction_add(reaction, user):
                 VALUES (?, ?, 'thumbs_up')
             ''', (user.id, auction_id))
             
-            # Create bookmark using actual function
-            bookmark_success = add_user_bookmark(user.id, auction_id, reaction.message.id, reaction.message.channel.id)
+            # Get auction data
+            result = db_manager.execute_query('''
+                SELECT title, brand, price_jpy, price_usd, seller_id, zenmarket_url, deal_quality
+                FROM listings WHERE auction_id = %s
+            ''' if db_manager.use_postgres else '''
+                SELECT title, brand, price_jpy, price_usd, seller_id, zenmarket_url, deal_quality
+                FROM listings WHERE auction_id = ?
+            ''', (auction_id,), fetch_one=True)
             
-            if bookmark_success:
-                await reaction.message.add_reaction("📚")
-                await reaction.message.add_reaction("✅")
-                print(f"✅ Bookmark created successfully for {user.name}")
-            else:
-                await reaction.message.add_reaction("⚠️")
-                print(f"⚠️ Bookmark failed for {user.name}")
+            if result:
+                auction_data = {
+                    'auction_id': auction_id,
+                    'title': result[0],
+                    'brand': result[1], 
+                    'price_jpy': result[2],
+                    'price_usd': result[3],
+                    'seller_id': result[4],
+                    'zenmarket_url': result[5],
+                    'deal_quality': result[6]
+                }
+                
+                # Create bookmark channel and save
+                success = await create_bookmark_channel_for_user(user, auction_data)
+                
+                if success:
+                    await reaction.message.add_reaction("✅")
+                else:
+                    await reaction.message.add_reaction("⚠️")
         else:
             # Save thumbs down reaction to database
             db_manager.execute_query('''
@@ -1688,6 +1704,7 @@ async def test_command(ctx):
 
 @bot.command(name='stats')
 async def stats_command(ctx):
+    # Fix the parameter placeholders
     stats = db_manager.execute_query('''
         SELECT 
             COUNT(*) as total,
@@ -1704,16 +1721,13 @@ async def stats_command(ctx):
         WHERE user_id = ?
     ''', (ctx.author.id,), fetch_one=True)
     
-    total, thumbs_up, thumbs_down = stats[0], stats[1] or 0, stats[2] or 0
+    if not stats:
+        await ctx.send("❌ No stats found. React to some listings first!")
+        return
     
-    top_brands = db_manager.execute_query('''
-        SELECT brand, preference_score FROM user_brand_preferences 
-        WHERE user_id = %s ORDER BY preference_score DESC LIMIT 3
-    ''' if db_manager.use_postgres else '''
-        SELECT brand, preference_score FROM user_brand_preferences 
-        WHERE user_id = ? ORDER BY preference_score DESC LIMIT 3
-    ''', (ctx.author.id,), fetch_all=True)
+    total, thumbs_up, thumbs_down = stats[0] if isinstance(stats, (list, tuple)) else (stats.get('total', 0), stats.get('thumbs_up', 0), stats.get('thumbs_down', 0))
     
+    # Fix the other queries too
     bookmark_count = db_manager.execute_query(
         'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = %s' if db_manager.use_postgres else 'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
         (ctx.author.id,),
@@ -1732,9 +1746,10 @@ async def stats_command(ctx):
     )
     
     if bookmark_count:
+        count = bookmark_count[0] if isinstance(bookmark_count, (list, tuple)) else bookmark_count.get('count', 0)
         embed.add_field(
             name="📚 Bookmarks",
-            value=f"Total: {bookmark_count[0]}",
+            value=f"Total: {count}",
             inline=True
         )
     
@@ -1746,15 +1761,81 @@ async def stats_command(ctx):
             inline=True
         )
     
-    if top_brands:
-        brand_text = "\n".join([f"{brand.replace('_', ' ').title()}: {score:.1%}" for brand, score in top_brands])
-        embed.add_field(
-            name="🏷️ Top Preferred Brands",
-            value=brand_text,
-            inline=False
-        )
-    
     await ctx.send(embed=embed)
+
+async def create_bookmark_channel_for_user(user, auction_data):
+    """Create private bookmark channel like in your screenshots"""
+    try:
+        # Create channel name like: bookmarks-lukeswagga
+        channel_name = f"bookmarks-{user.name.lower()}"
+        
+        # Check if channel already exists
+        existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
+        
+        if not existing_channel:
+            # Create private channel with proper permissions
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            }
+            
+            bookmark_channel = await guild.create_text_channel(
+                channel_name,
+                overwrites=overwrites,
+                topic=f"Private bookmark channel for {user.display_name} - Your liked auction listings"
+            )
+            
+            # Send welcome message
+            welcome_embed = discord.Embed(
+                title="📚 Welcome to Your Personal Bookmark Channel!",
+                description=f"Hi {user.mention}! This is your private bookmark channel.\n\nWhenever you react 👍 to auction listings, they'll be automatically saved here for easy reference.",
+                color=0x0099ff
+            )
+            await bookmark_channel.send(embed=welcome_embed)
+            
+        else:
+            bookmark_channel = existing_channel
+        
+        # Create the bookmark embed (like in your screenshot)
+        embed = discord.Embed(
+            title=f"📌 {auction_data['brand']} {auction_data['title'][:50]}...",
+            url=auction_data['zenmarket_url'],
+            color=0x00ff00
+        )
+        
+        embed.add_field(name="💰 Price", value=f"¥{auction_data['price_jpy']:,} (~${auction_data['price_usd']:.2f})", inline=True)
+        embed.add_field(name="🏷️ Brand", value=auction_data['brand'], inline=True)
+        embed.add_field(name="📊 Quality", value=f"{auction_data.get('deal_quality', 0.5):.1%}", inline=True)
+        embed.add_field(name="⭐ Priority", value=f"{auction_data.get('priority', 100)}", inline=True)
+        embed.add_field(name="👤 Seller", value=auction_data.get('seller_id', 'unknown'), inline=True)
+        
+        # Add proxy links
+        proxy_links = []
+        for key, proxy_info in SUPPORTED_PROXIES.items():
+            proxy_url = proxy_info['url_template'].format(auction_id=auction_data['auction_id'])
+            proxy_links.append(f"[{proxy_info['name']}]({proxy_url})")
+        
+        embed.add_field(name="🛒 Proxy Links", value=" | ".join(proxy_links), inline=False)
+        
+        if auction_data.get('image_url'):
+            embed.set_thumbnail(url=auction_data['image_url'])
+        
+        current_time = datetime.now().strftime('%Y-%m-%d at %H:%M:%S UTC')
+        embed.set_footer(text=f"📌 Bookmarked from ID: {auction_data['auction_id']} | {current_time}")
+        
+        # Send to bookmark channel
+        bookmark_message = await bookmark_channel.send(embed=embed)
+        
+        # Save to database for !stats
+        add_user_bookmark(user.id, auction_data['auction_id'], bookmark_message.id, bookmark_channel.id)
+        
+        print(f"✅ Created bookmark in #{channel_name} for {user.name}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error creating bookmark channel: {e}")
+        return False
 
 @bot.command(name='preferences')
 async def preferences_command(ctx):
