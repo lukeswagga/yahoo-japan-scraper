@@ -2285,7 +2285,7 @@ def create_listing_embed(listing_data):
     description += f"{quality_emoji} **Quality: {deal_quality:.1%}** | **Priority: {priority:.0f}**\n"
     description += f"👤 **Seller:** {seller_id}\n"
 
-    f sizes:
+    if sizes:
         description += f"📏 **Sizes:** {', '.join(sizes)}\n"
     
     # Add time remaining if available
