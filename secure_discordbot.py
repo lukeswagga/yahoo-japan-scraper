@@ -938,6 +938,11 @@ async def send_single_listing_enhanced(auction_data):
         
         print(f"🔄 Processing listing: {title[:50]}...")
         
+        # Remove femme listings
+        if "femme" in title.lower():
+            print(f"🚫 Blocking femme listing: {title[:50]}...")
+            return False
+        
         if preference_learner and preference_learner.is_likely_spam(title, brand):
             print(f"🚫 Blocking spam listing: {title[:50]}...")
             return False
@@ -955,12 +960,18 @@ async def send_single_listing_enhanced(auction_data):
         
         # Send to main channel
         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
+        main_message = None
         if main_channel:
             embed = create_listing_embed(auction_data)
             main_message = await main_channel.send(embed=embed)
             print(f"📤 Sent to MAIN channel: {title[:30]}...")
             
+            # Add to database with end time
             add_listing(auction_data, main_message.id)
+            
+            # Add reactions for users to interact with
+            await main_message.add_reaction("👍")
+            await main_message.add_reaction("👎")
         
         # Send to brand channel
         brand_channel = None
@@ -968,7 +979,9 @@ async def send_single_listing_enhanced(auction_data):
             brand_channel = await get_or_create_brand_channel(brand)
             if brand_channel:
                 embed = create_listing_embed(auction_data)
-                await brand_channel.send(embed=embed)
+                brand_message = await brand_channel.send(embed=embed)
+                await brand_message.add_reaction("👍")
+                await brand_message.add_reaction("👎")
                 print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
         
         # Check for size alerts
@@ -978,10 +991,11 @@ async def send_single_listing_enhanced(auction_data):
                 fetch_all=True
             )
             
-            for user_row in (all_users or []):
-                user_id = user_row[0]
-                if await size_alert_system.check_user_size_match(user_id, sizes):
-                    await size_alert_system.send_size_alert(user_id, auction_data)
+            if all_users:
+                for user_row in all_users:
+                    user_id = user_row[0]
+                    if await size_alert_system.check_user_size_match(user_id, sizes):
+                        await size_alert_system.send_size_alert(user_id, auction_data)
         
         # Send to budget channel if applicable
         if price_usd <= 100:
@@ -989,19 +1003,44 @@ async def send_single_listing_enhanced(auction_data):
             if budget_channel:
                 embed = create_listing_embed(auction_data)
                 embed.set_footer(text=f"Budget Steal - Under $100 | ID: {auction_data['auction_id']}")
-                await budget_channel.send(embed=embed)
+                budget_message = await budget_channel.send(embed=embed)
+                await budget_message.add_reaction("👍")
+                await budget_message.add_reaction("👎")
                 print(f"💰 Also sent to budget-steals: ${price_usd:.2f}")
         
         # Send to hourly drops
         hourly_channel = discord.utils.get(guild.text_channels, name="⏰-hourly-drops")
         if hourly_channel:
             embed = create_listing_embed(auction_data)
-            await hourly_channel.send(embed=embed)
+            hourly_message = await hourly_channel.send(embed=embed)
+            await hourly_message.add_reaction("👍")
+            await hourly_message.add_reaction("👎")
             print(f"⏰ Also sent to hourly-drops")
+        
+        # Send to daily digest for free tier (with delay)
+        hourly_channel = discord.utils.get(guild.text_channels, name="⏰-hourly-drops")
+        if hourly_channel:
+            embed = create_listing_embed(auction_data)
+            hourly_message = await hourly_channel.send(embed=embed)
+            await hourly_message.add_reaction("👍")
+            await hourly_message.add_reaction("👎")
+            print(f"⏰ Also sent to hourly-drops")
+        
+        # Send to daily digest for free tier (with delay)
+        if delayed_manager:
+            delay_seconds = 7200  # 2 hour delay for free tier
+            await delayed_manager.queue_for_free_users(auction_data, delay_seconds)
+            print(f"⏳ Queued for free tier delivery in 2 hours")
         
         print(f"✅ Successfully sent listing to multiple channels")
         return True
         
+    except discord.errors.Forbidden as e:
+        print(f"❌ Permission error sending listing: {e}")
+        return False
+    except discord.errors.HTTPException as e:
+        print(f"❌ Discord API error: {e}")
+        return False
     except Exception as e:
         print(f"❌ Error sending listing: {e}")
         import traceback
@@ -1011,7 +1050,7 @@ async def send_single_listing_enhanced(auction_data):
 async def send_individual_listings_with_rate_limit(batch_data):
     try:
         for i, auction_data in enumerate(batch_data, 1):
-            success = await send_single_listing(auction_data)
+            success = await send_single_listing_enhanced(auction_data)
             if success:
                 print(f"✅ Sent {i}/{len(batch_data)}")
             else:
@@ -1405,16 +1444,18 @@ async def volume_debug_command(ctx):
             )
         
         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
+        main_message = None
         if main_channel:
-            recent_messages = 0
-            async for message in main_channel.history(after=datetime.now(timezone.utc) - timedelta(hours=1)):
-                recent_messages += 1
+            embed = create_listing_embed(auction_data)
+            main_message = await main_channel.send(embed=embed)
+            print(f"📤 Sent to MAIN channel: {title[:30]}...")
             
-            embed.add_field(
-                name="📺 Main Channel Activity",
-                value=f"Messages last hour: {recent_messages}\nTarget: 20+ per hour",
-                inline=False
-            )
+            # Add to database with end time
+            add_listing(auction_data, main_message.id)
+            
+            # Add reactions for users to interact with
+            await main_message.add_reaction("👍")
+            await main_message.add_reaction("👎")
         
         recommendations = []
         if recent_listings < 20:
@@ -1898,7 +1939,7 @@ async def commands_command(ctx):
     
     await ctx.send(embed=embed)
 
-@app.route('/webhook', methods=['POST'])
+@@app.route('/webhook', methods=['POST'])
 def webhook():
     global batch_buffer, last_batch_time
     
@@ -1909,14 +1950,17 @@ def webhook():
         
         required_fields = ['auction_id', 'title', 'brand', 'price_jpy', 'price_usd', 'zenmarket_url']
         if not all(field in data for field in required_fields):
-            return jsonify({"error": "Missing required fields"}), 400
+            missing = [field for field in required_fields if field not in data]
+            print(f"❌ Missing required fields: {missing}")
+            return jsonify({"error": f"Missing required fields: {missing}"}), 400
         
+        # Add to batch buffer
         batch_buffer.append(data)
         
         if len(batch_buffer) == 1:
             last_batch_time = datetime.now(timezone.utc)
         
-        print(f"📥 Added to buffer: {data['title'][:30]}... (Buffer: {len(batch_buffer)}/4)")
+        print(f"📥 Added to buffer: {data['title'][:30]}... (Buffer: {len(batch_buffer)}/{BATCH_SIZE})")
         
         return jsonify({
             "status": "queued",
@@ -1926,6 +1970,8 @@ def webhook():
         
     except Exception as e:
         print(f"❌ Webhook error: {e}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/check_duplicate/<auction_id>', methods=['GET'])
@@ -2206,6 +2252,7 @@ tier_manager = None
 delayed_manager = None
 
 def create_listing_embed(listing_data):
+    """Create a standardized embed for listings"""
     title = listing_data.get('title', '')
     brand = listing_data.get('brand', '')
     price_jpy = listing_data.get('price_jpy', 0)
@@ -2216,6 +2263,8 @@ def create_listing_embed(listing_data):
     zenmarket_url = listing_data.get('zenmarket_url', '')
     image_url = listing_data.get('image_url', '')
     auction_id = listing_data.get('auction_id', '')
+    auction_end_time = listing_data.get('auction_end_time', None)
+    sizes = listing_data.get('sizes', [])
     
     if deal_quality >= 0.8 or priority >= 100:
         color = 0x00ff00
@@ -2235,6 +2284,21 @@ def create_listing_embed(listing_data):
     description += f"🏷️ **{brand.replace('_', ' ').title()}**\n"
     description += f"{quality_emoji} **Quality: {deal_quality:.1%}** | **Priority: {priority:.0f}**\n"
     description += f"👤 **Seller:** {seller_id}\n"
+
+    f sizes:
+        description += f"📏 **Sizes:** {', '.join(sizes)}\n"
+    
+    # Add time remaining if available
+    if auction_end_time:
+        try:
+            end_dt = datetime.fromisoformat(auction_end_time.replace('Z', '+00:00'))
+            time_remaining = end_dt - datetime.now(timezone.utc)
+            if time_remaining.total_seconds() > 0:
+                hours = int(time_remaining.total_seconds() // 3600)
+                minutes = int((time_remaining.total_seconds() % 3600) // 60)
+                description += f"⏰ **Time Remaining:** {hours}h {minutes}m\n"
+        except:
+            pass
     
     auction_id_clean = auction_id.replace('yahoo_', '')
     link_section = "\n**🛒 Proxy Links:**\n"

@@ -873,15 +873,33 @@ def search_yahoo_multi_page_intensive(keyword_combo, max_pages, brand, keyword_m
 
 def send_to_discord_bot(auction_data):
     try:
+        print(f"📡 Attempting to send to Discord: {auction_data['title'][:50]}...")
+        print(f"   URL: {DISCORD_BOT_WEBHOOK}")
+        print(f"   Auction ID: {auction_data['auction_id']}")
+        
         response = requests.post(DISCORD_BOT_WEBHOOK, json=auction_data, timeout=10)
+        
+        print(f"   Response Status: {response.status_code}")
+        print(f"   Response Text: {response.text[:200] if response.text else 'No response text'}")
+        
         if response.status_code == 200:
-            print(f"✅ Sent: {auction_data['title'][:50]}...")
+            print(f"✅ Successfully sent: {auction_data['title'][:50]}...")
             return True
         else:
-            print(f"❌ Discord bot failed: {response.status_code}")
+            print(f"❌ Discord bot failed with status {response.status_code}")
+            print(f"   Full response: {response.text}")
             return False
+    except requests.exceptions.ConnectionError as e:
+        print(f"❌ Connection error to Discord bot: {e}")
+        print(f"   Is the Discord bot running? Check the webhook URL: {DISCORD_BOT_WEBHOOK}")
+        return False
+    except requests.exceptions.Timeout:
+        print(f"❌ Timeout sending to Discord bot (10s exceeded)")
+        return False
     except Exception as e:
-        print(f"❌ Discord bot error: {e}")
+        print(f"❌ Unexpected error sending to Discord bot: {e}")
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
         return False
 
 def get_discord_bot_stats():
@@ -963,61 +981,83 @@ def main_loop():
             if is_low_volume:
                 print("⚠️ LOW VOLUME DETECTED - INTENSIFYING SEARCH")
             
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                all_futures = []
+            # Collect all results from searches
+            all_results = []
+            
+            for tier_name, tier_config_base in tiered_system.tier_config.items():
+                if not tiered_system.should_search_tier(tier_name):
+                    continue
                 
-                for tier_name, tier_config_base in tiered_system.tier_config.items():
-                    if not tiered_system.should_search_tier(tier_name):
+                tier_config = tiered_system.get_adaptive_config(tier_name, is_low_volume)
+                
+                print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config_base['brands'])} brands")
+                print(f"   Keywords: {tier_config['max_keywords']}, Pages: {tier_config['max_pages']}")
+                
+                tier_searches = 0
+                tier_finds = 0
+                
+                for brand in tier_config_base['brands']:
+                    if brand not in BRAND_DATA:
                         continue
                     
-                    tier_config = tiered_system.get_adaptive_config(tier_name, is_low_volume)
+                    brand_info = BRAND_DATA[brand]
+                    keywords = keyword_generator.generate_comprehensive_keywords(
+                        brand, 
+                        brand_info['variants'], 
+                        tiered_system.iteration_counter
+                    )[:tier_config['max_keywords']]
                     
-                    print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config_base['brands'])} brands")
-                    print(f"   Keywords: {tier_config['max_keywords']}, Pages: {tier_config['max_pages']}")
+                    brand_listings = []
                     
-                    for brand in tier_config_base['brands']:
-                        if brand not in BRAND_DATA:
+                    for keyword in keywords:
+                        # Skip dead keywords unless they should be revived
+                        if keyword in keyword_manager.dead_keywords and not keyword_manager.should_revive_keyword(keyword):
+                            print(f"⏭️ Skipping dead keyword: {keyword}")
                             continue
                         
-                        brand_info = BRAND_DATA[brand]
-                        keywords = keyword_generator.generate_comprehensive_keywords(
-                            brand, 
-                            brand_info['variants'], 
-                            tiered_system.iteration_counter
-                        )[:tier_config['max_keywords']]
-                        
-                        for keyword in keywords:
-                            if keyword_manager.should_revive_keyword(keyword) or keyword not in keyword_manager.dead_keywords:
-                                for sort_order in tier_config_base.get('sort_orders', ['new']):
-                                    future = executor.submit(
-                                        search_yahoo_multi_page_intensive,
-                                        keyword,
-                                        tier_config['max_pages'],
-                                        brand,
-                                        keyword_manager,
-                                        sort_order
-                                    )
-                                    all_futures.append((future, tier_name, brand))
-                                    total_searches += 1
+                        # Search with different sort orders
+                        for sort_order in tier_config_base.get('sort_orders', ['new']):
+                            print(f"🔍 Searching: {keyword} ({sort_order} - up to {tier_config['max_pages']} pages)")
+                            
+                            listings, errors = search_yahoo_multi_page_intensive(
+                                keyword,
+                                tier_config['max_pages'],
+                                brand,
+                                keyword_manager,
+                                sort_order
+                            )
+                            
+                            total_found += len(listings)
+                            total_errors += errors
+                            total_searches += 1
+                            tier_searches += 1
+                            
+                            if len(listings) > 0:
+                                brand_listings.extend(listings)
+                                tier_finds += len(listings)
+                                print(f"✅ Found {len(listings)} items for {keyword} ({sort_order})")
+                            
+                            time.sleep(tier_config['delay'])
+                    
+                    # Sort brand listings by priority and add to results
+                    brand_listings.sort(key=lambda x: x["priority"], reverse=True)
+                    limited_brand_listings = brand_listings[:tier_config.get('max_listings', 999)]
+                    all_results.extend(limited_brand_listings)
+                    
+                    print(f"📦 Brand {brand}: {len(limited_brand_listings)} items ready to send")
                 
-                print(f"⏳ Waiting for {len(all_futures)} concurrent searches...")
+                tiered_system.update_performance(tier_name, tier_searches, tier_finds)
                 
-                all_results = []
-                for future, tier_name, brand in all_futures:
-                    try:
-                        listings, errors = future.result(timeout=30)
-                        all_results.extend(listings)
-                        total_found += len(listings)
-                        total_errors += errors
-                        tiered_system.update_performance(tier_name, 1, len(listings))
-                    except Exception as e:
-                        print(f"❌ Search error for {brand}: {e}")
-                        total_errors += 1
+                if tier_finds > 0:
+                    efficiency = tier_finds / max(1, tier_searches)
+                    print(f"📊 {tier_name.upper()}: {tier_finds} finds from {tier_searches} searches (efficiency: {efficiency:.2f})")
             
+            # Sort all results by priority
             all_results.sort(key=lambda x: x["priority"], reverse=True)
             
-            print(f"\n📦 Processing {len(all_results)} total listings...")
+            print(f"\n📦 Processing {len(all_results)} total listings for Discord...")
             
+            # Send all results to Discord
             for listing_data in all_results:
                 quality_filtered += 1
                 
@@ -1031,10 +1071,14 @@ def main_loop():
                     is_new = "🆕" if listing_data.get("is_new_listing") else ""
                     sizes = f" [{','.join(listing_data.get('sizes', []))}]" if listing_data.get('sizes') else ""
                     
-                    print(f"{priority_emoji}{is_new} {listing_data['brand']}: ${listing_data['price_usd']:.2f}{sizes}")
+                    print(f"{priority_emoji}{is_new} {listing_data['brand']}: {listing_data['title'][:40]}... - ${listing_data['price_usd']:.2f}{sizes}")
+                else:
+                    print(f"⚠️ Failed to send: {listing_data['title'][:40]}...")
                 
+                # Small delay between sends to avoid overwhelming
                 time.sleep(0.3)
             
+            # Clear seen items periodically
             if tiered_system.iteration_counter % 25 == 0:
                 items_before = len(seen_ids)
                 print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Clearing {items_before} seen items...")
@@ -1051,6 +1095,7 @@ def main_loop():
                 except Exception as e:
                     print(f"⚠️ Could not clear database: {e}")
             
+            # Save state
             save_seen_ids()
             keyword_manager.save_keyword_data()
             tiered_system.save_performance_data()
@@ -1069,6 +1114,7 @@ def main_loop():
             print(f"❌ Errors: {total_errors}")
             print(f"⚡ Efficiency: {cycle_efficiency:.3f} finds per search")
             
+            # Performance insights every 10 cycles
             if tiered_system.iteration_counter % 10 == 0:
                 print(f"\n🧠 PERFORMANCE INSIGHTS:")
                 
@@ -1082,14 +1128,28 @@ def main_loop():
                 for tier_name, tracker in tiered_system.performance_tracker.items():
                     if tracker['total_searches'] > 0:
                         print(f"📊 {tier_name.upper()}: {tracker['avg_efficiency']:.2f} avg efficiency")
+                
+                # Show top performing keywords
+                if keyword_manager.hot_keywords:
+                    best_keywords = []
+                    for kw in list(keyword_manager.hot_keywords)[:5]:
+                        perf = keyword_manager.keyword_performance.get(kw, {})
+                        if perf.get('searches', 0) > 0:
+                            rate = perf['finds'] / perf['searches']
+                            best_keywords.append(f"{kw}({rate:.1%})")
+                    if best_keywords:
+                        print(f"🔥 Top keywords: {best_keywords}")
             
             log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches)
             
+            # Adaptive sleep time
             base_sleep_time = 180
             if cycle_efficiency > 0.2:
                 sleep_time = base_sleep_time - 60
+                print(f"🚀 High efficiency detected, reducing sleep")
             elif cycle_efficiency < 0.05:
                 sleep_time = 60
+                print(f"⚠️ Low efficiency, quick retry")
             else:
                 sleep_time = base_sleep_time
             
