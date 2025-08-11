@@ -977,9 +977,7 @@ async def send_single_listing_enhanced(auction_data):
             # Add to database with end time
             add_listing(auction_data, main_message.id)
             
-            # Add reactions for users to interact with
-            await main_message.add_reaction("👍")
-            await main_message.add_reaction("👎")
+            # Allow users to react manually without pre-added bot reactions
         
         # Send to brand channel
         brand_channel = None
@@ -988,8 +986,6 @@ async def send_single_listing_enhanced(auction_data):
             if brand_channel:
                 embed = create_listing_embed(auction_data)
                 brand_message = await brand_channel.send(embed=embed)
-                await brand_message.add_reaction("👍")
-                await brand_message.add_reaction("👎")
                 print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
         
         # Check for size alerts
@@ -1012,8 +1008,6 @@ async def send_single_listing_enhanced(auction_data):
                 embed = create_listing_embed(auction_data)
                 embed.set_footer(text=f"Budget Steal - Under $100 | ID: {auction_data['auction_id']}")
                 budget_message = await budget_channel.send(embed=embed)
-                await budget_message.add_reaction("👍")
-                await budget_message.add_reaction("👎")
                 print(f"💰 Also sent to budget-steals: ${price_usd:.2f}")
         
         # Send to hourly drops
@@ -1021,19 +1015,8 @@ async def send_single_listing_enhanced(auction_data):
         if hourly_channel:
             embed = create_listing_embed(auction_data)
             hourly_message = await hourly_channel.send(embed=embed)
-            await hourly_message.add_reaction("👍")
-            await hourly_message.add_reaction("👎")
             print(f"⏰ Also sent to hourly-drops")
-        
-        # Send to daily digest for free tier (with delay)
-        hourly_channel = discord.utils.get(guild.text_channels, name="⏰-hourly-drops")
-        if hourly_channel:
-            embed = create_listing_embed(auction_data)
-            hourly_message = await hourly_channel.send(embed=embed)
-            await hourly_message.add_reaction("👍")
-            await hourly_message.add_reaction("👎")
-            print(f"⏰ Also sent to hourly-drops")
-        
+
         # Send to daily digest for free tier (with delay)
         if delayed_manager:
             delay_seconds = 7200  # 2 hour delay for free tier
@@ -1172,7 +1155,7 @@ async def on_reaction_add(reaction, user):
         
         if reaction_type == "thumbs_up":
             print(f"👍 User {user.name} liked {auction_data['title'][:30]}... - Creating bookmark")
-            bookmark_success = await create_bookmark_for_user(user.id, auction_data, reaction.message)
+            bookmark_success = await create_bookmark_for_user_enhanced(user.id, auction_data, reaction.message)
             
             if bookmark_success:
                 await reaction.message.add_reaction("📚")
@@ -1461,9 +1444,7 @@ async def volume_debug_command(ctx):
             # Add to database with end time
             add_listing(auction_data, main_message.id)
             
-            # Add reactions for users to interact with
-            await main_message.add_reaction("👍")
-            await main_message.add_reaction("👎")
+            # Allow users to react manually without pre-added bot reactions
         
         recommendations = []
         if recent_listings < 20:
