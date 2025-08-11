@@ -17,6 +17,227 @@ from database_manager import (
     init_subscription_tables, test_postgres_connection
 )
 
+
+
+class BookmarkReminderSystem:
+    def __init__(self, bot):
+        self.bot = bot
+        self.running = True
+    
+    async def start_reminder_loop(self):
+        """Main loop for checking and sending bookmark reminders"""
+        while self.running:
+            try:
+                await self.check_1h_reminders()
+                await self.check_5m_reminders()
+                await asyncio.sleep(60)  # Check every minute
+            except Exception as e:
+                print(f"❌ Reminder loop error: {e}")
+                await asyncio.sleep(300)
+    
+    async def check_1h_reminders(self):
+        """Check for auctions ending in 1 hour"""
+        try:
+            reminders = get_pending_reminders('1h')
+            
+            for user_id, auction_id, channel_id, title, zenmarket_url, end_time in reminders:
+                try:
+                    channel = self.bot.get_channel(channel_id)
+                    if not channel:
+                        continue
+                    
+                    user = self.bot.get_user(user_id)
+                    if not user:
+                        user = await self.bot.fetch_user(user_id)
+                    
+                    embed = discord.Embed(
+                        title="⏰ 1 Hour Reminder - Auction Ending Soon!",
+                        description=f"Your bookmarked auction is ending in **1 hour**!",
+                        color=0xffa500
+                    )
+                    
+                    embed.add_field(
+                        name="📦 Item",
+                        value=f"[{title[:100]}...]({zenmarket_url})" if len(title) > 100 else f"[{title}]({zenmarket_url})",
+                        inline=False
+                    )
+                    
+                    if end_time:
+                        try:
+                            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                            embed.add_field(
+                                name="⏱️ Exact End Time",
+                                value=f"{end_dt.strftime('%H:%M UTC')}",
+                                inline=True
+                            )
+                        except:
+                            pass
+                    
+                    embed.add_field(
+                        name="💡 Action Required",
+                        value="Place your bid now if you want this item!",
+                        inline=False
+                    )
+                    
+                    embed.set_footer(text=f"Auction ID: {auction_id}")
+                    
+                    await channel.send(f"{user.mention}", embed=embed)
+                    
+                    mark_reminder_sent(user_id, auction_id, '1h')
+                    print(f"⏰ Sent 1h reminder to {user.name} for {auction_id}")
+                    
+                except Exception as e:
+                    print(f"❌ Error sending 1h reminder: {e}")
+                    
+        except Exception as e:
+            print(f"❌ Error checking 1h reminders: {e}")
+    
+    async def check_5m_reminders(self):
+        """Check for auctions ending in 5 minutes"""
+        try:
+            reminders = get_pending_reminders('5m')
+            
+            for user_id, auction_id, channel_id, title, zenmarket_url, end_time in reminders:
+                try:
+                    channel = self.bot.get_channel(channel_id)
+                    if not channel:
+                        continue
+                    
+                    user = self.bot.get_user(user_id)
+                    if not user:
+                        user = await self.bot.fetch_user(user_id)
+                    
+                    embed = discord.Embed(
+                        title="🚨 FINAL 5 MINUTE WARNING!",
+                        description=f"**⚠️ YOUR BOOKMARKED AUCTION ENDS IN 5 MINUTES! ⚠️**",
+                        color=0xff0000
+                    )
+                    
+                    embed.add_field(
+                        name="📦 Item",
+                        value=f"[{title[:100]}...]({zenmarket_url})" if len(title) > 100 else f"[{title}]({zenmarket_url})",
+                        inline=False
+                    )
+                    
+                    embed.add_field(
+                        name="🔥 LAST CHANCE",
+                        value="**BID NOW OR LOSE THIS ITEM FOREVER!**",
+                        inline=False
+                    )
+                    
+                    embed.set_footer(text=f"Auction ID: {auction_id} | THIS IS YOUR FINAL REMINDER")
+                    
+                    message = await channel.send(f"🚨 {user.mention} 🚨", embed=embed)
+                    
+                    await message.add_reaction("⏰")
+                    await message.add_reaction("🔥")
+                    await message.add_reaction("💸")
+                    
+                    mark_reminder_sent(user_id, auction_id, '5m')
+                    print(f"🚨 Sent FINAL 5m reminder to {user.name} for {auction_id}")
+                    
+                except Exception as e:
+                    print(f"❌ Error sending 5m reminder: {e}")
+                    
+        except Exception as e:
+            print(f"❌ Error checking 5m reminders: {e}")
+
+class SizeAlertSystem:
+    def __init__(self, bot):
+        self.bot = bot
+        self.size_mappings = {
+            's': ['s', 'small', '44', '46', 'サイズs'],
+            'm': ['m', 'medium', '48', '50', 'サイズm'],
+            'l': ['l', 'large', '52', 'サイズl'],
+            'xl': ['xl', 'x-large', '54', 'サイズxl'],
+            'xxl': ['xxl', 'xx-large', '56', 'サイズxxl']
+        }
+    
+    def normalize_size(self, size_str):
+        """Normalize size string to standard format"""
+        size_lower = size_str.lower().strip()
+        
+        for standard_size, variations in self.size_mappings.items():
+            if size_lower in variations:
+                return standard_size
+        
+        return size_lower
+    
+    async def check_user_size_match(self, user_id, sizes_found):
+        """Check if listing matches user's preferred sizes"""
+        if not sizes_found:
+            return False
+        
+        user_sizes, enabled = get_user_size_preferences(user_id)
+        
+        if not enabled or not user_sizes:
+            return False
+        
+        normalized_found = [self.normalize_size(s) for s in sizes_found]
+        normalized_user = [self.normalize_size(s) for s in user_sizes]
+        
+        return any(size in normalized_user for size in normalized_found)
+    
+    async def send_size_alert(self, user_id, listing_data):
+        """Send size-specific alert to user"""
+        try:
+            user = self.bot.get_user(user_id)
+            if not user:
+                user = await self.bot.fetch_user(user_id)
+            
+            size_channel = discord.utils.get(guild.text_channels, name="🔔-size-alerts")
+            if not size_channel:
+                return
+            
+            sizes_str = ", ".join(listing_data.get('sizes', []))
+            
+            embed = discord.Embed(
+                title=f"🔔 Size Alert: {sizes_str}",
+                description=f"Found an item in your size!",
+                color=0x00ff00
+            )
+            
+            embed.add_field(
+                name="📦 Item",
+                value=listing_data['title'][:200],
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🏷️ Brand",
+                value=listing_data['brand'],
+                inline=True
+            )
+            
+            embed.add_field(
+                name="💰 Price",
+                value=f"¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="📏 Sizes Available",
+                value=sizes_str,
+                inline=True
+            )
+            
+            embed.add_field(
+                name="🛒 Links",
+                value=f"[ZenMarket]({listing_data['zenmarket_url']})",
+                inline=False
+            )
+            
+            if listing_data.get('image_url'):
+                embed.set_thumbnail(url=listing_data['image_url'])
+            
+            embed.set_footer(text=f"ID: {listing_data['auction_id']} | Set sizes with !set_sizes")
+            
+            await size_channel.send(f"{user.mention} - Size match found!", embed=embed)
+            print(f"🔔 Sent size alert to {user.name} for sizes: {sizes_str}")
+            
+        except Exception as e:
+            print(f"❌ Error sending size alert: {e}")
+
 app = Flask(__name__)
 start_time = time.time()
 
@@ -521,7 +742,7 @@ async def get_or_create_brand_channel(brand_name):
     print(f"⚠️ Channel {full_channel_name} doesn't exist, falling back to main channel")
     return None
 
-async def create_bookmark_for_user(user_id, auction_data, original_message):
+async def create_bookmark_for_user_enhanced(user_id, auction_data, original_message):
     try:
         user = bot.get_user(user_id)
         if not user:
@@ -531,7 +752,7 @@ async def create_bookmark_for_user(user_id, auction_data, original_message):
                 print(f"❌ Could not fetch user {user_id}")
                 return False
         
-        print(f"📚 Creating bookmark for user: {user.name} ({user_id})")
+        print(f"📚 Creating enhanced bookmark for user: {user.name} ({user_id})")
         
         bookmark_channel = await get_or_create_user_bookmark_channel(user)
         if not bookmark_channel:
@@ -551,7 +772,30 @@ async def create_bookmark_for_user(user_id, auction_data, original_message):
             
             if original_embed.thumbnail:
                 embed.set_thumbnail(url=original_embed.thumbnail.url)
-                print(f"✅ Copied thumbnail from original: {original_embed.thumbnail.url}")
+            
+            # Add end time information if available
+            if auction_data.get('auction_end_time'):
+                try:
+                    end_dt = datetime.fromisoformat(auction_data['auction_end_time'].replace('Z', '+00:00'))
+                    time_remaining = end_dt - datetime.now(timezone.utc)
+                    
+                    if time_remaining.total_seconds() > 0:
+                        hours = int(time_remaining.total_seconds() // 3600)
+                        minutes = int((time_remaining.total_seconds() % 3600) // 60)
+                        
+                        embed.add_field(
+                            name="⏰ Time Remaining",
+                            value=f"{hours}h {minutes}m",
+                            inline=True
+                        )
+                        
+                        embed.add_field(
+                            name="🔔 Reminders",
+                            value="You'll be notified at:\n• 1 hour before end\n• 5 minutes before end",
+                            inline=True
+                        )
+                except:
+                    pass
             
             embed.set_footer(text=f"📚 Bookmarked from ID: {auction_data['auction_id']} | {datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M UTC')}")
             
@@ -566,10 +810,17 @@ async def create_bookmark_for_user(user_id, auction_data, original_message):
             print(f"❌ Failed to send bookmark message: {e}")
             return False
         
-        success = add_bookmark(user_id, auction_data['auction_id'], bookmark_message.id, bookmark_channel.id)
+        # Store with end time for reminders
+        success = add_bookmark(
+            user_id, 
+            auction_data['auction_id'], 
+            bookmark_message.id, 
+            bookmark_channel.id,
+            auction_data.get('auction_end_time')
+        )
         
         if success:
-            print(f"📚 Successfully created bookmark for {user.name}: {auction_data['title'][:30]}...")
+            print(f"📚 Successfully created enhanced bookmark for {user.name}")
             return True
         else:
             print(f"❌ Failed to store bookmark in database for {user.name}")
@@ -678,11 +929,12 @@ async def process_batch_buffer():
             print(f"📤 Processing {len(items_to_send)} items from buffer (remaining: {len(batch_buffer)})...")
             await send_individual_listings_with_rate_limit(items_to_send)
 
-async def send_single_listing(auction_data):
+async def send_single_listing_enhanced(auction_data):
     try:
         brand = auction_data.get('brand', '')
         title = auction_data.get('title', '')
         price_usd = auction_data.get('price_usd', 0)
+        sizes = auction_data.get('sizes', [])
         
         print(f"🔄 Processing listing: {title[:50]}...")
         
@@ -701,8 +953,7 @@ async def send_single_listing(auction_data):
             print(f"⚠️ Duplicate found, skipping: {auction_data['auction_id']}")
             return False
         
-        print(f"✅ No duplicate found, proceeding with listing")
-        
+        # Send to main channel
         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
         if main_channel:
             embed = create_listing_embed(auction_data)
@@ -711,6 +962,7 @@ async def send_single_listing(auction_data):
             
             add_listing(auction_data, main_message.id)
         
+        # Send to brand channel
         brand_channel = None
         if brand and brand in BRAND_CHANNEL_MAP:
             brand_channel = await get_or_create_brand_channel(brand)
@@ -719,6 +971,19 @@ async def send_single_listing(auction_data):
                 await brand_channel.send(embed=embed)
                 print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
         
+        # Check for size alerts
+        if sizes and size_alert_system:
+            all_users = db_manager.execute_query(
+                'SELECT user_id FROM user_preferences WHERE size_alerts_enabled = TRUE',
+                fetch_all=True
+            )
+            
+            for user_row in (all_users or []):
+                user_id = user_row[0]
+                if await size_alert_system.check_user_size_match(user_id, sizes):
+                    await size_alert_system.send_size_alert(user_id, auction_data)
+        
+        # Send to budget channel if applicable
         if price_usd <= 100:
             budget_channel = discord.utils.get(guild.text_channels, name="💰-budget-steals")
             if budget_channel:
@@ -727,6 +992,7 @@ async def send_single_listing(auction_data):
                 await budget_channel.send(embed=embed)
                 print(f"💰 Also sent to budget-steals: ${price_usd:.2f}")
         
+        # Send to hourly drops
         hourly_channel = discord.utils.get(guild.text_channels, name="⏰-hourly-drops")
         if hourly_channel:
             embed = create_listing_embed(auction_data)
@@ -759,7 +1025,7 @@ async def send_individual_listings_with_rate_limit(batch_data):
 
 @bot.event
 async def on_ready():
-    global guild, auction_channel, preference_learner, tier_manager, delayed_manager
+    global guild, auction_channel, preference_learner, tier_manager, delayed_manager, reminder_system, size_alert_system
     print(f'✅ Bot connected as {bot.user}!')
     guild = bot.get_guild(GUILD_ID)
     
@@ -768,18 +1034,27 @@ async def on_ready():
         auction_channel = await get_or_create_auction_channel()
         
         preference_learner = UserPreferenceLearner()
-        
         tier_manager = PremiumTierManager(bot)
         delayed_manager = DelayedListingManager()
         
+        # Initialize new systems
+        reminder_system = BookmarkReminderSystem(bot)
+        size_alert_system = SizeAlertSystem(bot)
+        
+        # Start background tasks
         bot.loop.create_task(process_batch_buffer())
         bot.loop.create_task(delayed_manager.process_delayed_queue())
+        bot.loop.create_task(reminder_system.start_reminder_loop())
+        
         print("⏰ Started batch buffer processor")
         print("🧠 User preference learning system initialized")
         print("💎 Premium tier system initialized")
         print("⏳ Delayed listing manager started")
+        print("🔔 Bookmark reminder system started")
+        print("📏 Size alert system initialized")
     else:
         print(f'❌ Could not find server with ID: {GUILD_ID}')
+
 
 @bot.event
 async def on_reaction_add(reaction, user):
@@ -964,6 +1239,108 @@ async def setup_command(ctx):
     
     for proxy in SUPPORTED_PROXIES.values():
         await message.add_reaction(proxy['emoji'])
+
+@bot.command(name='set_sizes')
+async def set_sizes_command(ctx, *sizes):
+    """Set preferred sizes for alerts"""
+    if not sizes:
+        embed = discord.Embed(
+            title="📏 Set Your Preferred Sizes",
+            description="Configure size alerts to get notified when items in your size are found!",
+            color=0x0099ff
+        )
+        
+        embed.add_field(
+            name="Usage",
+            value="`!set_sizes S M L` or `!set_sizes 48 50` or `!set_sizes XL XXL`",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="Supported Formats",
+            value="• Letter sizes: XS, S, M, L, XL, XXL\n• European sizes: 44, 46, 48, 50, 52, 54, 56\n• Words: small, medium, large",
+            inline=False
+        )
+        
+        current_sizes, enabled = get_user_size_preferences(ctx.author.id)
+        if current_sizes:
+            embed.add_field(
+                name="Your Current Sizes",
+                value=", ".join(current_sizes) if current_sizes else "None set",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+        return
+    
+    normalized_sizes = []
+    size_alert_system = SizeAlertSystem(bot)
+    
+    for size in sizes:
+        normalized = size_alert_system.normalize_size(size)
+        normalized_sizes.append(normalized.upper())
+    
+    set_user_size_preferences(ctx.author.id, normalized_sizes)
+    
+    embed = discord.Embed(
+        title="✅ Size Preferences Updated",
+        description=f"You'll now receive alerts for items in sizes: **{', '.join(normalized_sizes)}**",
+        color=0x00ff00
+    )
+    
+    embed.add_field(
+        name="📱 Where to find alerts",
+        value="Size-specific alerts will appear in #🔔-size-alerts",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔕 To disable",
+        value="Use `!clear_sizes` to stop receiving size alerts",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='clear_sizes')
+async def clear_sizes_command(ctx):
+    """Clear size preferences"""
+    set_user_size_preferences(ctx.author.id, [])
+    
+    embed = discord.Embed(
+        title="🔕 Size Alerts Disabled",
+        description="You will no longer receive size-specific alerts.",
+        color=0xff9900
+    )
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='my_sizes')
+async def my_sizes_command(ctx):
+    """View your size preferences"""
+    sizes, enabled = get_user_size_preferences(ctx.author.id)
+    
+    if not sizes or not enabled:
+        embed = discord.Embed(
+            title="📏 No Size Preferences Set",
+            description="Use `!set_sizes` to configure size alerts",
+            color=0x0099ff
+        )
+    else:
+        embed = discord.Embed(
+            title="📏 Your Size Preferences",
+            description=f"Currently tracking sizes: **{', '.join(sizes)}**",
+            color=0x00ff00
+        )
+        
+        embed.add_field(
+            name="🔔 Alerts",
+            value="Enabled - You'll receive notifications in #🔔-size-alerts",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
+
 
 @bot.command(name='volume_debug')
 @commands.has_permissions(administrator=True)
