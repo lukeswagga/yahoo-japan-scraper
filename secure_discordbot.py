@@ -1099,7 +1099,18 @@ async def on_reaction_add(reaction, user):
         
         if reaction_type == "thumbs_up":
             print(f"👍 User {user.name} liked {auction_data['title'][:30]}... - Creating bookmark")
-            bookmark_success = await create_bookmark_for_user_enhanced(user.id, auction_data, reaction.message)
+            
+            # Save reaction to database
+            db_manager.execute_query('''
+                INSERT INTO reactions (user_id, auction_id, reaction_type)
+                VALUES (%s, %s, 'thumbs_up')
+            ''' if db_manager.use_postgres else '''
+                INSERT INTO reactions (user_id, auction_id, reaction_type)
+                VALUES (?, ?, 'thumbs_up')
+            ''', (user.id, auction_id))
+            
+            # Create bookmark using actual function
+            bookmark_success = add_user_bookmark(user.id, auction_id, reaction.message.id, reaction.message.channel.id)
             
             if bookmark_success:
                 await reaction.message.add_reaction("📚")
@@ -1109,6 +1120,15 @@ async def on_reaction_add(reaction, user):
                 await reaction.message.add_reaction("⚠️")
                 print(f"⚠️ Bookmark failed for {user.name}")
         else:
+            # Save thumbs down reaction to database
+            db_manager.execute_query('''
+                INSERT INTO reactions (user_id, auction_id, reaction_type)
+                VALUES (%s, %s, 'thumbs_down')
+            ''' if db_manager.use_postgres else '''
+                INSERT INTO reactions (user_id, auction_id, reaction_type)
+                VALUES (?, ?, 'thumbs_down')
+            ''', (user.id, auction_id))
+            
             await reaction.message.add_reaction("❌")
         
         print(f"✅ Learned from {user.name}'s {reaction_type} on {brand} item")
@@ -1674,6 +1694,13 @@ async def stats_command(ctx):
             SUM(CASE WHEN reaction_type = 'thumbs_up' THEN 1 ELSE 0 END) as thumbs_up,
             SUM(CASE WHEN reaction_type = 'thumbs_down' THEN 1 ELSE 0 END) as thumbs_down
         FROM reactions 
+        WHERE user_id = %s
+    ''' if db_manager.use_postgres else '''
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN reaction_type = 'thumbs_up' THEN 1 ELSE 0 END) as thumbs_up,
+            SUM(CASE WHEN reaction_type = 'thumbs_down' THEN 1 ELSE 0 END) as thumbs_down
+        FROM reactions 
         WHERE user_id = ?
     ''', (ctx.author.id,), fetch_one=True)
     
@@ -1681,11 +1708,14 @@ async def stats_command(ctx):
     
     top_brands = db_manager.execute_query('''
         SELECT brand, preference_score FROM user_brand_preferences 
+        WHERE user_id = %s ORDER BY preference_score DESC LIMIT 3
+    ''' if db_manager.use_postgres else '''
+        SELECT brand, preference_score FROM user_brand_preferences 
         WHERE user_id = ? ORDER BY preference_score DESC LIMIT 3
     ''', (ctx.author.id,), fetch_all=True)
     
     bookmark_count = db_manager.execute_query(
-        'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
+        'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = %s' if db_manager.use_postgres else 'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
         (ctx.author.id,),
         fetch_one=True
     )
@@ -1731,6 +1761,9 @@ async def preferences_command(ctx):
     user_id = ctx.author.id
     
     prefs = db_manager.execute_query('''
+        SELECT proxy_service, notifications_enabled, min_quality_threshold, max_price_alert 
+        FROM user_preferences WHERE user_id = %s
+    ''' if db_manager.use_postgres else '''
         SELECT proxy_service, notifications_enabled, min_quality_threshold, max_price_alert 
         FROM user_preferences WHERE user_id = ?
     ''', (user_id,), fetch_one=True)
