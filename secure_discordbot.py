@@ -869,6 +869,10 @@ async def process_batch_buffer():
         current_time = datetime.now(timezone.utc)
         buffer_size = len(batch_buffer)
         
+        # Add this logging back
+        if buffer_size > 0:
+            print(f"📦 Buffer status: {buffer_size} items waiting")
+        
         time_since_batch = 0
         if last_batch_time:
             time_since_batch = (current_time - last_batch_time).total_seconds()
@@ -930,39 +934,7 @@ async def send_single_listing_enhanced(auction_data):
                 # REMOVED: Auto reactions - users will add their own
                 print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
         
-        # Check for size alerts with fixed query
-        if sizes and size_alert_system:
-            try:
-                all_users = db_manager.execute_query(
-                    'SELECT user_id FROM user_preferences WHERE size_alerts_enabled = TRUE' if db_manager.use_postgres else 'SELECT user_id FROM user_preferences WHERE size_alerts_enabled = 1',
-                    fetch_all=True
-                )
-                
-                if all_users:
-                    for user_row in all_users:
-                        user_id = user_row[0] if isinstance(user_row, (list, tuple)) else user_row['user_id']
-                        user_sizes, alerts_enabled = get_user_size_preferences(user_id)
-                        
-                        if alerts_enabled and user_sizes:
-                            matching_sizes = [size for size in sizes if any(user_size.lower() in size.lower() for user_size in user_sizes)]
-                            
-                            if matching_sizes:
-                                try:
-                                    user = await bot.fetch_user(user_id)
-                                    if user:
-                                        embed = create_listing_embed(auction_data)
-                                        embed.title = f"🎯 SIZE ALERT: {embed.title}"
-                                        embed.add_field(
-                                            name="📏 Matching Sizes", 
-                                            value=", ".join(matching_sizes), 
-                                            inline=False
-                                        )
-                                        await user.send(embed=embed)
-                                        print(f"📬 Size alert sent to user {user_id} for sizes: {matching_sizes}")
-                                except Exception as e:
-                                    print(f"❌ Failed to send size alert to user {user_id}: {e}")
-            except Exception as e:
-                print(f"❌ Error processing size alerts: {e}")
+        # REMOVED: Size alert functionality to prevent errors
         
         return True
         
@@ -1001,9 +973,6 @@ async def on_ready():
         tier_manager = PremiumTierManager(bot)
         delayed_manager = DelayedListingManager()
         
-        # Initialize new systems
-        size_alert_system = SizeAlertSystem(bot)
-        
         # Start background tasks
         bot.loop.create_task(process_batch_buffer())
         bot.loop.create_task(delayed_manager.process_delayed_queue())
@@ -1012,7 +981,6 @@ async def on_ready():
         print("🧠 User preference learning system initialized")
         print("💎 Premium tier system initialized")
         print("⏳ Delayed listing manager started")
-        print("📏 Size alert system initialized")
     else:
         print(f'❌ Could not find server with ID: {GUILD_ID}')
 
@@ -1166,7 +1134,7 @@ async def setup_command(ctx):
         )
         
         bookmark_count = db_manager.execute_query(
-            'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
+            'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = %s' if db_manager.use_postgres else 'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
             (user_id,),
             fetch_one=True
         )
@@ -1890,6 +1858,14 @@ async def preferences_command(ctx):
 @bot.command(name='export')
 async def export_command(ctx):
     all_reactions = db_manager.execute_query('''
+        SELECT r.reaction_type, r.created_at, l.title, l.brand, l.price_jpy, 
+               l.price_usd, l.seller_id, l.zenmarket_url, l.yahoo_url, l.auction_id,
+               l.deal_quality, l.priority_score
+        FROM reactions r
+        JOIN listings l ON r.auction_id = l.auction_id
+        WHERE r.user_id = %s
+        ORDER BY r.created_at DESC
+    ''' if db_manager.use_postgres else '''
         SELECT r.reaction_type, r.created_at, l.title, l.brand, l.price_jpy, 
                l.price_usd, l.seller_id, l.zenmarket_url, l.yahoo_url, l.auction_id,
                l.deal_quality, l.priority_score

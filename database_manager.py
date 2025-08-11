@@ -503,6 +503,31 @@ def set_user_size_preferences(user_id, sizes):
         print(f"❌ Error setting size preferences: {e}")
         return False
 
+def fix_missing_columns():
+    """Fix missing columns in existing database"""
+    try:
+        if db_manager.use_postgres:
+            # Add missing size_alerts_enabled column
+            db_manager.execute_query('''
+                ALTER TABLE user_preferences 
+                ADD COLUMN IF NOT EXISTS size_alerts_enabled BOOLEAN DEFAULT FALSE
+            ''')
+            print("✅ Added size_alerts_enabled column")
+        else:
+            # For SQLite, we need to check if column exists first
+            try:
+                db_manager.execute_query('''
+                    ALTER TABLE user_preferences 
+                    ADD COLUMN size_alerts_enabled BOOLEAN DEFAULT FALSE
+                ''')
+                print("✅ Added size_alerts_enabled column")
+            except Exception as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"⚠️ Column add warning: {e}")
+    except Exception as e:
+        if "already exists" not in str(e):
+            print(f"⚠️ Column add warning: {e}")
+
 def mark_reminder_sent(user_id, auction_id, reminder_type='1h'):
     """Mark reminder as sent with proper query syntax"""
     try:
@@ -581,6 +606,10 @@ def init_subscription_tables():
     try:
         print("🔧 Initializing subscription tables...")
         db_manager.init_database()
+        
+        # Fix any missing columns
+        fix_missing_columns()
+        
         print("✅ Subscription tables initialized successfully")
         return True
     except Exception as e:
