@@ -13,8 +13,9 @@ import hmac
 import hashlib
 from database_manager import (
     db_manager, get_user_proxy_preference, set_user_proxy_preference, 
-    add_listing, add_bookmark, get_user_bookmarks, clear_user_bookmarks,
-    init_subscription_tables, test_postgres_connection
+    add_listing, add_user_bookmark, clear_user_bookmarks,
+    init_subscription_tables, test_postgres_connection,
+    get_user_size_preferences, set_user_size_preferences, mark_reminder_sent
 )
 
 def get_user_size_preferences(user_id):
@@ -950,7 +951,7 @@ async def create_bookmark_for_user_enhanced(user_id, auction_data, original_mess
             return False
         
         # Store with end time for reminders
-        success = add_bookmark(
+        success = add_user_bookmark(
             user_id, 
             auction_data['auction_id'], 
             bookmark_message.id, 
@@ -1649,7 +1650,19 @@ async def channel_status_command(ctx):
 async def bookmarks_command(ctx):
     user_id = ctx.author.id
     
-    bookmarks = get_user_bookmarks(user_id, limit=10)
+    bookmarks = db_manager.execute_query('''
+        SELECT auction_id, title, brand, price_usd, zenmarket_url, created_at 
+        FROM user_bookmarks 
+        WHERE user_id = %s 
+        ORDER BY created_at DESC 
+        LIMIT 10
+    ''' if db_manager.use_postgres else '''
+        SELECT auction_id, title, brand, price_usd, zenmarket_url, created_at 
+        FROM user_bookmarks 
+        WHERE user_id = ? 
+        ORDER BY created_at DESC 
+        LIMIT 10
+    ''', (user_id,), fetch_all=True) or []
     
     if not bookmarks:
         embed = discord.Embed(
