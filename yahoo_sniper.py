@@ -1,22 +1,18 @@
-import asyncio
-import json
-import os
-import re
-import sqlite3
-import time
-import urllib.parse
-from datetime import datetime, timezone, timedelta
-
-import aiohttp
 import requests
 from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor
-from enhanced_filtering import EnhancedSpamDetector, QualityChecker
+import time
+import json
+import os
+import urllib.parse
+from datetime import datetime, timezone, timedelta
+import re
+import sqlite3
 from flask import Flask
+import threading
+from enhanced_filtering import EnhancedSpamDetector, QualityChecker
 import statistics
 import random
-import argparse
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 scraper_app = Flask(__name__)
 
@@ -28,10 +24,9 @@ def health():
 def root():
     return {"service": "Yahoo Auction Scraper", "status": "running"}, 200
 
-SCRAPER_HEALTH_PORT = int(os.getenv('SCRAPER_HEALTH_PORT', 8081))
-
 def run_health_server():
-    scraper_app.run(host='0.0.0.0', port=SCRAPER_HEALTH_PORT, debug=False)
+    port = int(os.environ.get('PORT', 8000))
+    scraper_app.run(host='0.0.0.0', port=port, debug=False)
 
 DISCORD_BOT_WEBHOOK = os.getenv('DISCORD_BOT_WEBHOOK', "http://localhost:8000/webhook")
 DISCORD_BOT_HEALTH = os.getenv('DISCORD_BOT_HEALTH', "http://localhost:8000/health") 
@@ -63,8 +58,6 @@ SORT_ORDERS = [
 BASE_URL = "https://auctions.yahoo.co.jp/search/search?p={}&n=50&b={}&{}&minPrice=1&maxPrice={}"
 
 exchange_rate_cache = {"rate": 150.0, "timestamp": 0}
-JUST_LISTED_INTERVAL = 60
-JUST_LISTED_WINDOW = 5
 
 class IntensiveKeywordGenerator:
     def __init__(self):
@@ -880,40 +873,15 @@ def search_yahoo_multi_page_intensive(keyword_combo, max_pages, brand, keyword_m
 
 def send_to_discord_bot(auction_data):
     try:
-        print(f"📡 Attempting to send to Discord: {auction_data['title'][:50]}...")
-        print(f"   URL: {DISCORD_BOT_WEBHOOK}")
-        print(f"   Auction ID: {auction_data['auction_id']}")
-        
         response = requests.post(DISCORD_BOT_WEBHOOK, json=auction_data, timeout=10)
-        
-        print(f"   Response Status: {response.status_code}")
-        print(f"   Response Text: {response.text[:200] if response.text else 'No response text'}")
-        
         if response.status_code == 200:
-            print(f"✅ Successfully sent: {auction_data['title'][:50]}...")
+            print(f"✅ Sent: {auction_data['title'][:50]}...")
             return True
         else:
-            print(f"❌ Discord bot failed with status {response.status_code}")
-            print(f"   Full response: {response.text}")
+            print(f"❌ Discord bot failed: {response.status_code}")
             return False
-    except requests.exceptions.ConnectionError as e:
-        print(f"❌ Connection error to Discord bot: {e}")
-        print(f"   Is the Discord bot running? Check the webhook URL: {DISCORD_BOT_WEBHOOK}")
-        return False
-    except requests.exceptions.Timeout:
-        print(f"❌ Timeout sending to Discord bot (10s exceeded)")
-        return False
     except Exception as e:
-        print(f"❌ Unexpected error sending to Discord bot: {e}")
-        import traceback
-        print(f"   Traceback: {traceback.format_exc()}")
-        return False
-
-async def send_to_discord_bot_async(session, auction_data):
-    try:
-        async with session.post(DISCORD_BOT_WEBHOOK, json=auction_data, timeout=10) as resp:
-            return resp.status == 200
-    except Exception:
+        print(f"❌ Discord bot error: {e}")
         return False
 
 def get_discord_bot_stats():
@@ -943,126 +911,23 @@ def log_scraper_stats(total_found, quality_filtered, sent_to_discord, errors_cou
         ''')
         
         cursor.execute('''
-            INSERT INTO scraper_stats
+            INSERT INTO scraper_stats 
             (total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched)
             VALUES (?, ?, ?, ?, ?)
         ''', (total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched))
         
         conn.commit()
         conn.close()
-
+        
     except Exception as e:
         print(f"⚠️ Could not log scraper stats: {e}")
-
-async def fetch_listing_start_time(session, url):
-    try:
-        async with session.get(url, timeout=10) as resp:
-            text = await resp.text()
-        m = re.search(r"開始日時[^0-9]*(\d{4})年(\d{1,2})月(\d{1,2})日[^0-9]*(\d{1,2})時(\d{1,2})分", text)
-        if m:
-            y, mo, d, h, mi = map(int, m.groups())
-            jp = datetime(y, mo, d, h, mi, tzinfo=timezone(timedelta(hours=9)))
-            return jp.astimezone(timezone.utc)
-    except Exception:
-        return None
-
-async def fetch_recent_listings(session, brand, variants):
-    keyword = variants[0] if variants else brand
-    url = BASE_URL.format(urllib.parse.quote(keyword), 1, "s1=new&o1=d", MAX_PRICE_YEN)
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        async with session.get(url, headers=headers, timeout=15) as resp:
-            html = await resp.text()
-    except Exception:
-        return []
-    soup = BeautifulSoup(html, "html.parser")
-    items = soup.select("li.Product")
-    prelim = []
-    for item in items:
-        link_tag = item.select_one("a.Product__titleLink")
-        if not link_tag:
-            continue
-        link = link_tag["href"]
-        if not link.startswith("http"):
-            link = "https://auctions.yahoo.co.jp" + link
-        title = link_tag.get_text(strip=True)
-        if "femme" in title.lower():
-            continue
-        auc_id = link.split("/")[-1].split("?")[0]
-        if auc_id in seen_ids or check_if_auction_exists_in_db(auc_id):
-            continue
-        is_valid, matched_brand = is_valid_brand_item(title)
-        if not is_valid:
-            continue
-        price_tag = item.select_one(".Product__priceValue")
-        if not price_tag:
-            continue
-        try:
-            price = int(price_tag.text.replace("円", "").replace(",", ""))
-        except ValueError:
-            continue
-        if price > MAX_PRICE_YEN:
-            continue
-        usd_price = convert_jpy_to_usd(price)
-        ok, _ = is_quality_listing(usd_price, matched_brand, title)
-        if not ok:
-            continue
-        deal_quality = calculate_deal_quality(usd_price, matched_brand, title)
-        sizes = extract_size_info(title)
-        img_tag = item.select_one("img")
-        img = img_tag["src"] if img_tag and img_tag.has_attr("src") else ""
-        if img and not img.startswith("http"):
-            img = "https:" + img if img.startswith("//") else "https://auctions.yahoo.co.jp" + img
-        zen_link = f"https://zenmarket.jp/en/auction.aspx?itemCode={auc_id}"
-        prelim.append({
-            "auction_id": auc_id,
-            "title": title,
-            "price_jpy": price,
-            "price_usd": round(usd_price, 2),
-            "brand": matched_brand,
-            "zenmarket_url": zen_link,
-            "yahoo_url": link,
-            "image_url": img,
-            "deal_quality": deal_quality,
-            "sizes": sizes
-        })
-    tasks = [fetch_listing_start_time(session, p["yahoo_url"]) for p in prelim]
-    starts = await asyncio.gather(*tasks)
-    now = datetime.now(timezone.utc)
-    results = []
-    for p, st in zip(prelim, starts):
-        if not st or now - st > timedelta(minutes=JUST_LISTED_WINDOW):
-            continue
-        p["target_channel"] = "just-listed"
-        p["priority"] = calculate_listing_priority(p)
-        results.append(p)
-    return results
-
-async def just_listed_loop():
-    thread = threading.Thread(target=run_health_server, daemon=True)
-    thread.start()
-    get_usd_jpy_rate()
-    while True:
-        async with aiohttp.ClientSession() as session:
-            tasks = [fetch_recent_listings(session, b, info["variants"]) for b, info in BRAND_DATA.items()]
-            groups = await asyncio.gather(*tasks)
-            all_listings = [item for group in groups for item in group]
-            all_listings.sort(key=lambda x: x.get("priority", 0), reverse=True)
-            for listing in all_listings:
-                if listing["auction_id"] in seen_ids:
-                    continue
-                sent = await send_to_discord_bot_async(session, listing)
-                if sent:
-                    seen_ids.add(listing["auction_id"])
-            save_seen_ids()
-        await asyncio.sleep(JUST_LISTED_INTERVAL)
 
 def main_loop():
     print("🎯 Starting INTENSIVE Yahoo Japan Sniper with MAXIMUM VOLUME...")
     
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
-    print(f"🌐 Health server started on port {SCRAPER_HEALTH_PORT}")
+    print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
     
     tiered_system = AdaptiveTieredSystem()
     keyword_manager = AdaptiveKeywordManager()
@@ -1098,83 +963,61 @@ def main_loop():
             if is_low_volume:
                 print("⚠️ LOW VOLUME DETECTED - INTENSIFYING SEARCH")
             
-            # Collect all results from searches
-            all_results = []
-            
-            for tier_name, tier_config_base in tiered_system.tier_config.items():
-                if not tiered_system.should_search_tier(tier_name):
-                    continue
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                all_futures = []
                 
-                tier_config = tiered_system.get_adaptive_config(tier_name, is_low_volume)
-                
-                print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config_base['brands'])} brands")
-                print(f"   Keywords: {tier_config['max_keywords']}, Pages: {tier_config['max_pages']}")
-                
-                tier_searches = 0
-                tier_finds = 0
-                
-                for brand in tier_config_base['brands']:
-                    if brand not in BRAND_DATA:
+                for tier_name, tier_config_base in tiered_system.tier_config.items():
+                    if not tiered_system.should_search_tier(tier_name):
                         continue
                     
-                    brand_info = BRAND_DATA[brand]
-                    keywords = keyword_generator.generate_comprehensive_keywords(
-                        brand, 
-                        brand_info['variants'], 
-                        tiered_system.iteration_counter
-                    )[:tier_config['max_keywords']]
+                    tier_config = tiered_system.get_adaptive_config(tier_name, is_low_volume)
                     
-                    brand_listings = []
+                    print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config_base['brands'])} brands")
+                    print(f"   Keywords: {tier_config['max_keywords']}, Pages: {tier_config['max_pages']}")
                     
-                    for keyword in keywords:
-                        # Skip dead keywords unless they should be revived
-                        if keyword in keyword_manager.dead_keywords and not keyword_manager.should_revive_keyword(keyword):
-                            print(f"⏭️ Skipping dead keyword: {keyword}")
+                    for brand in tier_config_base['brands']:
+                        if brand not in BRAND_DATA:
                             continue
                         
-                        # Search with different sort orders
-                        for sort_order in tier_config_base.get('sort_orders', ['new']):
-                            print(f"🔍 Searching: {keyword} ({sort_order} - up to {tier_config['max_pages']} pages)")
-                            
-                            listings, errors = search_yahoo_multi_page_intensive(
-                                keyword,
-                                tier_config['max_pages'],
-                                brand,
-                                keyword_manager,
-                                sort_order
-                            )
-                            
-                            total_found += len(listings)
-                            total_errors += errors
-                            total_searches += 1
-                            tier_searches += 1
-                            
-                            if len(listings) > 0:
-                                brand_listings.extend(listings)
-                                tier_finds += len(listings)
-                                print(f"✅ Found {len(listings)} items for {keyword} ({sort_order})")
-                            
-                            time.sleep(tier_config['delay'])
-                    
-                    # Sort brand listings by priority and add to results
-                    brand_listings.sort(key=lambda x: x["priority"], reverse=True)
-                    limited_brand_listings = brand_listings[:tier_config.get('max_listings', 999)]
-                    all_results.extend(limited_brand_listings)
-                    
-                    print(f"📦 Brand {brand}: {len(limited_brand_listings)} items ready to send")
+                        brand_info = BRAND_DATA[brand]
+                        keywords = keyword_generator.generate_comprehensive_keywords(
+                            brand, 
+                            brand_info['variants'], 
+                            tiered_system.iteration_counter
+                        )[:tier_config['max_keywords']]
+                        
+                        for keyword in keywords:
+                            if keyword_manager.should_revive_keyword(keyword) or keyword not in keyword_manager.dead_keywords:
+                                for sort_order in tier_config_base.get('sort_orders', ['new']):
+                                    future = executor.submit(
+                                        search_yahoo_multi_page_intensive,
+                                        keyword,
+                                        tier_config['max_pages'],
+                                        brand,
+                                        keyword_manager,
+                                        sort_order
+                                    )
+                                    all_futures.append((future, tier_name, brand))
+                                    total_searches += 1
                 
-                tiered_system.update_performance(tier_name, tier_searches, tier_finds)
+                print(f"⏳ Waiting for {len(all_futures)} concurrent searches...")
                 
-                if tier_finds > 0:
-                    efficiency = tier_finds / max(1, tier_searches)
-                    print(f"📊 {tier_name.upper()}: {tier_finds} finds from {tier_searches} searches (efficiency: {efficiency:.2f})")
+                all_results = []
+                for future, tier_name, brand in all_futures:
+                    try:
+                        listings, errors = future.result(timeout=30)
+                        all_results.extend(listings)
+                        total_found += len(listings)
+                        total_errors += errors
+                        tiered_system.update_performance(tier_name, 1, len(listings))
+                    except Exception as e:
+                        print(f"❌ Search error for {brand}: {e}")
+                        total_errors += 1
             
-            # Sort all results by priority
             all_results.sort(key=lambda x: x["priority"], reverse=True)
             
-            print(f"\n📦 Processing {len(all_results)} total listings for Discord...")
+            print(f"\n📦 Processing {len(all_results)} total listings...")
             
-            # Send all results to Discord
             for listing_data in all_results:
                 quality_filtered += 1
                 
@@ -1188,14 +1031,10 @@ def main_loop():
                     is_new = "🆕" if listing_data.get("is_new_listing") else ""
                     sizes = f" [{','.join(listing_data.get('sizes', []))}]" if listing_data.get('sizes') else ""
                     
-                    print(f"{priority_emoji}{is_new} {listing_data['brand']}: {listing_data['title'][:40]}... - ${listing_data['price_usd']:.2f}{sizes}")
-                else:
-                    print(f"⚠️ Failed to send: {listing_data['title'][:40]}...")
+                    print(f"{priority_emoji}{is_new} {listing_data['brand']}: ${listing_data['price_usd']:.2f}{sizes}")
                 
-                # Small delay between sends to avoid overwhelming
                 time.sleep(0.3)
             
-            # Clear seen items periodically
             if tiered_system.iteration_counter % 25 == 0:
                 items_before = len(seen_ids)
                 print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Clearing {items_before} seen items...")
@@ -1212,7 +1051,6 @@ def main_loop():
                 except Exception as e:
                     print(f"⚠️ Could not clear database: {e}")
             
-            # Save state
             save_seen_ids()
             keyword_manager.save_keyword_data()
             tiered_system.save_performance_data()
@@ -1231,7 +1069,6 @@ def main_loop():
             print(f"❌ Errors: {total_errors}")
             print(f"⚡ Efficiency: {cycle_efficiency:.3f} finds per search")
             
-            # Performance insights every 10 cycles
             if tiered_system.iteration_counter % 10 == 0:
                 print(f"\n🧠 PERFORMANCE INSIGHTS:")
                 
@@ -1245,28 +1082,14 @@ def main_loop():
                 for tier_name, tracker in tiered_system.performance_tracker.items():
                     if tracker['total_searches'] > 0:
                         print(f"📊 {tier_name.upper()}: {tracker['avg_efficiency']:.2f} avg efficiency")
-                
-                # Show top performing keywords
-                if keyword_manager.hot_keywords:
-                    best_keywords = []
-                    for kw in list(keyword_manager.hot_keywords)[:5]:
-                        perf = keyword_manager.keyword_performance.get(kw, {})
-                        if perf.get('searches', 0) > 0:
-                            rate = perf['finds'] / perf['searches']
-                            best_keywords.append(f"{kw}({rate:.1%})")
-                    if best_keywords:
-                        print(f"🔥 Top keywords: {best_keywords}")
             
             log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches)
             
-            # Adaptive sleep time
             base_sleep_time = 180
             if cycle_efficiency > 0.2:
                 sleep_time = base_sleep_time - 60
-                print(f"🚀 High efficiency detected, reducing sleep")
             elif cycle_efficiency < 0.05:
                 sleep_time = 60
-                print(f"⚠️ Low efficiency, quick retry")
             else:
                 sleep_time = base_sleep_time
             
@@ -1283,10 +1106,4 @@ def main_loop():
 load_exchange_rate()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--just-listed", action="store_true")
-    args = parser.parse_args()
-    if args.just_listed or os.getenv("JUST_LISTED_MODE") == "1":
-        asyncio.run(just_listed_loop())
-    else:
-        main_loop()
+    main_loop()
