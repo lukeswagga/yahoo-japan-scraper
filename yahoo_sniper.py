@@ -1415,7 +1415,7 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
             is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
             if is_spam:
                 skipped_spam += 1
-                print(f"🚫 Enhanced spam filter blocked: {spam_category}")
+                print(f"🚫 Enhanced spam filter blocked: {title[:30]}...")
                 continue
             
             # Quality check
