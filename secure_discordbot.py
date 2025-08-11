@@ -13,7 +13,7 @@ import hmac
 import hashlib
 from database_manager import (
     db_manager, get_user_proxy_preference, set_user_proxy_preference, 
-    add_listing, add_reaction, add_bookmark, get_user_bookmarks, clear_user_bookmarks,
+    add_listing, add_bookmark, get_user_bookmarks, clear_user_bookmarks,
     init_subscription_tables, test_postgres_connection
 )
 
@@ -1269,7 +1269,7 @@ async def on_reaction_add(reaction, user):
         if preference_learner:
             preference_learner.learn_from_reaction(user.id, auction_data, reaction_type)
         
-        add_reaction(user.id, auction_id, reaction_type)
+        # Note: User reaction logged via preference_learner above
         
         if reaction_type == "thumbs_up":
             print(f"👍 User {user.name} liked {auction_data['title'][:30]}... - Creating bookmark")
