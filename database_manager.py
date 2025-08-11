@@ -1,71 +1,39 @@
-"""
-Database Manager with PostgreSQL/SQLite fallback
-Works locally without PostgreSQL, uses PostgreSQL on Railway
-"""
-
 import os
 import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
-import re
-
-try:
-    import psycopg2
-    import psycopg2.extras
-    POSTGRES_AVAILABLE = True
-except ImportError:
-    POSTGRES_AVAILABLE = False
+import json
+from datetime import datetime
 
 class DatabaseManager:
     def __init__(self):
-        database_url = os.getenv('DATABASE_URL')
+        self.database_url = os.environ.get('DATABASE_URL')
+        self.use_postgres = bool(self.database_url)
         
-        # Railway provides DATABASE_URL in Postgres 12+ format, convert if needed
-        if database_url and database_url.startswith('postgres://'):
-            database_url = database_url.replace('postgres://', 'postgresql://', 1)
-            os.environ['DATABASE_URL'] = database_url
-        
-        self.database_url = database_url
-        self.use_postgres = bool(self.database_url and POSTGRES_AVAILABLE)
-        
-        if self.use_postgres:
-            print("✅ Using PostgreSQL for persistent storage")
-            print(f"📊 Database URL format: {self.database_url[:30]}...")
+        if not self.use_postgres:
+            self.db_path = 'yahoo_sniper.db'
+            print("🗄️ Using SQLite database")
         else:
-            print("⚠️ Using SQLite (data will be lost on redeploy)")
-            self.db_file = "auction_tracking.db"
+            print("🐘 Using PostgreSQL database")
+        
+        self.init_database()
     
     @contextmanager
     def get_connection(self):
         """Get database connection (PostgreSQL or SQLite)"""
         if self.use_postgres:
+            conn = psycopg2.connect(
+                self.database_url,
+                cursor_factory=RealDictCursor
+            )
             try:
-                # Add connection parameters for Railway
-                conn = psycopg2.connect(
-                    self.database_url,
-                    sslmode='require',
-                    connect_timeout=10
-                )
-                conn.autocommit = False
-                try:
-                    yield conn
-                    conn.commit()
-                except Exception as e:
-                    conn.rollback()
-                    raise e
-                finally:
-                    conn.close()
-            except psycopg2.OperationalError as e:
-                print(f"❌ PostgreSQL connection failed: {e}")
-                print("Falling back to SQLite...")
-                self.use_postgres = False
-                self.db_file = "auction_tracking.db"
-                conn = sqlite3.connect(self.db_file)
-                try:
-                    yield conn
-                finally:
-                    conn.close()
+                yield conn
+            finally:
+                conn.close()
         else:
-            conn = sqlite3.connect(self.db_file)
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
             try:
                 yield conn
             finally:
@@ -85,7 +53,7 @@ class DatabaseManager:
             print("✅ Database tables initialized")
     
     def _create_postgres_tables(self, cursor):
-        """Create PostgreSQL tables with auction end time tracking"""
+        """Create PostgreSQL tables with all required columns"""
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS listings (
                 id SERIAL PRIMARY KEY,
@@ -188,6 +156,10 @@ class DatabaseManager:
             )
         ''')
         
+        # Add missing columns if they don't exist
+        self._add_missing_columns_postgres(cursor)
+        
+        # Create indexes
         indexes = [
             "CREATE INDEX IF NOT EXISTS idx_listings_brand ON listings(brand)",
             "CREATE INDEX IF NOT EXISTS idx_listings_created_at ON listings(created_at)",
@@ -206,8 +178,27 @@ class DatabaseManager:
                 if "already exists" not in str(e):
                     print(f"Index warning: {e}")
     
+    def _add_missing_columns_postgres(self, cursor):
+        """Add missing columns to existing PostgreSQL tables"""
+        missing_columns = [
+            ("listings", "auction_end_time", "TIMESTAMP"),
+            ("listings", "reminder_1h_sent", "BOOLEAN DEFAULT FALSE"),
+            ("listings", "reminder_5m_sent", "BOOLEAN DEFAULT FALSE"),
+            ("user_preferences", "size_alerts_enabled", "BOOLEAN DEFAULT FALSE"),
+            ("user_preferences", "preferred_sizes", "TEXT"),
+            ("user_preferences", "auto_bookmark_likes", "BOOLEAN DEFAULT TRUE"),
+        ]
+        
+        for table_name, column_name, column_type in missing_columns:
+            try:
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} {column_type}")
+                print(f"✅ Added missing column: {table_name}.{column_name}")
+            except Exception as e:
+                if "already exists" not in str(e):
+                    print(f"⚠️ Column add warning for {table_name}.{column_name}: {e}")
+    
     def _create_sqlite_tables(self, cursor):
-        """Create SQLite tables with auction end time tracking"""
+        """Create SQLite tables with all required columns"""
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS listings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -315,71 +306,38 @@ class DatabaseManager:
         ''')
     
     def execute_query(self, query, params=None, fetch_one=False, fetch_all=False):
-        """Execute a database query with proper parameter binding"""
+        """Execute a database query with proper error handling"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                if self.use_postgres:
-                    query = query.replace('?', '%s')
-                    if params:
-                        cursor.execute(query, params)
-                    else:
-                        cursor.execute(query)
+                if params:
+                    cursor.execute(query, params)
                 else:
-                    if params:
-                        cursor.execute(query, params)
-                    else:
-                        cursor.execute(query)
+                    cursor.execute(query)
                 
                 if fetch_one:
                     result = cursor.fetchone()
+                    return dict(result) if result and self.use_postgres else result
                 elif fetch_all:
-                    result = cursor.fetchall()
+                    results = cursor.fetchall()
+                    return [dict(row) for row in results] if results and self.use_postgres else results
                 else:
-                    result = cursor.rowcount
-                
-                conn.commit()
-                return result
-                
+                    conn.commit()
+                    return True
+                    
         except Exception as e:
             print(f"❌ Database execute_query error: {e}")
-            print(f"❌ Query: {query}")
-            print(f"❌ Params: {params}")
+            if params:
+                print(f"❌ Query: {query}")
+                print(f"❌ Params: {params}")
             raise e
 
+# Initialize the database manager
 db_manager = DatabaseManager()
 
-def get_user_proxy_preference(user_id):
-    result = db_manager.execute_query(
-        'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?',
-        (user_id,),
-        fetch_one=True
-    )
-    
-    if result:
-        return result[0], result[1]
-    else:
-        return "zenmarket", False
-
-def set_user_proxy_preference(user_id, proxy_service):
-    if db_manager.use_postgres:
-        db_manager.execute_query('''
-            INSERT INTO user_preferences (user_id, proxy_service, setup_complete, updated_at)
-            VALUES (%s, %s, TRUE, CURRENT_TIMESTAMP)
-            ON CONFLICT (user_id) DO UPDATE SET
-                proxy_service = EXCLUDED.proxy_service,
-                setup_complete = TRUE,
-                updated_at = CURRENT_TIMESTAMP
-        ''', (user_id, proxy_service))
-    else:
-        db_manager.execute_query('''
-            INSERT OR REPLACE INTO user_preferences 
-            (user_id, proxy_service, setup_complete, updated_at)
-            VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)
-        ''', (user_id, proxy_service))
-
 def add_listing(auction_data, message_id):
+    """Add listing to database with proper error handling"""
     try:
         auction_end_time = auction_data.get('auction_end_time')
         
@@ -430,41 +388,26 @@ def add_listing(auction_data, message_id):
                 auction_end_time
             ))
         
-        print(f"✅ Successfully added listing to database: {auction_data['auction_id']}")
+        print(f"✅ Added listing to database: {auction_data['auction_id']}")
         return True
         
     except Exception as e:
         print(f"❌ Error adding listing to database: {e}")
+        print(f"❌ Full traceback: {e}")
         return False
 
-def add_reaction(user_id, auction_id, reaction_type):
-    try:
-        db_manager.execute_query(
-            'DELETE FROM reactions WHERE user_id = ? AND auction_id = ?',
-            (user_id, auction_id)
-        )
-        
-        db_manager.execute_query('''
-            INSERT INTO reactions (user_id, auction_id, reaction_type)
-            VALUES (?, ?, ?)
-        ''', (user_id, auction_id, reaction_type))
-        
-        return True
-    except Exception as e:
-        print(f"❌ Error adding reaction: {e}")
-        return False
-
-def add_bookmark(user_id, auction_id, bookmark_message_id, bookmark_channel_id, auction_end_time=None):
+def add_user_bookmark(user_id, auction_id, bookmark_message_id, bookmark_channel_id, auction_end_time=None):
+    """Add user bookmark with proper conflict handling"""
     try:
         if db_manager.use_postgres:
             db_manager.execute_query('''
-                INSERT INTO user_bookmarks (user_id, auction_id, bookmark_message_id, bookmark_channel_id, auction_end_time)
+                INSERT INTO user_bookmarks 
+                (user_id, auction_id, bookmark_message_id, bookmark_channel_id, auction_end_time)
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (user_id, auction_id) DO UPDATE SET
                     bookmark_message_id = EXCLUDED.bookmark_message_id,
                     bookmark_channel_id = EXCLUDED.bookmark_channel_id,
-                    auction_end_time = EXCLUDED.auction_end_time,
-                    created_at = CURRENT_TIMESTAMP
+                    auction_end_time = EXCLUDED.auction_end_time
             ''', (user_id, auction_id, bookmark_message_id, bookmark_channel_id, auction_end_time))
         else:
             db_manager.execute_query('''
@@ -478,78 +421,114 @@ def add_bookmark(user_id, auction_id, bookmark_message_id, bookmark_channel_id, 
         print(f"❌ Error adding bookmark: {e}")
         return False
 
-def get_user_bookmarks(user_id, limit=10):
-    return db_manager.execute_query('''
-        SELECT ub.auction_id, l.title, l.brand, l.price_usd, l.zenmarket_url, ub.created_at, l.auction_end_time
-        FROM user_bookmarks ub
-        JOIN listings l ON ub.auction_id = l.auction_id
-        WHERE ub.user_id = ?
-        ORDER BY ub.created_at DESC
-        LIMIT ?
-    ''', (user_id, limit), fetch_all=True)
+def get_user_proxy_preference(user_id):
+    """Get user proxy preference with fallback"""
+    try:
+        result = db_manager.execute_query(
+            'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?',
+            (user_id,),
+            fetch_one=True
+        )
+        
+        if result:
+            return result[0], result[1]
+        else:
+            return "zenmarket", False
+    except Exception as e:
+        print(f"❌ Error getting user preference: {e}")
+        return "zenmarket", False
 
-def get_pending_reminders(reminder_type='1h'):
-    if reminder_type == '1h':
+def set_user_proxy_preference(user_id, proxy_service):
+    """Set user proxy preference with proper upsert"""
+    try:
         if db_manager.use_postgres:
-            query = '''
-                SELECT DISTINCT ub.user_id, ub.auction_id, ub.bookmark_channel_id, 
-                       l.title, l.zenmarket_url, l.auction_end_time
-                FROM user_bookmarks ub
-                JOIN listings l ON ub.auction_id = l.auction_id
-                WHERE ub.reminder_sent_1h = FALSE
-                AND l.auction_end_time IS NOT NULL
-                AND l.auction_end_time > NOW()
-                AND l.auction_end_time <= NOW() + INTERVAL '1 hour'
-            '''
+            db_manager.execute_query('''
+                INSERT INTO user_preferences (user_id, proxy_service, setup_complete, updated_at)
+                VALUES (%s, %s, TRUE, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    proxy_service = EXCLUDED.proxy_service,
+                    setup_complete = TRUE,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (user_id, proxy_service))
         else:
-            query = '''
-                SELECT DISTINCT ub.user_id, ub.auction_id, ub.bookmark_channel_id, 
-                       l.title, l.zenmarket_url, l.auction_end_time
-                FROM user_bookmarks ub
-                JOIN listings l ON ub.auction_id = l.auction_id
-                WHERE ub.reminder_sent_1h = 0
-                AND l.auction_end_time IS NOT NULL
-                AND l.auction_end_time > datetime('now')
-                AND l.auction_end_time <= datetime('now', '+1 hour')
-            '''
-    else:
+            db_manager.execute_query('''
+                INSERT OR REPLACE INTO user_preferences 
+                (user_id, proxy_service, setup_complete, updated_at)
+                VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)
+            ''', (user_id, proxy_service))
+        return True
+    except Exception as e:
+        print(f"❌ Error setting user preference: {e}")
+        return False
+
+def get_user_size_preferences(user_id):
+    """Get user size preferences with proper column handling"""
+    try:
+        result = db_manager.execute_query(
+            'SELECT preferred_sizes, size_alerts_enabled FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT preferred_sizes, size_alerts_enabled FROM user_preferences WHERE user_id = ?',
+            (user_id,),
+            fetch_one=True
+        )
+        
+        if result and result[0]:
+            sizes = result[0].split(',') if result[0] else []
+            enabled = result[1] if result[1] is not None else False
+            return sizes, enabled
+        return [], False
+    except Exception as e:
+        print(f"❌ Error getting size preferences: {e}")
+        return [], False
+
+def set_user_size_preferences(user_id, sizes):
+    """Set user size preferences with proper upsert"""
+    try:
+        sizes_str = ','.join(sizes) if sizes else ''
+        
         if db_manager.use_postgres:
-            query = '''
-                SELECT DISTINCT ub.user_id, ub.auction_id, ub.bookmark_channel_id, 
-                       l.title, l.zenmarket_url, l.auction_end_time
-                FROM user_bookmarks ub
-                JOIN listings l ON ub.auction_id = l.auction_id
-                WHERE ub.reminder_sent_5m = FALSE
-                AND l.auction_end_time IS NOT NULL
-                AND l.auction_end_time > NOW()
-                AND l.auction_end_time <= NOW() + INTERVAL '5 minutes'
-            '''
+            db_manager.execute_query('''
+                INSERT INTO user_preferences (user_id, preferred_sizes, size_alerts_enabled, updated_at)
+                VALUES (%s, %s, TRUE, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    preferred_sizes = EXCLUDED.preferred_sizes,
+                    size_alerts_enabled = TRUE,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (user_id, sizes_str))
         else:
-            query = '''
-                SELECT DISTINCT ub.user_id, ub.auction_id, ub.bookmark_channel_id, 
-                       l.title, l.zenmarket_url, l.auction_end_time
-                FROM user_bookmarks ub
-                JOIN listings l ON ub.auction_id = l.auction_id
-                WHERE ub.reminder_sent_5m = 0
-                AND l.auction_end_time IS NOT NULL
-                AND l.auction_end_time > datetime('now')
-                AND l.auction_end_time <= datetime('now', '+5 minutes')
-            '''
-    
-    return db_manager.execute_query(query, fetch_all=True)
+            db_manager.execute_query('''
+                INSERT OR REPLACE INTO user_preferences 
+                (user_id, preferred_sizes, size_alerts_enabled, updated_at)
+                VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)
+            ''', (user_id, sizes_str))
+        return True
+    except Exception as e:
+        print(f"❌ Error setting size preferences: {e}")
+        return False
 
 def mark_reminder_sent(user_id, auction_id, reminder_type='1h'):
-    if reminder_type == '1h':
-        query = 'UPDATE user_bookmarks SET reminder_sent_1h = TRUE WHERE user_id = ? AND auction_id = ?'
-    else:
-        query = 'UPDATE user_bookmarks SET reminder_sent_5m = TRUE WHERE user_id = ? AND auction_id = ?'
-    
-    db_manager.execute_query(query, (user_id, auction_id))
+    """Mark reminder as sent with proper query syntax"""
+    try:
+        if reminder_type == '1h':
+            if db_manager.use_postgres:
+                query = 'UPDATE user_bookmarks SET reminder_sent_1h = TRUE WHERE user_id = %s AND auction_id = %s'
+            else:
+                query = 'UPDATE user_bookmarks SET reminder_sent_1h = TRUE WHERE user_id = ? AND auction_id = ?'
+        else:
+            if db_manager.use_postgres:
+                query = 'UPDATE user_bookmarks SET reminder_sent_5m = TRUE WHERE user_id = %s AND auction_id = %s'
+            else:
+                query = 'UPDATE user_bookmarks SET reminder_sent_5m = TRUE WHERE user_id = ? AND auction_id = ?'
+        
+        db_manager.execute_query(query, (user_id, auction_id))
+        return True
+    except Exception as e:
+        print(f"❌ Error marking reminder sent: {e}")
+        return False
 
 def clear_user_bookmarks(user_id):
+    """Clear user bookmarks with proper count"""
     try:
         count_result = db_manager.execute_query(
-            'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
+            'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = %s' if db_manager.use_postgres else 'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
             (user_id,),
             fetch_one=True
         )
@@ -558,7 +537,7 @@ def clear_user_bookmarks(user_id):
         
         if count > 0:
             db_manager.execute_query(
-                'DELETE FROM user_bookmarks WHERE user_id = ?',
+                'DELETE FROM user_bookmarks WHERE user_id = %s' if db_manager.use_postgres else 'DELETE FROM user_bookmarks WHERE user_id = ?',
                 (user_id,)
             )
         
@@ -567,49 +546,8 @@ def clear_user_bookmarks(user_id):
         print(f"❌ Error clearing bookmarks: {e}")
         return 0
 
-def get_user_size_preferences(user_id):
-    result = db_manager.execute_query(
-        'SELECT preferred_sizes, size_alerts_enabled FROM user_preferences WHERE user_id = ?',
-        (user_id,),
-        fetch_one=True
-    )
-    
-    if result and result[0]:
-        sizes = result[0].split(',') if result[0] else []
-        enabled = result[1] if result[1] is not None else False
-        return sizes, enabled
-    return [], False
-
-def set_user_size_preferences(user_id, sizes):
-    sizes_str = ','.join(sizes) if sizes else ''
-    
-    if db_manager.use_postgres:
-        db_manager.execute_query('''
-            INSERT INTO user_preferences (user_id, preferred_sizes, size_alerts_enabled, updated_at)
-            VALUES (%s, %s, TRUE, CURRENT_TIMESTAMP)
-            ON CONFLICT (user_id) DO UPDATE SET
-                preferred_sizes = EXCLUDED.preferred_sizes,
-                size_alerts_enabled = TRUE,
-                updated_at = CURRENT_TIMESTAMP
-        ''', (user_id, sizes_str))
-    else:
-        db_manager.execute_query('''
-            INSERT OR REPLACE INTO user_preferences 
-            (user_id, preferred_sizes, size_alerts_enabled, updated_at)
-            VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)
-        ''', (user_id, sizes_str))
-
-def init_subscription_tables():
-    try:
-        print("🔧 Initializing subscription tables...")
-        db_manager.init_database()
-        print("✅ Subscription tables initialized successfully")
-        return True
-    except Exception as e:
-        print(f"❌ Error initializing subscription tables: {e}")
-        return False
-
 def test_postgres_connection():
+    """Test PostgreSQL connection and show table status"""
     try:
         if not db_manager.use_postgres:
             print("⚠️ Using SQLite, not PostgreSQL")
@@ -619,15 +557,10 @@ def test_postgres_connection():
         if result:
             print(f"✅ PostgreSQL connected: {result[0][:50]}...")
         
-        if db_manager.use_postgres:
-            tables = db_manager.execute_query('''
-                SELECT table_name FROM information_schema.tables 
-                WHERE table_schema = 'public'
-            ''', fetch_all=True)
-        else:
-            tables = db_manager.execute_query('''
-                SELECT name FROM sqlite_master WHERE type='table'
-            ''', fetch_all=True)
+        tables = db_manager.execute_query('''
+            SELECT table_name FROM information_schema.tables 
+            WHERE table_schema = 'public'
+        ''', fetch_all=True)
         
         print(f"📊 Existing tables: {[table[0] for table in tables] if tables else 'None'}")
         
@@ -635,11 +568,22 @@ def test_postgres_connection():
             try:
                 count = db_manager.execute_query(f'SELECT COUNT(*) FROM {table_name}', fetch_one=True)
                 print(f"   {table_name}: {count[0] if count else 0} rows")
-            except:
-                print(f"   {table_name}: Error counting rows")
+            except Exception as e:
+                print(f"   {table_name}: Error counting rows - {e}")
         
         return True
         
     except Exception as e:
         print(f"❌ PostgreSQL connection test failed: {e}")
+        return False
+
+def init_subscription_tables():
+    """Initialize subscription tables"""
+    try:
+        print("🔧 Initializing subscription tables...")
+        db_manager.init_database()
+        print("✅ Subscription tables initialized successfully")
+        return True
+    except Exception as e:
+        print(f"❌ Error initializing subscription tables: {e}")
         return False

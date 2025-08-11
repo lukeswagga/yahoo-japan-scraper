@@ -17,7 +17,74 @@ from database_manager import (
     init_subscription_tables, test_postgres_connection
 )
 
+def get_user_size_preferences(user_id):
+    """Get user's size preferences and alert status"""
+    try:
+        result = db_manager.execute_query(
+            'SELECT sizes, size_alerts_enabled FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT sizes, size_alerts_enabled FROM user_preferences WHERE user_id = ?',
+            (user_id,),
+            fetch_one=True
+        )
+        
+        if result:
+            sizes = result[0] if isinstance(result, (list, tuple)) else result['sizes']
+            enabled = result[1] if isinstance(result, (list, tuple)) else result['size_alerts_enabled']
+            
+            if sizes:
+                size_list = sizes.split(',') if isinstance(sizes, str) else sizes
+                return [s.strip() for s in size_list], bool(enabled)
+            
+        return [], False
+        
+    except Exception as e:
+        print(f"❌ Error getting size preferences: {e}")
+        return [], False
 
+def set_user_size_preferences(user_id, sizes):
+    """Set user's size preferences"""
+    try:
+        sizes_str = ','.join(sizes) if sizes else ''
+        
+        if db_manager.use_postgres:
+            db_manager.execute_query('''
+                INSERT INTO user_preferences (user_id, sizes, size_alerts_enabled)
+                VALUES (%s, %s, TRUE)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    sizes = EXCLUDED.sizes,
+                    size_alerts_enabled = TRUE
+            ''', (user_id, sizes_str))
+        else:
+            db_manager.execute_query('''
+                INSERT OR REPLACE INTO user_preferences 
+                (user_id, sizes, size_alerts_enabled)
+                VALUES (?, ?, 1)
+            ''', (user_id, sizes_str))
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error setting size preferences: {e}")
+        return False
+
+def add_user_bookmark(user_id, auction_id, message_id, channel_id, auction_end_time):
+    """Add a user bookmark to the database"""
+    try:
+        if db_manager.use_postgres:
+            db_manager.execute_query('''
+                INSERT INTO user_bookmarks (user_id, auction_id, message_id, channel_id, auction_end_time)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (user_id, auction_id, message_id, channel_id, auction_end_time))
+        else:
+            db_manager.execute_query('''
+                INSERT INTO user_bookmarks (user_id, auction_id, message_id, channel_id, auction_end_time)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (user_id, auction_id, message_id, channel_id, auction_end_time))
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error adding bookmark: {e}")
+        return False
 
 class BookmarkReminderSystem:
     def __init__(self, bot):
@@ -141,6 +208,76 @@ class BookmarkReminderSystem:
                     
         except Exception as e:
             print(f"❌ Error checking 5m reminders: {e}")
+
+def get_pending_reminders(reminder_type):
+    """Get pending reminders from database"""
+    try:
+        if reminder_type == '1h':
+            time_threshold = datetime.now() + timedelta(hours=1)
+        elif reminder_type == '5m':
+            time_threshold = datetime.now() + timedelta(minutes=5)
+        else:
+            return []
+        
+        if db_manager.use_postgres:
+            reminders = db_manager.execute_query('''
+                SELECT ub.user_id, ub.auction_id, ub.channel_id, l.title, l.zenmarket_url, ub.auction_end_time
+                FROM user_bookmarks ub
+                JOIN listings l ON ub.auction_id = l.auction_id
+                WHERE ub.auction_end_time <= %s
+                AND ub.reminder_1h_sent = FALSE
+                ORDER BY ub.auction_end_time ASC
+            ''', (time_threshold,), fetch_all=True)
+        else:
+            reminders = db_manager.execute_query('''
+                SELECT ub.user_id, ub.auction_id, ub.channel_id, l.title, l.zenmarket_url, ub.auction_end_time
+                FROM user_bookmarks ub
+                JOIN listings l ON ub.auction_id = l.auction_id
+                WHERE ub.auction_end_time <= ?
+                AND ub.reminder_1h_sent = 0
+                ORDER BY ub.auction_end_time ASC
+            ''', (time_threshold,), fetch_all=True)
+        
+        return reminders
+        
+    except Exception as e:
+        print(f"❌ Error getting pending reminders: {e}")
+        return []
+
+def mark_reminder_sent(user_id, auction_id, reminder_type):
+    """Mark reminder as sent in database"""
+    try:
+        if reminder_type == '1h':
+            if db_manager.use_postgres:
+                db_manager.execute_query('''
+                    UPDATE user_bookmarks 
+                    SET reminder_1h_sent = TRUE 
+                    WHERE user_id = %s AND auction_id = %s
+                ''', (user_id, auction_id))
+            else:
+                db_manager.execute_query('''
+                    UPDATE user_bookmarks 
+                    SET reminder_1h_sent = 1 
+                    WHERE user_id = ? AND auction_id = ?
+                ''', (user_id, auction_id))
+        elif reminder_type == '5m':
+            if db_manager.use_postgres:
+                db_manager.execute_query('''
+                    UPDATE user_bookmarks 
+                    SET reminder_5m_sent = TRUE 
+                    WHERE user_id = %s AND auction_id = %s
+                ''', (user_id, auction_id))
+            else:
+                db_manager.execute_query('''
+                    UPDATE user_bookmarks 
+                    SET reminder_5m_sent = 1 
+                    WHERE user_id = ? AND auction_id = ?
+                ''', (user_id, auction_id))
+        
+        print(f"✅ Marked {reminder_type} reminder as sent for {auction_id}")
+        
+    except Exception as e:
+        print(f"❌ Error marking reminder sent: {e}")
 
 class SizeAlertSystem:
     def __init__(self, bot):
@@ -358,6 +495,8 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 guild = None
 auction_channel = None
 brand_channels_cache = {}
+reminder_system = None
+size_alert_system = None
 
 class UserPreferenceLearner:
     def __init__(self):
@@ -930,42 +1069,23 @@ async def process_batch_buffer():
             await send_individual_listings_with_rate_limit(items_to_send)
 
 async def send_single_listing_enhanced(auction_data):
+    """Send listing with proper database error handling"""
     try:
-        brand = auction_data.get('brand', '')
-        title = auction_data.get('title', '')
-        price_usd = auction_data.get('price_usd', 0)
-        sizes = auction_data.get('sizes', [])
+        title = auction_data.get('title', 'Unknown Item')[:100]
+        brand = auction_data.get('brand', 'Unknown')
+        sizes = extract_sizes_from_title(title) if title else []
         
-        print(f"🔄 Processing listing: {title[:50]}...")
-        
-        # Remove femme listings
-        if "femme" in title.lower():
-            print(f"🚫 Blocking femme listing: {title[:50]}...")
-            return False
-        
-        if preference_learner and preference_learner.is_likely_spam(title, brand):
-            print(f"🚫 Blocking spam listing: {title[:50]}...")
-            return False
-        
-        print(f"🔍 Checking for duplicates: {auction_data['auction_id']}")
+        # Check for duplicates first
         existing = db_manager.execute_query(
-            'SELECT message_id FROM listings WHERE auction_id = ?',
-            (auction_data['auction_id'],),
+            'SELECT id FROM listings WHERE auction_id = %s' if db_manager.use_postgres else 'SELECT id FROM listings WHERE auction_id = ?', 
+            (auction_data['auction_id'],), 
             fetch_one=True
         )
-
+        
         if existing:
             print(f"⚠️ Duplicate found, skipping: {auction_data['auction_id']}")
             return False
-
-        if auction_data.get('target_channel') == 'just-listed':
-            channel = discord.utils.get(guild.text_channels, name="just-listed")
-            if channel:
-                embed = create_listing_embed(auction_data)
-                message = await channel.send(embed=embed)
-                add_listing(auction_data, message.id)
-            return True
-
+        
         # Send to main channel
         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
         main_message = None
@@ -974,10 +1094,14 @@ async def send_single_listing_enhanced(auction_data):
             main_message = await main_channel.send(embed=embed)
             print(f"📤 Sent to MAIN channel: {title[:30]}...")
             
-            # Add to database with end time
-            add_listing(auction_data, main_message.id)
+            # Add to database with end time - fixed function call
+            success = add_listing(auction_data, main_message.id)
+            if not success:
+                print(f"❌ Failed to add listing to database: {auction_data['auction_id']}")
             
-            # Allow users to react manually without pre-added bot reactions
+            # Add reactions for users to interact with
+            await main_message.add_reaction("👍")
+            await main_message.add_reaction("👎")
         
         # Send to brand channel
         brand_channel = None
@@ -986,56 +1110,50 @@ async def send_single_listing_enhanced(auction_data):
             if brand_channel:
                 embed = create_listing_embed(auction_data)
                 brand_message = await brand_channel.send(embed=embed)
+                await brand_message.add_reaction("👍")
+                await brand_message.add_reaction("👎")
                 print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
         
-        # Check for size alerts
+        # Check for size alerts with fixed query
         if sizes and size_alert_system:
-            all_users = db_manager.execute_query(
-                'SELECT user_id FROM user_preferences WHERE size_alerts_enabled = TRUE',
-                fetch_all=True
-            )
-            
-            if all_users:
-                for user_row in all_users:
-                    user_id = user_row[0]
-                    if await size_alert_system.check_user_size_match(user_id, sizes):
-                        await size_alert_system.send_size_alert(user_id, auction_data)
+            try:
+                all_users = db_manager.execute_query(
+                    'SELECT user_id FROM user_preferences WHERE size_alerts_enabled = TRUE' if db_manager.use_postgres else 'SELECT user_id FROM user_preferences WHERE size_alerts_enabled = 1',
+                    fetch_all=True
+                )
+                
+                if all_users:
+                    for user_row in all_users:
+                        user_id = user_row[0] if isinstance(user_row, (list, tuple)) else user_row['user_id']
+                        user_sizes, alerts_enabled = get_user_size_preferences(user_id)
+                        
+                        if alerts_enabled and user_sizes:
+                            matching_sizes = [size for size in sizes if any(user_size.lower() in size.lower() for user_size in user_sizes)]
+                            
+                            if matching_sizes:
+                                try:
+                                    user = await bot.fetch_user(user_id)
+                                    if user:
+                                        embed = create_listing_embed(auction_data)
+                                        embed.title = f"🎯 SIZE ALERT: {embed.title}"
+                                        embed.add_field(
+                                            name="📏 Matching Sizes", 
+                                            value=", ".join(matching_sizes), 
+                                            inline=False
+                                        )
+                                        await user.send(embed=embed)
+                                        print(f"📬 Size alert sent to user {user_id} for sizes: {matching_sizes}")
+                                except Exception as e:
+                                    print(f"❌ Failed to send size alert to user {user_id}: {e}")
+            except Exception as e:
+                print(f"❌ Error processing size alerts: {e}")
         
-        # Send to budget channel if applicable
-        if price_usd <= 100:
-            budget_channel = discord.utils.get(guild.text_channels, name="💰-budget-steals")
-            if budget_channel:
-                embed = create_listing_embed(auction_data)
-                embed.set_footer(text=f"Budget Steal - Under $100 | ID: {auction_data['auction_id']}")
-                budget_message = await budget_channel.send(embed=embed)
-                print(f"💰 Also sent to budget-steals: ${price_usd:.2f}")
-        
-        # Send to hourly drops
-        hourly_channel = discord.utils.get(guild.text_channels, name="⏰-hourly-drops")
-        if hourly_channel:
-            embed = create_listing_embed(auction_data)
-            hourly_message = await hourly_channel.send(embed=embed)
-            print(f"⏰ Also sent to hourly-drops")
-
-        # Send to daily digest for free tier (with delay)
-        if delayed_manager:
-            delay_seconds = 7200  # 2 hour delay for free tier
-            await delayed_manager.queue_for_free_users(auction_data, delay_seconds)
-            print(f"⏳ Queued for free tier delivery in 2 hours")
-        
-        print(f"✅ Successfully sent listing to multiple channels")
         return True
         
-    except discord.errors.Forbidden as e:
-        print(f"❌ Permission error sending listing: {e}")
-        return False
-    except discord.errors.HTTPException as e:
-        print(f"❌ Discord API error: {e}")
-        return False
     except Exception as e:
-        print(f"❌ Error sending listing: {e}")
+        print(f"❌ Full traceback: {e}")
         import traceback
-        print(f"❌ Full traceback: {traceback.format_exc()}")
+        traceback.print_exc()
         return False
 
 async def send_individual_listings_with_rate_limit(batch_data):
@@ -2239,6 +2357,31 @@ class DelayedListingManager:
 
 tier_manager = None
 delayed_manager = None
+reminder_system = None
+size_alert_system = None
+
+def extract_sizes_from_title(title):
+    """Extract size information from auction title"""
+    if not title:
+        return []
+    
+    title_lower = title.lower()
+    sizes = []
+    
+    # Common size patterns
+    size_patterns = [
+        r'\b(xs|s|m|l|xl|xxl)\b',
+        r'\b(44|46|48|50|52|54|56)\b',
+        r'\b(small|medium|large)\b',
+        r'サイズ[smxl]',
+        r'[smxl]サイズ'
+    ]
+    
+    for pattern in size_patterns:
+        matches = re.findall(pattern, title_lower)
+        sizes.extend(matches)
+    
+    return list(set(sizes))  # Remove duplicates
 
 def create_listing_embed(listing_data):
     """Create a standardized embed for listings"""
@@ -2394,6 +2537,305 @@ async def my_tier_command(ctx):
     
     await ctx.send(embed=embed)
 
+@bot.command(name='bookmark')
+async def bookmark_item(ctx, *, auction_url_or_id=None):
+    """Bookmark an auction with fixed database handling"""
+    try:
+        user_id = ctx.author.id
+        
+        if not auction_url_or_id:
+            await ctx.send("❌ Please provide an auction URL or ID. Example: `!bookmark w1234567890`")
+            return
+        
+        # Extract auction ID from URL or use directly
+        auction_id = auction_url_or_id
+        if 'yahoo.co.jp' in auction_url_or_id or 'zenmarket.jp' in auction_url_or_id:
+            import re
+            match = re.search(r'[wab]\d{10}', auction_url_or_id)
+            if match:
+                auction_id = match.group()
+            else:
+                await ctx.send("❌ Could not extract auction ID from URL")
+                return
+        
+        # Check if listing exists in database with fixed query
+        listing = db_manager.execute_query(
+            'SELECT * FROM listings WHERE auction_id = %s' if db_manager.use_postgres else 'SELECT * FROM listings WHERE auction_id = ?',
+            (auction_id,),
+            fetch_one=True
+        )
+        
+        if not listing:
+            await ctx.send(f"❌ Auction {auction_id} not found in our database. Make sure it was posted by the bot recently.")
+            return
+        
+        # Check if already bookmarked with fixed query
+        existing_bookmark = db_manager.execute_query(
+            'SELECT id FROM user_bookmarks WHERE user_id = %s AND auction_id = %s' if db_manager.use_postgres else 'SELECT id FROM user_bookmarks WHERE user_id = ? AND auction_id = ?',
+            (user_id, auction_id),
+            fetch_one=True
+        )
+        
+        if existing_bookmark:
+            await ctx.send(f"📌 You already have this auction bookmarked: {auction_id}")
+            return
+        
+        # Get user's bookmark method preference
+        bookmark_method, _ = get_user_proxy_preference(user_id)
+        
+        if bookmark_method == 'private_channel':
+            # Create private bookmark channel
+            channel_name = f"bookmark-{ctx.author.name}-{auction_id}"
+            
+            # Check if channel already exists
+            existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
+            if existing_channel:
+                bookmark_channel = existing_channel
+            else:
+                # Create new private channel
+                overwrites = {
+                    guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                    ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                    guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                }
+                
+                bookmark_channel = await guild.create_text_channel(
+                    channel_name,
+                    overwrites=overwrites,
+                    category=discord.utils.get(guild.categories, name="📌 Bookmarks")
+                )
+            
+            # Send bookmark embed to private channel
+            embed = create_listing_embed({
+                'auction_id': auction_id,
+                'title': listing['title'] if isinstance(listing, dict) else listing[2],
+                'brand': listing['brand'] if isinstance(listing, dict) else listing[3],
+                'price_jpy': listing['price_jpy'] if isinstance(listing, dict) else listing[4],
+                'price_usd': listing['price_usd'] if isinstance(listing, dict) else listing[5],
+                'zenmarket_url': listing['zenmarket_url'] if isinstance(listing, dict) else listing[7],
+                'yahoo_url': listing['yahoo_url'] if isinstance(listing, dict) else listing[8],
+                'image_url': listing['image_url'] if isinstance(listing, dict) else listing[9],
+                'deal_quality': listing['deal_quality'] if isinstance(listing, dict) else listing[10],
+                'auction_end_time': listing['auction_end_time'] if isinstance(listing, dict) else listing[14]
+            })
+            
+            embed.title = f"📌 BOOKMARKED: {embed.title}"
+            embed.color = 0x00ff00
+            
+            bookmark_message = await bookmark_channel.send(embed=embed)
+            
+            # Add bookmark to database with fixed function call
+            auction_end_time = listing['auction_end_time'] if isinstance(listing, dict) else listing[14]
+            success = add_user_bookmark(
+                user_id, 
+                auction_id, 
+                bookmark_message.id, 
+                bookmark_channel.id, 
+                auction_end_time
+            )
+            
+            if success:
+                await ctx.send(f"✅ Bookmarked! Check your private channel: {bookmark_channel.mention}")
+            else:
+                await ctx.send(f"❌ Failed to save bookmark to database")
+        
+        else:
+            # DM bookmark method
+            try:
+                embed = create_listing_embed({
+                    'auction_id': auction_id,
+                    'title': listing['title'] if isinstance(listing, dict) else listing[2],
+                    'brand': listing['brand'] if isinstance(listing, dict) else listing[3],
+                    'price_jpy': listing['price_jpy'] if isinstance(listing, dict) else listing[4],
+                    'price_usd': listing['price_usd'] if isinstance(listing, dict) else listing[5],
+                'zenmarket_url': listing['zenmarket_url'] if isinstance(listing, dict) else listing[7],
+                'yahoo_url': listing['yahoo_url'] if isinstance(listing, dict) else listing[8],
+                'image_url': listing['image_url'] if isinstance(listing, dict) else listing[9],
+                'deal_quality': listing['deal_quality'] if isinstance(listing, dict) else listing[10],
+                'auction_end_time': listing['auction_end_time'] if isinstance(listing, dict) else listing[14]
+                })
+                
+                embed.title = f"📌 BOOKMARKED: {embed.title}"
+                embed.color = 0x00ff00
+                
+                dm_message = await ctx.author.send(embed=embed)
+                
+                # Add bookmark to database
+                auction_end_time = listing['auction_end_time'] if isinstance(listing, dict) else listing[14]
+                success = add_user_bookmark(
+                    user_id, 
+                    auction_id, 
+                    dm_message.id, 
+                    0,  # 0 for DM
+                    auction_end_time
+                )
+                
+                if success:
+                    await ctx.send(f"✅ Bookmarked! Check your DMs.")
+                else:
+                    await ctx.send(f"❌ Failed to save bookmark to database")
+                    
+            except discord.Forbidden:
+                await ctx.send("❌ Cannot send DM. Please enable DMs from server members or use `!settings bookmark_method private_channel`")
+        
+    except Exception as e:
+        print(f"❌ Error in bookmark command: {e}")
+        import traceback
+        traceback.print_exc()
+        await ctx.send(f"❌ Error creating bookmark: {str(e)}")
+
+@bot.command(name='my_bookmarks')
+async def list_bookmarks(ctx):
+    """List user's bookmarks with fixed database queries"""
+    try:
+        user_id = ctx.author.id
+        
+        bookmarks = db_manager.execute_query(
+            '''SELECT ub.auction_id, ub.created_at, ub.auction_end_time, 
+                      l.title, l.brand, l.price_usd, l.zenmarket_url
+               FROM user_bookmarks ub
+               LEFT JOIN listings l ON ub.auction_id = l.auction_id
+               WHERE ub.user_id = %s
+               ORDER BY ub.created_at DESC
+               LIMIT 10''' if db_manager.use_postgres else 
+            '''SELECT ub.auction_id, ub.created_at, ub.auction_end_time, 
+                      l.title, l.brand, l.price_usd, l.zenmarket_url
+               FROM user_bookmarks ub
+               LEFT JOIN listings l ON ub.auction_id = l.auction_id
+               WHERE ub.user_id = ?
+               ORDER BY ub.created_at DESC
+               LIMIT 10''',
+            (user_id,),
+            fetch_all=True
+        )
+        
+        if not bookmarks:
+            await ctx.send("📌 You haven't bookmarked any auctions yet. Use `!bookmark <auction_id>` to save items!")
+            return
+        
+        embed = discord.Embed(
+            title=f"📌 Your Bookmarks ({len(bookmarks)})",
+            color=0x3498db,
+            description="Your most recent bookmarked auctions"
+        )
+        
+        for bookmark in bookmarks:
+            auction_id = bookmark[0] if isinstance(bookmark, (list, tuple)) else bookmark['auction_id']
+            title = bookmark[3] if isinstance(bookmark, (list, tuple)) else bookmark['title']
+            brand = bookmark[4] if isinstance(bookmark, (list, tuple)) else bookmark['brand']
+            price_usd = bookmark[5] if isinstance(bookmark, (list, tuple)) else bookmark['price_usd']
+            zenmarket_url = bookmark[6] if isinstance(bookmark, (list, tuple)) else bookmark['zenmarket_url']
+            
+            if title:
+                display_title = f"{brand} - {title[:50]}..." if len(title) > 50 else f"{brand} - {title}"
+                embed.add_field(
+                    name=f"🎯 {display_title}",
+                    value=f"💰 ${price_usd:.2f} | [View on Zenmarket]({zenmarket_url})\n`{auction_id}`",
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name=f"🎯 {auction_id}",
+                    value="Listing details not available",
+                    inline=False
+                )
+        
+        embed.set_footer(text="Use !clear_bookmarks to remove all bookmarks")
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        print(f"❌ Error listing bookmarks: {e}")
+        await ctx.send("❌ Error retrieving your bookmarks. Please try again later.")
+
+@bot.command(name='clear_bookmarks')
+async def clear_bookmarks_command(ctx):
+    """Clear all user bookmarks with confirmation"""
+    try:
+        user_id = ctx.author.id
+        
+        count = clear_user_bookmarks(user_id)
+        
+        if count > 0:
+            await ctx.send(f"✅ Cleared {count} bookmarks.")
+        else:
+            await ctx.send("📌 You don't have any bookmarks to clear.")
+            
+    except Exception as e:
+        print(f"❌ Error clearing bookmarks: {e}")
+        await ctx.send("❌ Error clearing bookmarks. Please try again later.")
+
+@bot.command(name='size_alerts')
+async def set_size_alerts(ctx, *, sizes=None):
+    """Set size preferences for alerts with fixed database handling"""
+    try:
+        user_id = ctx.author.id
+        
+        if not sizes:
+            # Show current preferences
+            user_sizes, alerts_enabled = get_user_size_preferences(user_id)
+            
+            embed = discord.Embed(
+                title="📏 Your Size Alert Settings",
+                color=0x3498db
+            )
+            
+            if user_sizes:
+                embed.add_field(
+                    name="Current Sizes",
+                    value=", ".join(user_sizes),
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="Current Sizes",
+                    value="None set",
+                    inline=False
+                )
+            
+            embed.add_field(
+                name="Alerts Enabled",
+                value="✅ Yes" if alerts_enabled else "❌ No",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="Usage",
+                value="Use `!size_alerts S, M, L` to set your preferred sizes",
+                inline=False
+            )
+            
+            await ctx.send(embed=embed)
+            return
+        
+        # Parse and clean sizes
+        size_list = [size.strip().upper() for size in sizes.split(',')]
+        valid_sizes = []
+        
+        for size in size_list:
+            if size in ['XS', 'S', 'M', 'L', 'XL', 'XXL', '0', '1', '2', '3', '4', '5'] or size.isdigit():
+                valid_sizes.append(size)
+        
+        if not valid_sizes:
+            await ctx.send("❌ Please provide valid sizes. Examples: S, M, L, XL or 0, 1, 2, 3")
+            return
+        
+        # Save to database with fixed function call
+        success = set_user_size_preferences(user_id, valid_sizes)
+        
+        if success:
+            embed = discord.Embed(
+                title="✅ Size Alerts Updated",
+                color=0x00ff00,
+                description=f"You'll now receive DM alerts for items in sizes: **{', '.join(valid_sizes)}**"
+            )
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("❌ Error saving size preferences. Please try again later.")
+            
+    except Exception as e:
+        print(f"❌ Error setting size alerts: {e}")
+        await ctx.send("❌ Error setting size preferences. Please try again later.")
+
 @bot.command(name='update_channels')
 @commands.has_permissions(administrator=True)
 async def update_channels_command(ctx):
@@ -2435,6 +2877,46 @@ async def list_channels_command(ctx):
             )
     
     await ctx.send(embed=embed)
+
+# Health check endpoint for the Discord bot
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+import json
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            
+            health_data = {
+                'status': 'healthy',
+                'bot_ready': bot.is_ready(),
+                'guild_connected': guild is not None,
+                'database_connected': db_manager.use_postgres,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            self.wfile.write(json.dumps(health_data).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        pass  # Suppress HTTP logs
+
+def run_health_server():
+    """Run health check server on Railway's PORT"""
+    port = int(os.environ.get('PORT', 8000))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    print(f"🌐 Health server running on port {port}")
+    server.serve_forever()
+
+def start_health_server():
+    """Start health server in background thread"""
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
 
 def run_flask():
     try:
@@ -2501,4 +2983,13 @@ def main():
             print("👋 Shutting down...")
 
 if __name__ == "__main__":
-    main()
+    # Start health server for Railway
+    start_health_server()
+    
+    # Initialize database
+    if not test_postgres_connection():
+        print("⚠️ Database connection issues detected")
+    
+    # Run the bot
+    print("🤖 Starting Discord bot...")
+    bot.run(DISCORD_TOKEN)

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import requests
 from bs4 import BeautifulSoup
 import time
@@ -58,6 +60,133 @@ SORT_ORDERS = [
 BASE_URL = "https://auctions.yahoo.co.jp/search/search?p={}&n=50&b={}&{}&minPrice=1&maxPrice={}"
 
 exchange_rate_cache = {"rate": 150.0, "timestamp": 0}
+current_usd_jpy_rate = 147.0
+
+# Enhanced spam detector class
+class EnhancedSpamDetector:
+    def __init__(self):
+        self.spam_patterns = [
+            # Obvious replicas/fakes
+            r'(?i)(replica|fake|copy|knock.?off|bootleg|unauthorized)',
+            r'(?i)(スーパーコピー|レプリカ|偽物|コピー品)',
+            
+            # Non-clothing items that often appear
+            r'(?i)(book|magazine|catalogue|catalog|cd|dvd|poster|sticker)',
+            r'(?i)(本|雑誌|カタログ|ポスター|ステッカー|写真)',
+            
+            # Damaged/parts only
+            r'(?i)(damaged|broken|parts?.only|repair|restoration)',
+            r'(?i)(破損|破れ|汚れ|ダメージ|部品のみ)',
+            
+            # Obvious non-fashion
+            r'(?i)(phone.?case|iphone|android|computer|laptop)',
+            r'(?i)(ケース|スマホ|携帯|パソコン)'
+        ]
+        
+        self.brand_specific_spam = {
+            'Stone Island': [
+                r'(?i)(badge.only|patch.only|logo.only)',
+                r'(?i)(バッジのみ|ワッペンのみ)'
+            ],
+            'Rick Owens': [
+                r'(?i)(inspired|style|similar)',
+                r'(?i)(風|っぽい|系)'
+            ]
+        }
+    
+    def is_spam(self, title, brand=None):
+        """Enhanced spam detection with brand-specific rules"""
+        if not title:
+            return True, "empty_title"
+        
+        title_lower = title.lower()
+        
+        # Check general spam patterns
+        for pattern in self.spam_patterns:
+            if re.search(pattern, title):
+                return True, f"spam_pattern: {pattern}"
+        
+        # Check brand-specific spam patterns
+        if brand and brand in self.brand_specific_spam:
+            for pattern in self.brand_specific_spam[brand]:
+                if re.search(pattern, title):
+                    return True, f"brand_spam: {brand}"
+        
+        # Length checks
+        if len(title) < 10:
+            return True, "title_too_short"
+        
+        if len(title) > 200:
+            return True, "title_too_long"
+        
+        # Character ratio checks (too many numbers/symbols)
+        alpha_chars = len(re.findall(r'[a-zA-Zあ-んア-ン一-龯]', title))
+        total_chars = len(title)
+        
+        if total_chars > 0 and alpha_chars / total_chars < 0.3:
+            return True, "low_alpha_ratio"
+        
+        return False, "passed_all_checks"
+
+def detect_brand_in_title(title):
+    """Detect brand in title with fallback"""
+    if not title:
+        return "unknown"
+    
+    # Load brand data if not already loaded
+    if 'BRAND_DATA' not in globals():
+        global BRAND_DATA
+        BRAND_DATA = load_brand_data()
+    
+    title_lower = title.lower()
+    
+    for brand, brand_info in BRAND_DATA.items():
+        if brand.lower() in title_lower:
+            return brand
+        
+        # Check variants
+        for variant in brand_info.get('variants', []):
+            if variant.lower() in title_lower:
+                return brand
+    
+    return "unknown"
+
+def calculate_priority_score(price_usd, brand, title, deal_quality):
+    """Calculate priority score for listing"""
+    base_score = 50
+    
+    # Brand boost
+    if brand in ["Stone Island", "Rick Owens", "Balenciaga", "Off-White"]:
+        base_score += 30
+    elif brand in ["Supreme", "Palace", "Bape"]:
+        base_score += 20
+    
+    # Price boost (lower price = higher priority)
+    if price_usd < 50:
+        base_score += 25
+    elif price_usd < 100:
+        base_score += 15
+    elif price_usd < 200:
+        base_score += 10
+    
+    # Deal quality boost
+    base_score += int(deal_quality * 100)
+    
+    # Title quality boost
+    if len(title) > 20 and len(title) < 100:
+        base_score += 10
+    
+    return min(100, base_score)
+
+def send_discord_alert_fallback(title, price, link, image, item_id):
+    """Fallback Discord alert function"""
+    try:
+        # Simple fallback - just print to console
+        print(f"📢 FALLBACK ALERT: {title} - ¥{price:,} - {link}")
+        return True
+    except Exception as e:
+        print(f"❌ Fallback alert failed: {e}")
+        return False
 
 class IntensiveKeywordGenerator:
     def __init__(self):
@@ -350,6 +479,100 @@ class AdaptiveKeywordManager:
             fallback_keywords.append(brand_info['variants'][1])
         
         return fallback_keywords[:max_count]
+
+class EmergencyModeManager:
+    def __init__(self):
+        self.emergency_mode = False
+        self.consecutive_failures = 0
+        self.max_failures = 10
+        
+    def record_failure(self):
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= self.max_failures:
+            self.emergency_mode = True
+            print("🚨 EMERGENCY MODE ACTIVATED - Too many consecutive failures")
+    
+    def record_success(self):
+        self.consecutive_failures = 0
+        if self.emergency_mode:
+            self.emergency_mode = False
+            print("✅ Emergency mode deactivated - Success recorded")
+    
+    def should_skip_search(self):
+        return self.emergency_mode
+
+class OptimizedTieredSystem:
+    def __init__(self):
+        self.iteration_counter = 0
+        self.performance_tracker = {}
+        self.tier_config = {
+            'premium': {
+                'brands': ['Stone Island', 'Rick Owens', 'Balenciaga'],
+                'max_pages': 3,
+                'delay': 2.0,
+                'max_keywords': 8
+            },
+            'high': {
+                'brands': ['Supreme', 'Off-White', 'Palace'],
+                'max_pages': 2,
+                'delay': 1.5,
+                'max_keywords': 6
+            },
+            'standard': {
+                'brands': ['Bape', 'Nike', 'Adidas'],
+                'max_pages': 2,
+                'delay': 1.0,
+                'max_keywords': 4
+            }
+        }
+        self.load_performance_data()
+    
+    def next_iteration(self):
+        self.iteration_counter += 1
+    
+    def should_search_tier(self, tier_name):
+        if tier_name not in self.performance_tracker:
+            return True
+        
+        tracker = self.performance_tracker[tier_name]
+        if tracker['total_searches'] < 5:
+            return True
+        
+        # Skip if efficiency is too low
+        if tracker['avg_efficiency'] < 0.01:
+            return False
+        
+        return True
+    
+    def update_performance(self, tier_name, searches_made, finds_count):
+        if tier_name not in self.performance_tracker:
+            self.performance_tracker[tier_name] = {
+                'total_searches': 0,
+                'total_finds': 0,
+                'avg_efficiency': 0.0
+            }
+        
+        tracker = self.performance_tracker[tier_name]
+        tracker['total_searches'] += searches_made
+        tracker['total_finds'] += finds_count
+        
+        if tracker['total_searches'] > 0:
+            tracker['avg_efficiency'] = tracker['total_finds'] / tracker['total_searches']
+    
+    def load_performance_data(self):
+        try:
+            if os.path.exists('tier_performance.json'):
+                with open('tier_performance.json', 'r') as f:
+                    self.performance_tracker = json.load(f)
+        except Exception as e:
+            print(f"⚠️ Could not load tier performance data: {e}")
+    
+    def save_performance_data(self):
+        try:
+            with open('tier_performance.json', 'w') as f:
+                json.dump(self.performance_tracker, f, indent=2)
+        except Exception as e:
+            print(f"⚠️ Could not save tier performance data: {e}")
 
 def load_brand_data():
     try:
@@ -871,27 +1094,7 @@ def search_yahoo_multi_page_intensive(keyword_combo, max_pages, brand, keyword_m
     
     return all_listings, total_errors
 
-def send_to_discord_bot(auction_data):
-    try:
-        response = requests.post(DISCORD_BOT_WEBHOOK, json=auction_data, timeout=10)
-        if response.status_code == 200:
-            print(f"✅ Sent: {auction_data['title'][:50]}...")
-            return True
-        else:
-            print(f"❌ Discord bot failed: {response.status_code}")
-            return False
-    except Exception as e:
-        print(f"❌ Discord bot error: {e}")
-        return False
 
-def get_discord_bot_stats():
-    try:
-        response = requests.get(DISCORD_BOT_STATS, timeout=5)
-        if response.status_code == 200:
-            return response.json()
-        return None
-    except Exception:
-        return None
 
 def log_scraper_stats(total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched):
     try:
@@ -922,28 +1125,506 @@ def log_scraper_stats(total_found, quality_filtered, sent_to_discord, errors_cou
     except Exception as e:
         print(f"⚠️ Could not log scraper stats: {e}")
 
-def main_loop():
-    print("🎯 Starting INTENSIVE Yahoo Japan Sniper with MAXIMUM VOLUME...")
+def build_search_url(keyword, page=1):
+    """Build Yahoo Japan search URL with proper encoding"""
+    base_url = "https://auctions.yahoo.co.jp/search/search"
     
+    params = {
+        'p': keyword,
+        'tab_ex': 'commerce',
+        'ei': 'utf-8',
+        'b': (page - 1) * 50 + 1,  # Yahoo shows 50 items per page
+        'n': 50,
+        'auccat': '0',
+        'aucminprice': str(int(MIN_PRICE_USD * current_usd_jpy_rate)) if current_usd_jpy_rate else '1000',
+        'aucmaxprice': str(int(MAX_PRICE_USD * current_usd_jpy_rate)) if current_usd_jpy_rate else '150000',
+        'sort': 'end',  # Sort by ending soon for fresh results
+        'order': 'a'    # Ascending order
+    }
+    
+    # Build URL manually to ensure proper encoding
+    param_string = '&'.join([f"{k}={requests.utils.quote(str(v))}" for k, v in params.items()])
+    return f"{base_url}?{param_string}"
+
+def search_yahoo_multi_page_optimized(keyword, max_pages, brand, keyword_manager=None):
+    """Enhanced Yahoo Japan search with better error handling"""
+    all_listings = []
+    total_errors = 0
+    consecutive_errors = 0
+    max_consecutive_errors = 3
+    
+    print(f"🔍 Starting search for '{keyword}' (up to {max_pages} pages)")
+    
+    for page in range(1, max_pages + 1):
+        if consecutive_errors >= max_consecutive_errors:
+            print(f"⚠️ Too many consecutive errors ({consecutive_errors}), stopping search for '{keyword}'")
+            break
+            
+        try:
+            url = build_search_url(keyword, page)
+            
+            # Enhanced request with better headers and retry logic
+            headers = {
+                'User-Agent': random.choice([
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                ]),
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'ja,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Cache-Control': 'max-age=0'
+            }
+            
+            # Retry logic for failed requests
+            max_retries = 3
+            retry_delay = 2
+            
+            for attempt in range(max_retries):
+                try:
+                    response = requests.get(url, headers=headers, timeout=15)
+                    
+                    if response.status_code == 200:
+                        consecutive_errors = 0  # Reset on success
+                        break
+                    elif response.status_code == 429:
+                        print(f"⏰ Rate limited on page {page}, waiting {retry_delay * (attempt + 1)}s...")
+                        time.sleep(retry_delay * (attempt + 1))
+                        continue
+                    elif response.status_code in [500, 502, 503, 504]:
+                        print(f"❌ HTTP {response.status_code} for {keyword} page {page}, attempt {attempt + 1}")
+                        if attempt < max_retries - 1:
+                            time.sleep(retry_delay * (attempt + 1))
+                            continue
+                        else:
+                            raise requests.exceptions.RequestException(f"HTTP {response.status_code} after {max_retries} attempts")
+                    else:
+                        print(f"❌ HTTP {response.status_code} for {keyword} page {page}")
+                        raise requests.exceptions.RequestException(f"HTTP {response.status_code}")
+                        
+                except requests.exceptions.Timeout:
+                    print(f"⏰ Timeout on {keyword} page {page}, attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        raise
+                except requests.exceptions.ConnectionError:
+                    print(f"🔌 Connection error on {keyword} page {page}, attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay * 2)
+                        continue
+                    else:
+                        raise
+            else:
+                # If we exhausted all retries
+                print(f"❌ Failed to fetch {keyword} page {page} after {max_retries} attempts")
+                total_errors += 1
+                consecutive_errors += 1
+                continue
+            
+            # Parse the response
+            soup = BeautifulSoup(response.content, 'html.parser')
+            page_listings = parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager)
+            
+            if not page_listings:
+                print(f"📭 No listings found on page {page} for '{keyword}'")
+                # Don't count empty pages as errors, but limit consecutive empty pages
+                if page > 1:  # Allow first page to be empty
+                    consecutive_errors += 0.5  # Half error for empty page
+            else:
+                print(f"✅ Found {len(page_listings)} listings on page {page}")
+                all_listings.extend(page_listings)
+                consecutive_errors = 0  # Reset on successful page with listings
+            
+            # Respectful delay between pages
+            time.sleep(random.uniform(1.5, 3.0))
+            
+        except Exception as e:
+            print(f"❌ Error on page {page} for '{keyword}': {str(e)}")
+            total_errors += 1
+            consecutive_errors += 1
+            
+            # Update keyword performance for failures
+            if keyword_manager and keyword_manager.keyword_performance:
+                if keyword not in keyword_manager.keyword_performance:
+                    keyword_manager.keyword_performance[keyword] = {
+                        'searches': 0, 'finds': 0, 'consecutive_fails': 0, 'last_success': None
+                    }
+                keyword_manager.keyword_performance[keyword]['consecutive_fails'] += 1
+            
+            # Longer delay on error
+            time.sleep(random.uniform(3.0, 5.0))
+            continue
+    
+    # Update keyword performance statistics
+    if keyword_manager and keyword_manager.keyword_performance:
+        if keyword not in keyword_manager.keyword_performance:
+            keyword_manager.keyword_performance[keyword] = {
+                'searches': 0, 'finds': 0, 'consecutive_fails': 0, 'last_success': None
+            }
+        
+        keyword_manager.keyword_performance[keyword]['searches'] += 1
+        
+        if all_listings:
+            keyword_manager.keyword_performance[keyword]['finds'] += len(all_listings)
+            keyword_manager.keyword_performance[keyword]['consecutive_fails'] = 0
+            keyword_manager.keyword_performance[keyword]['last_success'] = datetime.now().isoformat()
+        
+        # Mark as dead keyword if too many consecutive failures
+        if keyword_manager.keyword_performance[keyword]['consecutive_fails'] >= 5:
+            keyword_manager.dead_keywords.add(keyword)
+            print(f"💀 Marked keyword as dead: {keyword}")
+        elif len(all_listings) > 3:  # Good performance
+            keyword_manager.hot_keywords.add(keyword)
+    
+    print(f"🏁 Search complete for '{keyword}': {len(all_listings)} total listings, {total_errors} errors")
+    return all_listings, total_errors
+
+def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
+    """Parse Yahoo Japan page with enhanced error handling"""
+    listings = []
+    skipped_spam = 0
+    skipped_duplicates = 0
+    processed_count = 0
+    
+    try:
+        # Find auction items with multiple possible selectors
+        items = []
+        
+        # Try different selectors for Yahoo Japan auctions
+        selectors = [
+            'div.Product',
+            'li.Product',
+            'div[data-auction-id]',
+            'div.Product__item',
+            '.Product'
+        ]
+        
+        for selector in selectors:
+            items = soup.select(selector)
+            if items:
+                print(f"✅ Found {len(items)} items using selector: {selector}")
+                break
+        
+        if not items:
+            print(f"❌ No items found with any selector on page")
+            return []
+        
+        for item in items:
+            try:
+                processed_count += 1
+                
+                # Extract auction ID with fallback methods
+                auction_id = None
+                
+                # Method 1: data-auction-id attribute
+                auction_id = item.get('data-auction-id')
+                
+                # Method 2: href links
+                if not auction_id:
+                    link = item.find('a', href=True)
+                    if link:
+                        href = link['href']
+                        import re
+                        match = re.search(r'[wab]\d{10}', href)
+                        if match:
+                            auction_id = match.group()
+                
+                # Method 3: Look in text content
+                if not auction_id:
+                    text_content = item.get_text()
+                    match = re.search(r'[wab]\d{10}', text_content)
+                    if match:
+                        auction_id = match.group()
+                
+                if not auction_id:
+                    print(f"⚠️ Could not extract auction ID from item {processed_count}")
+                    continue
+                
+                # Skip if already seen
+                if auction_id in seen_ids:
+                    skipped_duplicates += 1
+                    continue
+                
+                # Extract title with fallback methods
+                title = None
+                title_selectors = [
+                    '.Product__title a',
+                    '.Product__title',
+                    'h3 a',
+                    'h3',
+                    '.title a',
+                    '.title',
+                    'a[title]'
+                ]
+                
+                for selector in title_selectors:
+                    title_elem = item.select_one(selector)
+                    if title_elem:
+                        title = title_elem.get('title') or title_elem.get_text(strip=True)
+                        if title:
+                            break
+                
+                if not title:
+                    print(f"⚠️ Could not extract title for auction {auction_id}")
+                    continue
+                
+                # Extract price with fallback methods
+                price_jpy = None
+                price_selectors = [
+                    '.Product__price',
+                    '.Price',
+                    '.price',
+                    '[class*="price"]',
+                    '[class*="Price"]'
+                ]
+                
+                for selector in price_selectors:
+                    price_elem = item.select_one(selector)
+                    if price_elem:
+                        price_text = price_elem.get_text(strip=True)
+                        price_numbers = re.findall(r'[\d,]+', price_text)
+                        if price_numbers:
+                            try:
+                                price_jpy = int(price_numbers[0].replace(',', ''))
+                                break
+                            except ValueError:
+                                continue
+                
+                if not price_jpy:
+                    print(f"⚠️ Could not extract price for auction {auction_id}")
+                    continue
+                
+                # Convert to USD
+                price_usd = price_jpy / current_usd_jpy_rate if current_usd_jpy_rate else price_jpy / 147.0
+                
+                # Skip if price is outside range
+                if price_usd < MIN_PRICE_USD or price_usd > MAX_PRICE_USD:
+                    continue
+                
+                # Enhanced spam detection (if enabled)
+                spam_detector = EnhancedSpamDetector()
+                matched_brand = detect_brand_in_title(title)
+                
+                is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
+                if is_spam:
+                    skipped_spam += 1
+                    print(f"🚫 Enhanced spam filter blocked: {spam_category}")
+                    continue
+                
+                # Quality check
+                is_quality, quality_reason = is_quality_listing(price_usd, matched_brand, title)
+                if not is_quality:
+                    print(f"❌ Quality check failed: {quality_reason}")
+                    continue
+                
+                # Extract image URL
+                image_url = None
+                img_elem = item.find('img')
+                if img_elem:
+                    image_url = img_elem.get('src') or img_elem.get('data-src')
+                    if image_url and image_url.startswith('//'):
+                        image_url = 'https:' + image_url
+                
+                # Build URLs
+                yahoo_url = f"https://auctions.yahoo.co.jp/jp/auction/{auction_id}"
+                zenmarket_url = f"https://zenmarket.jp/en/auction.aspx?itemCode={auction_id}"
+                
+                # Calculate deal quality and priority
+                deal_quality = calculate_deal_quality(price_usd, matched_brand, title)
+                priority = calculate_priority_score(price_usd, matched_brand, title, deal_quality)
+                
+                listing_data = {
+                    'auction_id': auction_id,
+                    'title': title,
+                    'brand': matched_brand,
+                    'price_jpy': price_jpy,
+                    'price_usd': price_usd,
+                    'zenmarket_url': zenmarket_url,
+                    'yahoo_url': yahoo_url,
+                    'image_url': image_url,
+                    'deal_quality': deal_quality,
+                    'priority': priority,
+                    'seller_id': 'unknown',
+                    'auction_end_time': None  # Would need additional parsing
+                }
+                
+                listings.append(listing_data)
+                seen_ids.add(auction_id)
+                
+            except Exception as e:
+                print(f"❌ Error processing item {processed_count}: {str(e)}")
+                continue
+        
+        print(f"📊 Page processing complete:")
+        print(f"   🔄 Processed: {processed_count} items")
+        print(f"   ✅ Valid listings: {len(listings)}")
+        print(f"   🚫 Spam filtered: {skipped_spam}")
+        print(f"   ♻️ Duplicates skipped: {skipped_duplicates}")
+        
+    except Exception as e:
+        print(f"❌ Error parsing page: {str(e)}")
+        import traceback
+        traceback.print_exc()
+    
+    return listings
+
+
+
+def send_to_discord_bot(listing_data):
+    """Send listing to Discord bot with better error handling"""
+    try:
+        if not USE_DISCORD_BOT:
+            return False
+        
+        # Add required fields if missing
+        if 'auction_end_time' not in listing_data:
+            listing_data['auction_end_time'] = None
+        
+        if 'seller_id' not in listing_data:
+            listing_data['seller_id'] = 'unknown'
+        
+        response = requests.post(
+            f"{DISCORD_BOT_WEBHOOK}/webhook/listing",
+            json=listing_data,
+            timeout=10,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"❌ Discord bot responded with status {response.status_code}")
+            print(f"❌ Response: {response.text}")
+            return False
+            
+    except requests.exceptions.Timeout:
+        print(f"⏰ Timeout sending to Discord bot: {listing_data.get('auction_id', 'unknown')}")
+        return False
+    except requests.exceptions.ConnectionError:
+        print(f"🔌 Connection error sending to Discord bot")
+        return False
+    except Exception as e:
+        print(f"❌ Error sending to Discord bot: {e}")
+        return False
+
+def check_discord_bot_health():
+    """Check if Discord bot is responding"""
+    try:
+        if not USE_DISCORD_BOT:
+            return False, "Discord bot disabled"
+        
+        response = requests.get(
+            f"{DISCORD_BOT_HEALTH}",
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            return True, f"Bot healthy: {data.get('status', 'unknown')}"
+        else:
+            return False, f"HTTP {response.status_code}"
+            
+    except Exception as e:
+        return False, f"Health check failed: {str(e)}"
+
+def get_discord_bot_stats():
+    """Get Discord bot statistics"""
+    try:
+        if not USE_DISCORD_BOT:
+            return None
+        
+        response = requests.get(
+            f"{DISCORD_BOT_STATS}",
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error getting bot stats: {e}")
+        return None
+
+def generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, cycle_num):
+    """Generate optimized keywords for a brand based on performance and tier"""
+    keywords = []
+    
+    if brand not in BRAND_DATA:
+        return [brand]
+    
+    brand_info = BRAND_DATA[brand]
+    variants = brand_info.get('variants', [brand])
+    
+    # Start with brand name and main variants
+    keywords.extend(variants[:2])
+    
+    # Add category combinations
+    categories = ["jacket", "pants", "hoodie", "shirt", "sweater", "coat"]
+    for variant in variants[:2]:
+        for category in categories[:3]:
+            keywords.append(f"{variant} {category}")
+    
+    # Add seasonal terms
+    seasons = ["fw", "ss", "aw"]
+    years = [str(datetime.now().year - i)[-2:] for i in range(3)]
+    for variant in variants[:2]:
+        for season in seasons:
+            for year in years[:2]:
+                keywords.append(f"{variant} {season}{year}")
+    
+    # Add archive/rare terms
+    archive_terms = ["archive", "rare", "vintage", "limited"]
+    for variant in variants[:2]:
+        for term in archive_terms[:2]:
+            keywords.append(f"{variant} {term}")
+    
+    # Filter out duplicates and limit to tier max
+    unique_keywords = list(dict.fromkeys(keywords))
+    max_keywords = tier_config.get('max_keywords', 6)
+    
+    return unique_keywords[:max_keywords]
+
+def main_loop():
+    """Main search loop with enhanced error handling and no threading issues"""
+    print("🎯 Starting OPTIMIZED Yahoo Japan Sniper with HIGH VOLUME MODE...")
+    
+    # Start health server for Railway
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
     print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
     
-    tiered_system = AdaptiveTieredSystem()
+    # Initialize components
+    tiered_system = OptimizedTieredSystem()
     keyword_manager = AdaptiveKeywordManager()
-    keyword_generator = IntensiveKeywordGenerator()
+    emergency_manager = EmergencyModeManager()
     
-    print("\n🚀 INTENSIVE SCRAPING SYSTEM:")
-    print("✅ Multi-sort order scraping (new, low bids, ending soon)")
-    print("✅ Adaptive volume detection")
-    print("✅ Keyword revival system")
-    print("✅ Size detection for alerts")
-    print("✅ Auction end time tracking")
-    print("✅ REMOVED femme listings")
+    print("\n🏆 HIGH VOLUME SYSTEM INITIALIZED:")
+    print("✅ Enhanced spam detection enabled")
+    print("✅ Quality checker initialized") 
+    print("✅ HTTP error handling improved")
     print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
     print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
+    print(f"🎯 Target: MAXIMUM VOLUME with quality items")
     
+    # Initial setup
     get_usd_jpy_rate()
+    
+    if USE_DISCORD_BOT:
+        bot_healthy, status = check_discord_bot_health()
+        if bot_healthy:
+            print("✅ Discord bot is healthy and ready")
+        else:
+            print(f"⚠️ Discord bot status: {status}")
     
     try:
         while True:
@@ -958,86 +1639,81 @@ def main_loop():
             total_errors = 0
             total_searches = 0
             
-            is_low_volume = tiered_system.detect_low_volume(sent_to_discord)
-            
-            if is_low_volume:
-                print("⚠️ LOW VOLUME DETECTED - INTENSIFYING SEARCH")
-            
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                all_futures = []
+            # SEQUENTIAL PROCESSING (NO THREADING ISSUES)
+            for tier_name, tier_config in tiered_system.tier_config.items():
+                if not tiered_system.should_search_tier(tier_name):
+                    continue
                 
-                for tier_name, tier_config_base in tiered_system.tier_config.items():
-                    if not tiered_system.should_search_tier(tier_name):
+                print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config['brands'])} brands")
+                tier_searches = 0
+                tier_finds = 0
+                
+                for brand in tier_config['brands']:
+                    if brand not in BRAND_DATA:
                         continue
                     
-                    tier_config = tiered_system.get_adaptive_config(tier_name, is_low_volume)
+                    keywords = generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, tiered_system.iteration_counter)
                     
-                    print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config_base['brands'])} brands")
-                    print(f"   Keywords: {tier_config['max_keywords']}, Pages: {tier_config['max_pages']}")
+                    brand_listings = []
                     
-                    for brand in tier_config_base['brands']:
-                        if brand not in BRAND_DATA:
+                    for keyword in keywords:
+                        if (keyword_manager and keyword_manager.keyword_performance and 
+                            keyword in keyword_manager.dead_keywords):
+                            print(f"⏭️ Skipping dead keyword: {keyword}")
                             continue
                         
-                        brand_info = BRAND_DATA[brand]
-                        keywords = keyword_generator.generate_comprehensive_keywords(
-                            brand, 
-                            brand_info['variants'], 
-                            tiered_system.iteration_counter
-                        )[:tier_config['max_keywords']]
+                        print(f"🔍 Searching: {keyword} (up to {tier_config['max_pages']} pages)")
                         
-                        for keyword in keywords:
-                            if keyword_manager.should_revive_keyword(keyword) or keyword not in keyword_manager.dead_keywords:
-                                for sort_order in tier_config_base.get('sort_orders', ['new']):
-                                    future = executor.submit(
-                                        search_yahoo_multi_page_intensive,
-                                        keyword,
-                                        tier_config['max_pages'],
-                                        brand,
-                                        keyword_manager,
-                                        sort_order
-                                    )
-                                    all_futures.append((future, tier_name, brand))
-                                    total_searches += 1
-                
-                print(f"⏳ Waiting for {len(all_futures)} concurrent searches...")
-                
-                all_results = []
-                for future, tier_name, brand in all_futures:
-                    try:
-                        listings, errors = future.result(timeout=30)
-                        all_results.extend(listings)
+                        listings, errors = search_yahoo_multi_page_optimized(keyword, tier_config['max_pages'], brand, keyword_manager)
                         total_found += len(listings)
                         total_errors += errors
-                        tiered_system.update_performance(tier_name, 1, len(listings))
-                    except Exception as e:
-                        print(f"❌ Search error for {brand}: {e}")
-                        total_errors += 1
-            
-            all_results.sort(key=lambda x: x["priority"], reverse=True)
-            
-            print(f"\n📦 Processing {len(all_results)} total listings...")
-            
-            for listing_data in all_results:
-                quality_filtered += 1
-                
-                success = send_to_discord_bot(listing_data)
-                
-                if success:
-                    seen_ids.add(listing_data["auction_id"])
-                    sent_to_discord += 1
+                        total_searches += 1
+                        tier_searches += 1
+                        
+                        brand_listings.extend(listings)
+                        
+                        if len(listings) > 0:
+                            tier_finds += len(listings)
+                            print(f"✅ {brand} rare: {len(listings)} quality items found")
+                        
+                        time.sleep(tier_config['delay'])
                     
-                    priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
-                    is_new = "🆕" if listing_data.get("is_new_listing") else ""
-                    sizes = f" [{','.join(listing_data.get('sizes', []))}]" if listing_data.get('sizes') else ""
+                    # Sort by priority and send ALL listings
+                    brand_listings.sort(key=lambda x: x["priority"], reverse=True)
                     
-                    print(f"{priority_emoji}{is_new} {listing_data['brand']}: ${listing_data['price_usd']:.2f}{sizes}")
+                    for listing_data in brand_listings:
+                        quality_filtered += 1
+                        
+                        # Send to Discord bot (or fallback)
+                        success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
+                            listing_data["title"], 
+                            listing_data["price_jpy"], 
+                            listing_data["zenmarket_url"], 
+                            listing_data["image_url"], 
+                            listing_data["auction_id"]
+                        )
+                        
+                        if success:
+                            seen_ids.add(listing_data["auction_id"])
+                            sent_to_discord += 1
+                            
+                            priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
+                            print(f"{priority_emoji} {tier_name.upper()}: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f}) - {listing_data['deal_quality']:.1%} deal")
+                        else:
+                            print(f"❌ Failed to send: {listing_data['title'][:30]}... (ID: {listing_data['auction_id']})")
+                        
+                        time.sleep(0.5)
                 
-                time.sleep(0.3)
+                tiered_system.update_performance(tier_name, tier_searches, tier_finds)
+                
+                if tier_finds > 0:
+                    efficiency = tier_finds / max(1, tier_searches)
+                    print(f"📊 {tier_name.upper()}: {tier_finds} finds from {tier_searches} searches (efficiency: {efficiency:.2f})")
             
-            if tiered_system.iteration_counter % 25 == 0:
+            # Clear seen items every 35 cycles to prevent blocking new finds
+            if tiered_system.iteration_counter % 35 == 0:
                 items_before = len(seen_ids)
-                print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Clearing {items_before} seen items...")
+                print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Force clearing {items_before} seen items to refresh search results...")
                 seen_ids.clear()
                 save_seen_ids()
                 
@@ -1047,18 +1723,22 @@ def main_loop():
                     cursor.execute('DELETE FROM scraped_items')
                     conn.commit()
                     conn.close()
-                    print(f"✅ Cleared cache for fresh searches")
+                    print(f"✅ Cleared seen items cache and database - fresh searches incoming!")
                 except Exception as e:
                     print(f"⚠️ Could not clear database: {e}")
             
+            # Save data
             save_seen_ids()
-            keyword_manager.save_keyword_data()
+            if keyword_manager:
+                keyword_manager.save_keyword_data()
             tiered_system.save_performance_data()
             
+            # Cycle statistics
             cycle_end_time = datetime.now()
             cycle_duration = (cycle_end_time - cycle_start_time).total_seconds()
             
             cycle_efficiency = sent_to_discord / max(1, total_searches)
+            conversion_rate = (quality_filtered / max(1, total_found)) * 100 if total_found > 0 else 0
             
             print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
             print(f"⏱️  Duration: {cycle_duration:.1f}s")
@@ -1066,42 +1746,73 @@ def main_loop():
             print(f"📊 Raw items found: {total_found}")
             print(f"✅ Quality filtered: {quality_filtered}")
             print(f"📤 Sent to Discord: {sent_to_discord}")
-            print(f"❌ Errors: {total_errors}")
-            print(f"⚡ Efficiency: {cycle_efficiency:.3f} finds per search")
+            print(f"❌ HTTP errors: {total_errors}")
+            print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
+            print(f"🎯 Conversion rate: {conversion_rate:.1f}%")
             
+            # Check Discord bot health periodically
+            if USE_DISCORD_BOT and tiered_system.iteration_counter % 5 == 0:
+                bot_healthy, status = check_discord_bot_health()
+                if not bot_healthy:
+                    print(f"⚠️ Discord bot health check failed: {status}")
+                else:
+                    bot_stats = get_discord_bot_stats()
+                    if bot_stats:
+                        print(f"🤖 Discord Bot: {bot_stats.get('total_listings', 0)} total listings")
+            
+            # Performance insights every 10 cycles
             if tiered_system.iteration_counter % 10 == 0:
-                print(f"\n🧠 PERFORMANCE INSIGHTS:")
+                print(f"\n🧠 PERFORMANCE INSIGHTS (Cycle {tiered_system.iteration_counter}):")
                 
-                active_keywords = len([k for k, v in keyword_manager.keyword_performance.items() 
-                                     if v.get('consecutive_fails', 0) < 15])
-                dead_keywords = len(keyword_manager.dead_keywords)
-                hot_keywords = len(keyword_manager.hot_keywords)
-                
-                print(f"📈 Keywords: {active_keywords} active, {hot_keywords} hot, {dead_keywords} dead")
+                if keyword_manager and keyword_manager.keyword_performance:
+                    active_keywords = len([k for k, v in keyword_manager.keyword_performance.items() if v.get('consecutive_fails', 0) < 5])
+                    dead_keywords = len(keyword_manager.dead_keywords)
+                    hot_keywords = len(keyword_manager.hot_keywords)
+                    
+                    print(f"📈 Keywords: {active_keywords} active, {hot_keywords} hot, {dead_keywords} dead")
                 
                 for tier_name, tracker in tiered_system.performance_tracker.items():
                     if tracker['total_searches'] > 0:
                         print(f"📊 {tier_name.upper()}: {tracker['avg_efficiency']:.2f} avg efficiency")
             
-            log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches)
-            
-            base_sleep_time = 180
+            # Dynamic sleep timing based on performance
+            base_sleep_time = 300  # 5 minutes base
             if cycle_efficiency > 0.2:
                 sleep_time = base_sleep_time - 60
+                print(f"🚀 High efficiency detected, reducing sleep to {sleep_time}s")
             elif cycle_efficiency < 0.05:
-                sleep_time = 60
+                sleep_time = base_sleep_time + 60
+                print(f"⚠️ Low efficiency, extending sleep to {sleep_time}s")
             else:
                 sleep_time = base_sleep_time
             
-            actual_sleep = max(30, sleep_time - cycle_duration)
-            print(f"⏳ Sleeping for {actual_sleep:.0f} seconds...")
+            actual_sleep = max(120, sleep_time - cycle_duration)
+            print(f"⏳ Cycle complete. Sleeping for {actual_sleep:.0f} seconds...")
             time.sleep(actual_sleep)
             
     except KeyboardInterrupt:
+        print("\n🛑 Graceful shutdown initiated...")
         save_seen_ids()
-        keyword_manager.save_keyword_data()
+        if keyword_manager:
+            keyword_manager.save_keyword_data()
         tiered_system.save_performance_data()
-        print("✅ Exiting gracefully.")
+        print("✅ Exiting gracefully with all data saved.")
+    except Exception as e:
+        print(f"❌ Fatal error in main loop: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Save data before crashing
+        try:
+            save_seen_ids()
+            if keyword_manager:
+                keyword_manager.save_keyword_data()
+            tiered_system.save_performance_data()
+            print("✅ Emergency data save completed")
+        except:
+            print("❌ Emergency data save failed")
+        
+        raise
 
 load_exchange_rate()
 
