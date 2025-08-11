@@ -28,9 +28,10 @@ def health():
 def root():
     return {"service": "Yahoo Auction Scraper", "status": "running"}, 200
 
+SCRAPER_HEALTH_PORT = int(os.getenv('SCRAPER_HEALTH_PORT', 8081))
+
 def run_health_server():
-    port = int(os.environ.get('PORT', 8000))
-    scraper_app.run(host='0.0.0.0', port=port, debug=False)
+    scraper_app.run(host='0.0.0.0', port=SCRAPER_HEALTH_PORT, debug=False)
 
 DISCORD_BOT_WEBHOOK = os.getenv('DISCORD_BOT_WEBHOOK', "http://localhost:8000/webhook")
 DISCORD_BOT_HEALTH = os.getenv('DISCORD_BOT_HEALTH', "http://localhost:8000/health") 
@@ -1061,7 +1062,7 @@ def main_loop():
     
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
-    print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
+    print(f"🌐 Health server started on port {SCRAPER_HEALTH_PORT}")
     
     tiered_system = AdaptiveTieredSystem()
     keyword_manager = AdaptiveKeywordManager()
