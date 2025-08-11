@@ -67,19 +67,19 @@ def set_user_size_preferences(user_id, sizes):
         print(f"❌ Error setting size preferences: {e}")
         return False
 
-def add_user_bookmark(user_id, auction_id, message_id, channel_id, auction_end_time):
+def add_user_bookmark(user_id, auction_id, message_id, channel_id):
     """Add a user bookmark to the database"""
     try:
         if db_manager.use_postgres:
             db_manager.execute_query('''
-                INSERT INTO user_bookmarks (user_id, auction_id, message_id, channel_id, auction_end_time)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', (user_id, auction_id, message_id, channel_id, auction_end_time))
+                INSERT INTO user_bookmarks (user_id, auction_id, message_id, channel_id)
+                VALUES (%s, %s, %s, %s)
+            ''', (user_id, auction_id, message_id, channel_id))
         else:
             db_manager.execute_query('''
-                INSERT INTO user_bookmarks (user_id, auction_id, message_id, channel_id, auction_end_time)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (user_id, auction_id, message_id, channel_id, auction_end_time))
+                INSERT INTO user_bookmarks (user_id, auction_id, message_id, channel_id)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, auction_id, message_id, channel_id))
         
         return True
         
@@ -87,198 +87,15 @@ def add_user_bookmark(user_id, auction_id, message_id, channel_id, auction_end_t
         print(f"❌ Error adding bookmark: {e}")
         return False
 
-class BookmarkReminderSystem:
-    def __init__(self, bot):
-        self.bot = bot
-        self.running = True
+# REMOVED: BookmarkReminderSystem class - auction_end_time functionality temporarily disabled
     
-    async def start_reminder_loop(self):
-        """Main loop for checking and sending bookmark reminders"""
-        while self.running:
-            try:
-                await self.check_1h_reminders()
-                await self.check_5m_reminders()
-                await asyncio.sleep(60)  # Check every minute
-            except Exception as e:
-                print(f"❌ Reminder loop error: {e}")
-                await asyncio.sleep(300)
+# REMOVED: check_1h_reminders method - auction_end_time functionality temporarily disabled
     
-    async def check_1h_reminders(self):
-        """Check for auctions ending in 1 hour"""
-        try:
-            reminders = get_pending_reminders('1h')
-            
-            for user_id, auction_id, channel_id, title, zenmarket_url, end_time in reminders:
-                try:
-                    channel = self.bot.get_channel(channel_id)
-                    if not channel:
-                        continue
-                    
-                    user = self.bot.get_user(user_id)
-                    if not user:
-                        user = await self.bot.fetch_user(user_id)
-                    
-                    embed = discord.Embed(
-                        title="⏰ 1 Hour Reminder - Auction Ending Soon!",
-                        description=f"Your bookmarked auction is ending in **1 hour**!",
-                        color=0xffa500
-                    )
-                    
-                    embed.add_field(
-                        name="📦 Item",
-                        value=f"[{title[:100]}...]({zenmarket_url})" if len(title) > 100 else f"[{title}]({zenmarket_url})",
-                        inline=False
-                    )
-                    
-                    if end_time:
-                        try:
-                            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-                            embed.add_field(
-                                name="⏱️ Exact End Time",
-                                value=f"{end_dt.strftime('%H:%M UTC')}",
-                                inline=True
-                            )
-                        except:
-                            pass
-                    
-                    embed.add_field(
-                        name="💡 Action Required",
-                        value="Place your bid now if you want this item!",
-                        inline=False
-                    )
-                    
-                    embed.set_footer(text=f"Auction ID: {auction_id}")
-                    
-                    await channel.send(f"{user.mention}", embed=embed)
-                    
-                    mark_reminder_sent(user_id, auction_id, '1h')
-                    print(f"⏰ Sent 1h reminder to {user.name} for {auction_id}")
-                    
-                except Exception as e:
-                    print(f"❌ Error sending 1h reminder: {e}")
-                    
-        except Exception as e:
-            print(f"❌ Error checking 1h reminders: {e}")
-    
-    async def check_5m_reminders(self):
-        """Check for auctions ending in 5 minutes"""
-        try:
-            reminders = get_pending_reminders('5m')
-            
-            for user_id, auction_id, channel_id, title, zenmarket_url, end_time in reminders:
-                try:
-                    channel = self.bot.get_channel(channel_id)
-                    if not channel:
-                        continue
-                    
-                    user = self.bot.get_user(user_id)
-                    if not user:
-                        user = await self.bot.fetch_user(user_id)
-                    
-                    embed = discord.Embed(
-                        title="🚨 FINAL 5 MINUTE WARNING!",
-                        description=f"**⚠️ YOUR BOOKMARKED AUCTION ENDS IN 5 MINUTES! ⚠️**",
-                        color=0xff0000
-                    )
-                    
-                    embed.add_field(
-                        name="📦 Item",
-                        value=f"[{title[:100]}...]({zenmarket_url})" if len(title) > 100 else f"[{title}]({zenmarket_url})",
-                        inline=False
-                    )
-                    
-                    embed.add_field(
-                        name="🔥 LAST CHANCE",
-                        value="**BID NOW OR LOSE THIS ITEM FOREVER!**",
-                        inline=False
-                    )
-                    
-                    embed.set_footer(text=f"Auction ID: {auction_id} | THIS IS YOUR FINAL REMINDER")
-                    
-                    message = await channel.send(f"🚨 {user.mention} 🚨", embed=embed)
-                    
-                    await message.add_reaction("⏰")
-                    await message.add_reaction("🔥")
-                    await message.add_reaction("💸")
-                    
-                    mark_reminder_sent(user_id, auction_id, '5m')
-                    print(f"🚨 Sent FINAL 5m reminder to {user.name} for {auction_id}")
-                    
-                except Exception as e:
-                    print(f"❌ Error sending 5m reminder: {e}")
-                    
-        except Exception as e:
-            print(f"❌ Error checking 5m reminders: {e}")
+# REMOVED: check_5m_reminders method - auction_end_time functionality temporarily disabled
 
-def get_pending_reminders(reminder_type):
-    """Get pending reminders from database"""
-    try:
-        if reminder_type == '1h':
-            time_threshold = datetime.now() + timedelta(hours=1)
-        elif reminder_type == '5m':
-            time_threshold = datetime.now() + timedelta(minutes=5)
-        else:
-            return []
-        
-        if db_manager.use_postgres:
-            reminders = db_manager.execute_query('''
-                SELECT ub.user_id, ub.auction_id, ub.bookmark_channel_id, l.title, l.zenmarket_url, l.auction_end_time
-                FROM user_bookmarks ub
-                JOIN listings l ON ub.auction_id = l.auction_id
-                WHERE l.auction_end_time <= %s
-                AND ub.reminder_1h_sent = FALSE
-                ORDER BY l.auction_end_time ASC
-            ''', (time_threshold,), fetch_all=True)
-        else:
-            reminders = db_manager.execute_query('''
-                SELECT ub.user_id, ub.auction_id, ub.bookmark_channel_id, l.title, l.zenmarket_url, l.auction_end_time
-                FROM user_bookmarks ub
-                JOIN listings l ON ub.auction_id = l.auction_id
-                WHERE l.auction_end_time <= ?
-                AND ub.reminder_1h_sent = 0
-                ORDER BY l.auction_end_time ASC
-            ''', (time_threshold,), fetch_all=True)
-        
-        return reminders
-        
-    except Exception as e:
-        print(f"❌ Error getting pending reminders: {e}")
-        return []
+# REMOVED: get_pending_reminders function - auction_end_time functionality temporarily disabled
 
-def mark_reminder_sent(user_id, auction_id, reminder_type):
-    """Mark reminder as sent in database"""
-    try:
-        if reminder_type == '1h':
-            if db_manager.use_postgres:
-                db_manager.execute_query('''
-                    UPDATE user_bookmarks 
-                    SET reminder_1h_sent = TRUE 
-                    WHERE user_id = %s AND auction_id = %s
-                ''', (user_id, auction_id))
-            else:
-                db_manager.execute_query('''
-                    UPDATE user_bookmarks 
-                    SET reminder_1h_sent = 1 
-                    WHERE user_id = ? AND auction_id = ?
-                ''', (user_id, auction_id))
-        elif reminder_type == '5m':
-            if db_manager.use_postgres:
-                db_manager.execute_query('''
-                    UPDATE user_bookmarks 
-                    SET reminder_5m_sent = TRUE 
-                    WHERE user_id = %s AND auction_id = %s
-                ''', (user_id, auction_id))
-            else:
-                db_manager.execute_query('''
-                    UPDATE user_bookmarks 
-                    SET reminder_5m_sent = 1 
-                    WHERE user_id = ? AND auction_id = ?
-                ''', (user_id, auction_id))
-        
-        print(f"✅ Marked {reminder_type} reminder as sent for {auction_id}")
-        
-    except Exception as e:
-        print(f"❌ Error marking reminder sent: {e}")
+# REMOVED: mark_reminder_sent function - auction_end_time functionality temporarily disabled
 
 class SizeAlertSystem:
     def __init__(self, bot):
@@ -950,13 +767,12 @@ async def create_bookmark_for_user_enhanced(user_id, auction_data, original_mess
             print(f"❌ Failed to send bookmark message: {e}")
             return False
         
-        # Store with end time for reminders
+        # Store bookmark (reminder functionality temporarily disabled)
         success = add_user_bookmark(
             user_id, 
             auction_data['auction_id'], 
             bookmark_message.id, 
-            bookmark_channel.id,
-            auction_data.get('auction_end_time')
+            bookmark_channel.id
         )
         
         if success:
@@ -2654,8 +2470,7 @@ async def bookmark_item(ctx, *, auction_url_or_id=None):
                 user_id, 
                 auction_id, 
                 bookmark_message.id, 
-                bookmark_channel.id, 
-                auction_end_time
+                bookmark_channel.id
             )
             
             if success:
@@ -2690,8 +2505,7 @@ async def bookmark_item(ctx, *, auction_url_or_id=None):
                     user_id, 
                     auction_id, 
                     dm_message.id, 
-                    0,  # 0 for DM
-                    auction_end_time
+                    0  # 0 for DM
                 )
                 
                 if success:
@@ -2715,14 +2529,14 @@ async def list_bookmarks(ctx):
         user_id = ctx.author.id
         
         bookmarks = db_manager.execute_query(
-            '''SELECT ub.auction_id, ub.created_at, ub.auction_end_time, 
+            '''SELECT ub.auction_id, ub.created_at, 
                       l.title, l.brand, l.price_usd, l.zenmarket_url
                FROM user_bookmarks ub
                LEFT JOIN listings l ON ub.auction_id = l.auction_id
                WHERE ub.user_id = %s
                ORDER BY ub.created_at DESC
                LIMIT 10''' if db_manager.use_postgres else 
-            '''SELECT ub.auction_id, ub.created_at, ub.auction_end_time, 
+            '''SELECT ub.auction_id, ub.created_at, 
                       l.title, l.brand, l.price_usd, l.zenmarket_url
                FROM user_bookmarks ub
                LEFT JOIN listings l ON ub.auction_id = l.auction_id
@@ -2745,10 +2559,10 @@ async def list_bookmarks(ctx):
         
         for bookmark in bookmarks:
             auction_id = bookmark[0] if isinstance(bookmark, (list, tuple)) else bookmark['auction_id']
-            title = bookmark[3] if isinstance(bookmark, (list, tuple)) else bookmark['title']
-            brand = bookmark[4] if isinstance(bookmark, (list, tuple)) else bookmark['brand']
-            price_usd = bookmark[5] if isinstance(bookmark, (list, tuple)) else bookmark['price_usd']
-            zenmarket_url = bookmark[6] if isinstance(bookmark, (list, tuple)) else bookmark['zenmarket_url']
+            title = bookmark[2] if isinstance(bookmark, (list, tuple)) else bookmark['title']
+            brand = bookmark[3] if isinstance(bookmark, (list, tuple)) else bookmark['brand']
+            price_usd = bookmark[4] if isinstance(bookmark, (list, tuple)) else bookmark['price_usd']
+            zenmarket_url = bookmark[5] if isinstance(bookmark, (list, tuple)) else bookmark['zenmarket_url']
             
             if title:
                 display_title = f"{brand} - {title[:50]}..." if len(title) > 50 else f"{brand} - {title}"
