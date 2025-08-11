@@ -1,18 +1,22 @@
-import requests
-from bs4 import BeautifulSoup
-import time
+import asyncio
 import json
 import os
-import urllib.parse
-from datetime import datetime, timezone, timedelta
 import re
 import sqlite3
-from flask import Flask
-import threading
+import time
+import urllib.parse
+from datetime import datetime, timezone, timedelta
+
+import aiohttp
+import requests
+from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor
 from enhanced_filtering import EnhancedSpamDetector, QualityChecker
+from flask import Flask
 import statistics
 import random
-from concurrent.futures import ThreadPoolExecutor
+import argparse
+import threading
 
 scraper_app = Flask(__name__)
 
@@ -58,6 +62,8 @@ SORT_ORDERS = [
 BASE_URL = "https://auctions.yahoo.co.jp/search/search?p={}&n=50&b={}&{}&minPrice=1&maxPrice={}"
 
 exchange_rate_cache = {"rate": 150.0, "timestamp": 0}
+JUST_LISTED_INTERVAL = 60
+JUST_LISTED_WINDOW = 5
 
 class IntensiveKeywordGenerator:
     def __init__(self):
@@ -902,6 +908,13 @@ def send_to_discord_bot(auction_data):
         print(f"   Traceback: {traceback.format_exc()}")
         return False
 
+async def send_to_discord_bot_async(session, auction_data):
+    try:
+        async with session.post(DISCORD_BOT_WEBHOOK, json=auction_data, timeout=10) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
 def get_discord_bot_stats():
     try:
         response = requests.get(DISCORD_BOT_STATS, timeout=5)
@@ -929,16 +942,119 @@ def log_scraper_stats(total_found, quality_filtered, sent_to_discord, errors_cou
         ''')
         
         cursor.execute('''
-            INSERT INTO scraper_stats 
+            INSERT INTO scraper_stats
             (total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched)
             VALUES (?, ?, ?, ?, ?)
         ''', (total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched))
         
         conn.commit()
         conn.close()
-        
+
     except Exception as e:
         print(f"⚠️ Could not log scraper stats: {e}")
+
+async def fetch_listing_start_time(session, url):
+    try:
+        async with session.get(url, timeout=10) as resp:
+            text = await resp.text()
+        m = re.search(r"開始日時[^0-9]*(\d{4})年(\d{1,2})月(\d{1,2})日[^0-9]*(\d{1,2})時(\d{1,2})分", text)
+        if m:
+            y, mo, d, h, mi = map(int, m.groups())
+            jp = datetime(y, mo, d, h, mi, tzinfo=timezone(timedelta(hours=9)))
+            return jp.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+async def fetch_recent_listings(session, brand, variants):
+    keyword = variants[0] if variants else brand
+    url = BASE_URL.format(urllib.parse.quote(keyword), 1, "s1=new&o1=d", MAX_PRICE_YEN)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        async with session.get(url, headers=headers, timeout=15) as resp:
+            html = await resp.text()
+    except Exception:
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    items = soup.select("li.Product")
+    prelim = []
+    for item in items:
+        link_tag = item.select_one("a.Product__titleLink")
+        if not link_tag:
+            continue
+        link = link_tag["href"]
+        if not link.startswith("http"):
+            link = "https://auctions.yahoo.co.jp" + link
+        title = link_tag.get_text(strip=True)
+        if "femme" in title.lower():
+            continue
+        auc_id = link.split("/")[-1].split("?")[0]
+        if auc_id in seen_ids or check_if_auction_exists_in_db(auc_id):
+            continue
+        is_valid, matched_brand = is_valid_brand_item(title)
+        if not is_valid:
+            continue
+        price_tag = item.select_one(".Product__priceValue")
+        if not price_tag:
+            continue
+        try:
+            price = int(price_tag.text.replace("円", "").replace(",", ""))
+        except ValueError:
+            continue
+        if price > MAX_PRICE_YEN:
+            continue
+        usd_price = convert_jpy_to_usd(price)
+        ok, _ = is_quality_listing(usd_price, matched_brand, title)
+        if not ok:
+            continue
+        deal_quality = calculate_deal_quality(usd_price, matched_brand, title)
+        sizes = extract_size_info(title)
+        img_tag = item.select_one("img")
+        img = img_tag["src"] if img_tag and img_tag.has_attr("src") else ""
+        if img and not img.startswith("http"):
+            img = "https:" + img if img.startswith("//") else "https://auctions.yahoo.co.jp" + img
+        zen_link = f"https://zenmarket.jp/en/auction.aspx?itemCode={auc_id}"
+        prelim.append({
+            "auction_id": auc_id,
+            "title": title,
+            "price_jpy": price,
+            "price_usd": round(usd_price, 2),
+            "brand": matched_brand,
+            "zenmarket_url": zen_link,
+            "yahoo_url": link,
+            "image_url": img,
+            "deal_quality": deal_quality,
+            "sizes": sizes
+        })
+    tasks = [fetch_listing_start_time(session, p["yahoo_url"]) for p in prelim]
+    starts = await asyncio.gather(*tasks)
+    now = datetime.now(timezone.utc)
+    results = []
+    for p, st in zip(prelim, starts):
+        if not st or now - st > timedelta(minutes=JUST_LISTED_WINDOW):
+            continue
+        p["target_channel"] = "just-listed"
+        p["priority"] = calculate_listing_priority(p)
+        results.append(p)
+    return results
+
+async def just_listed_loop():
+    thread = threading.Thread(target=run_health_server, daemon=True)
+    thread.start()
+    get_usd_jpy_rate()
+    while True:
+        async with aiohttp.ClientSession() as session:
+            tasks = [fetch_recent_listings(session, b, info["variants"]) for b, info in BRAND_DATA.items()]
+            groups = await asyncio.gather(*tasks)
+            all_listings = [item for group in groups for item in group]
+            all_listings.sort(key=lambda x: x.get("priority", 0), reverse=True)
+            for listing in all_listings:
+                if listing["auction_id"] in seen_ids:
+                    continue
+                sent = await send_to_discord_bot_async(session, listing)
+                if sent:
+                    seen_ids.add(listing["auction_id"])
+            save_seen_ids()
+        await asyncio.sleep(JUST_LISTED_INTERVAL)
 
 def main_loop():
     print("🎯 Starting INTENSIVE Yahoo Japan Sniper with MAXIMUM VOLUME...")
@@ -1166,4 +1282,10 @@ def main_loop():
 load_exchange_rate()
 
 if __name__ == "__main__":
-    main_loop()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--just-listed", action="store_true")
+    args = parser.parse_args()
+    if args.just_listed or os.getenv("JUST_LISTED_MODE") == "1":
+        asyncio.run(just_listed_loop())
+    else:
+        main_loop()

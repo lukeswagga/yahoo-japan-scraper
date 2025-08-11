@@ -949,15 +949,23 @@ async def send_single_listing_enhanced(auction_data):
         
         print(f"🔍 Checking for duplicates: {auction_data['auction_id']}")
         existing = db_manager.execute_query(
-            'SELECT message_id FROM listings WHERE auction_id = ?', 
-            (auction_data['auction_id'],), 
+            'SELECT message_id FROM listings WHERE auction_id = ?',
+            (auction_data['auction_id'],),
             fetch_one=True
         )
-        
+
         if existing:
             print(f"⚠️ Duplicate found, skipping: {auction_data['auction_id']}")
             return False
-        
+
+        if auction_data.get('target_channel') == 'just-listed':
+            channel = discord.utils.get(guild.text_channels, name="just-listed")
+            if channel:
+                embed = create_listing_embed(auction_data)
+                message = await channel.send(embed=embed)
+                add_listing(auction_data, message.id)
+            return True
+
         # Send to main channel
         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
         main_message = None
