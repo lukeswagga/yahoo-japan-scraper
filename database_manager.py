@@ -339,18 +339,15 @@ db_manager = DatabaseManager()
 def add_listing(auction_data, message_id):
     """Add listing to database with proper error handling"""
     try:
-        auction_end_time = auction_data.get('auction_end_time')
-        
         if db_manager.use_postgres:
             result = db_manager.execute_query('''
                 INSERT INTO listings 
                 (auction_id, title, brand, price_jpy, price_usd, seller_id, 
-                 zenmarket_url, yahoo_url, image_url, deal_quality, priority_score, message_id, auction_end_time)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 zenmarket_url, yahoo_url, image_url, deal_quality, priority_score, message_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (auction_id) DO UPDATE SET
                     title = EXCLUDED.title,
-                    message_id = EXCLUDED.message_id,
-                    auction_end_time = EXCLUDED.auction_end_time
+                    message_id = EXCLUDED.message_id
             ''', (
                 auction_data['auction_id'],
                 auction_data['title'],
@@ -363,15 +360,15 @@ def add_listing(auction_data, message_id):
                 auction_data.get('image_url', ''),
                 auction_data.get('deal_quality', 0.5),
                 auction_data.get('priority', 0.0),
-                message_id,
-                auction_end_time
+                message_id
+                # REMOVED: auction_end_time
             ))
         else:
             result = db_manager.execute_query('''
                 INSERT OR REPLACE INTO listings 
                 (auction_id, title, brand, price_jpy, price_usd, seller_id, 
-                 zenmarket_url, yahoo_url, image_url, deal_quality, priority_score, message_id, auction_end_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 zenmarket_url, yahoo_url, image_url, deal_quality, priority_score, message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 auction_data['auction_id'],
                 auction_data['title'],
@@ -384,8 +381,8 @@ def add_listing(auction_data, message_id):
                 auction_data.get('image_url', ''),
                 auction_data.get('deal_quality', 0.5),
                 auction_data.get('priority', 0.0),
-                message_id,
-                auction_end_time
+                message_id
+                # REMOVED: auction_end_time
             ))
         
         print(f"✅ Added listing to database: {auction_data['auction_id']}")

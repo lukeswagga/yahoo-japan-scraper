@@ -1473,48 +1473,37 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
     return listings
 
 def extract_auction_id_from_item(item):
-    """Extract auction ID from current Yahoo Japan structure"""
+    """Extract auction ID - the issue is we're not extracting from the right place"""
     try:
-        # Method 1: Look for auction ID in href attributes (most reliable)
+        # Method 1: Extract from href (this should work for your case)
         for link in item.find_all('a', href=True):
             href = link.get('href', '')
-            # Match Yahoo auction URLs
-            if 'auction' in href:
-                match = re.search(r'([wab]\d{10})', href)
-                if match:
-                    return match.group(1)
+            print(f"🔍 Checking href: {href}")
+            
+            # Direct extraction from URL path
+            if '/auction/' in href:
+                # Extract from URL like: https://auctions.yahoo.co.jp/jp/auction/c1192768539
+                auction_id = href.split('/auction/')[-1]
+                if re.match(r'^[wab]\d{10}$', auction_id):
+                    print(f"✅ Found auction ID: {auction_id}")
+                    return auction_id
+            
+            # Regex extraction as backup
+            match = re.search(r'([wab]\d{10})', href)
+            if match:
+                auction_id = match.group(1)
+                print(f"✅ Found auction ID via regex: {auction_id}")
+                return auction_id
         
-        # Method 2: Look for data-auction-id or similar attributes
-        auction_attrs = ['data-auction-id', 'data-auc-id', 'data-itemid']
-        for attr in auction_attrs:
-            if item.has_attr(attr):
-                value = item[attr]
-                if isinstance(value, str) and re.match(r'[wab]\d{10}', value):
-                    return value
+        # Method 2: Check text content
+        text = item.get_text()
+        match = re.search(r'([wab]\d{10})', text)
+        if match:
+            auction_id = match.group(1)
+            print(f"✅ Found auction ID in text: {auction_id}")
+            return auction_id
         
-        # Method 3: Look in onclick or other JavaScript attributes
-        for attr in item.attrs:
-            if 'click' in attr.lower() or 'action' in attr.lower():
-                value = str(item.attrs[attr])
-                match = re.search(r'([wab]\d{10})', value)
-                if match:
-                    return match.group(1)
-        
-        # Method 4: Look in nested elements for auction IDs
-        for nested in item.find_all(['span', 'div', 'p']):
-            for attr_name, attr_value in nested.attrs.items():
-                if isinstance(attr_value, str):
-                    match = re.search(r'([wab]\d{10})', attr_value)
-                    if match:
-                        return match.group(1)
-        
-        # Method 5: Look for auction ID in text content (last resort)
-        text_content = item.get_text()
-        # Only look for auction IDs that appear to be standalone (not part of larger numbers)
-        matches = re.findall(r'\b([wab]\d{10})\b', text_content)
-        if matches:
-            return matches[0]
-        
+        print(f"❌ No auction ID found in item")
         return None
         
     except Exception as e:
@@ -1528,22 +1517,19 @@ def debug_item_structure(item, index):
         print(f"\n🔍 DEBUG Item {index}:")
         print(f"   Tag: {item.name}")
         print(f"   Classes: {item.get('class', [])}")
-        print(f"   Attributes: {list(item.attrs.keys())}")
         
-        # Look for any links
+        # Look for any links and extract auction IDs
         links = item.find_all('a', href=True)
         if links:
             print(f"   Links found: {len(links)}")
-            for i, link in enumerate(links[:2]):  # First 2 links
-                print(f"     Link {i}: {link.get('href', '')[:100]}")
-        else:
-            print("   No links found")
-        
-        # Look for text that might contain auction ID
-        text = item.get_text()[:200]
-        auction_matches = re.findall(r'[wab]\d{10}', text)
-        if auction_matches:
-            print(f"   Auction IDs in text: {auction_matches}")
+            for i, link in enumerate(links):
+                href = link.get('href', '')
+                print(f"     Link {i}: {href}")
+                
+                # Try to extract auction ID from each link
+                if '/auction/' in href:
+                    auction_id = href.split('/auction/')[-1]
+                    print(f"     --> Extracted: {auction_id}")
 
 
 def send_to_discord_bot(listing_data):
