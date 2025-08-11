@@ -87,8 +87,7 @@ def add_user_bookmark(user_id, auction_id, message_id, channel_id):
         print(f"❌ Error adding bookmark: {e}")
         return False
 
-# Add this global variable for setup state management
-setup_states = {}
+
 
 # REMOVED: BookmarkReminderSystem class - auction_end_time functionality temporarily disabled
     
@@ -1023,37 +1022,30 @@ async def on_reaction_add(reaction, user):
     if user.bot:
         return
     
-    # Handle setup reactions
-    if user.id in setup_states:
-        await handle_setup_reaction(reaction, user)
-        return
+    if reaction.message.embeds and len(reaction.message.embeds) > 0:
+        embed = reaction.message.embeds[0]
+        if embed.title and "Setup" in embed.title:
+            await handle_setup_reaction(reaction, user)
+            return
     
     if str(reaction.emoji) not in ["👍", "👎"]:
         return
     
-    # Check if user has completed setup
-    result = db_manager.execute_query(
-        'SELECT setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT setup_complete FROM user_preferences WHERE user_id = ?',
-        (user.id,),
-        fetch_one=True
-    )
-    
-    if not result or not result[0]:
-        try:
-            await user.send("⚠️ Please complete your setup first using `!setup`!")
-        except:
-            pass
+    proxy_service, setup_complete = get_user_proxy_preference(user.id)
+    if not setup_complete:
+        embed = discord.Embed(
+            title="⚠️ Setup Required",
+            description="Please complete your setup first using `!setup`!",
+            color=0xff9900
+        )
+        dm_channel = await user.create_dm()
+        await dm_channel.send(embed=embed)
         return
     
-    # Process the reaction
-    if str(reaction.emoji) == "👍":
-        await handle_thumbs_up_reaction(reaction, user)
-    elif str(reaction.emoji) == "👎":
-        await handle_thumbs_down_reaction(reaction, user)
-
-async def handle_thumbs_up_reaction(reaction, user):
-    """Handle thumbs up - auto bookmark the item"""
-    # Extract auction ID from embed
+    if not (reaction.message.channel.name == AUCTION_CHANNEL_NAME or 
+            reaction.message.channel.name.startswith("🏷️-")):
+        return
+    
     if not reaction.message.embeds:
         return
     
@@ -1065,271 +1057,151 @@ async def handle_thumbs_up_reaction(reaction, user):
         return
     
     auction_id = auction_id_match.group(1)
+    reaction_type = "thumbs_up" if str(reaction.emoji) == "👍" else "thumbs_down"
     
-    # Save reaction to database
-    db_manager.execute_query('''
-        INSERT INTO reactions (user_id, auction_id, reaction_type)
-        VALUES (%s, %s, 'thumbs_up')
-    ''' if db_manager.use_postgres else '''
-        INSERT INTO reactions (user_id, auction_id, reaction_type)
-        VALUES (?, ?, 'thumbs_up')
-    ''', (user.id, auction_id))
+    result = db_manager.execute_query('''
+        SELECT title, brand, price_jpy, price_usd, seller_id, yahoo_url, deal_quality
+        FROM listings WHERE auction_id = ?
+    ''', (auction_id,), fetch_one=True)
     
-    # Auto-bookmark the item
-    success = add_user_bookmark(user.id, auction_id, reaction.message.id, reaction.message.channel.id)
-    
-    if success:
-        try:
-            await user.send(f"📌 Auto-bookmarked: {embed.title[:50]}...")
-        except:
-            pass
-
-async def handle_thumbs_down_reaction(reaction, user):
-    """Handle thumbs down - log negative feedback"""
-    # Extract auction ID from embed
-    if not reaction.message.embeds:
-        return
-    
-    embed = reaction.message.embeds[0]
-    footer_text = embed.footer.text if embed.footer else ""
-    
-    auction_id_match = re.search(r'ID: (\w+)', footer_text)
-    if not auction_id_match:
-        return
-    
-    auction_id = auction_id_match.group(1)
-    
-    # Save reaction to database
-    db_manager.execute_query('''
-        INSERT INTO reactions (user_id, auction_id, reaction_type)
-        VALUES (%s, %s, 'thumbs_down')
-    ''' if db_manager.use_postgres else '''
-        INSERT INTO reactions (user_id, auction_id, reaction_type)
-        VALUES (?, ?, 'thumbs_down')
-    ''', (user.id, auction_id))
-    
-    print(f"👎 User {user.name} disliked item {auction_id}")
-
-async def handle_setup_reaction(reaction, user):
-    """Handle setup process reactions"""
-    user_id = user.id
-    
-    if user_id not in setup_states:
-        return
-    
-    state = setup_states[user_id]
-    
-    if state['step'] == 'confirm':
-        if str(reaction.emoji) == "✅":
-            await start_proxy_setup(user, state)
-        elif str(reaction.emoji) == "❌":
-            await cancel_setup(user, state)
-    
-    elif state['step'] == 'proxy':
-        proxy_map = {'🛒': 'zenmarket', '📦': 'buyee', '🇯🇵': 'yahoo_japan'}
-        if str(reaction.emoji) in proxy_map:
-            state['data']['proxy'] = proxy_map[str(reaction.emoji)]
-            await start_size_setup(user, state)
-    
-    elif state['step'] == 'sizes':
-        size_map = {'1️⃣': 'XS', '2️⃣': 'S', '3️⃣': 'M', '4️⃣': 'L', '5️⃣': 'XL', '✅': 'done'}
-        if str(reaction.emoji) in size_map:
-            if str(reaction.emoji) == '✅':
-                await start_bookmark_setup(user, state)
+    if result:
+        title, brand, price_jpy, price_usd, seller_id, yahoo_url, deal_quality = result
+        
+        auction_data = {
+            'auction_id': auction_id,
+            'title': title,
+            'brand': brand,
+            'price_jpy': price_jpy,
+            'price_usd': price_usd,
+            'seller_id': seller_id,
+            'deal_quality': deal_quality,
+            'zenmarket_url': generate_proxy_url(auction_id, proxy_service),
+            'image_url': ''
+        }
+        
+        if preference_learner:
+            preference_learner.learn_from_reaction(user.id, auction_data, reaction_type)
+        
+        # Note: User reaction logged via preference_learner above
+        
+        if reaction_type == "thumbs_up":
+            print(f"👍 User {user.name} liked {auction_data['title'][:30]}... - Creating bookmark")
+            bookmark_success = await create_bookmark_for_user_enhanced(user.id, auction_data, reaction.message)
+            
+            if bookmark_success:
+                await reaction.message.add_reaction("📚")
+                await reaction.message.add_reaction("✅")
+                print(f"✅ Bookmark created successfully for {user.name}")
             else:
-                size = size_map[str(reaction.emoji)]
-                if 'sizes' not in state['data']:
-                    state['data']['sizes'] = []
-                if size not in state['data']['sizes']:
-                    state['data']['sizes'].append(size)
-    
-    elif state['step'] == 'bookmark':
-        if str(reaction.emoji) == '🏠':
-            state['data']['bookmark_method'] = 'private_channel'
-            await complete_setup(user, state)
-        elif str(reaction.emoji) == '📱':
-            state['data']['bookmark_method'] = 'dm'
-            await complete_setup(user, state)
+                await reaction.message.add_reaction("⚠️")
+                print(f"⚠️ Bookmark failed for {user.name}")
+        else:
+            await reaction.message.add_reaction("❌")
+        
+        print(f"✅ Learned from {user.name}'s {reaction_type} on {brand} item")
 
-async def start_proxy_setup(user, state):
-    embed = discord.Embed(
-        title="🛒 Step 1: Choose Proxy Service",
-        description="Select your preferred proxy service for purchasing items:",
-        color=0x3498db
-    )
-    
-    embed.add_field(name="🛒 ZenMarket", value="Popular, English support, good fees", inline=False)
-    embed.add_field(name="📦 Buyee", value="Official Yahoo partner, fast shipping", inline=False) 
-    embed.add_field(name="🇯🇵 Yahoo Direct", value="Direct access (requires Japanese address)", inline=False)
-    
-    await state['message'].edit(embed=embed)
-    await state['message'].clear_reactions()
-    await state['message'].add_reaction("🛒")
-    await state['message'].add_reaction("📦")
-    await state['message'].add_reaction("🇯🇵")
-    
-    state['step'] = 'proxy'
 
-async def start_size_setup(user, state):
-    embed = discord.Embed(
-        title="📏 Step 2: Size Preferences",
-        description="Select your clothing sizes for personalized alerts:",
-        color=0x9b59b6
-    )
-    
-    embed.add_field(name="Size Selection", value="React with multiple sizes that fit you:\n1️⃣ XS\n2️⃣ S\n3️⃣ M\n4️⃣ L\n5️⃣ XL\n\n✅ Continue when done", inline=False)
-    
-    await state['message'].edit(embed=embed)
-    await state['message'].clear_reactions()
-    await state['message'].add_reaction("1️⃣")
-    await state['message'].add_reaction("2️⃣")
-    await state['message'].add_reaction("3️⃣")
-    await state['message'].add_reaction("4️⃣")
-    await state['message'].add_reaction("5️⃣")
-    await state['message'].add_reaction("✅")
-    
-    state['step'] = 'sizes'
-
-async def start_bookmark_setup(user, state):
-    embed = discord.Embed(
-        title="📌 Step 3: Bookmark Method",
-        description="How would you like to receive bookmarked items?",
-        color=0xe74c3c
-    )
-    
-    embed.add_field(name="🏠 Private Channel", value="Creates a private channel just for you", inline=False)
-    embed.add_field(name="📱 Direct Message", value="Sends bookmarks via DM", inline=False)
-    
-    await state['message'].edit(embed=embed)
-    await state['message'].clear_reactions()
-    await state['message'].add_reaction("🏠")
-    await state['message'].add_reaction("📱")
-    
-    state['step'] = 'bookmark'
-
-async def complete_setup(user, state):
-    # Save all preferences to database
-    user_id = user.id
-    data = state['data']
-    
-    # Save proxy preference
-    set_user_proxy_preference(user_id, data['proxy'])
-    
-    # Save size preferences
-    if 'sizes' in data and data['sizes']:
-        set_user_size_preferences(user_id, data['sizes'])
-    
-    # Update user preferences with all settings
-    if db_manager.use_postgres:
-        db_manager.execute_query('''
-            INSERT INTO user_preferences 
-            (user_id, proxy_service, setup_complete, bookmark_method, size_alerts_enabled, preferred_sizes, updated_at)
-            VALUES (%s, %s, TRUE, %s, %s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (user_id) DO UPDATE SET
-                proxy_service = EXCLUDED.proxy_service,
-                setup_complete = TRUE,
-                bookmark_method = EXCLUDED.bookmark_method,
-                size_alerts_enabled = EXCLUDED.size_alerts_enabled,
-                preferred_sizes = EXCLUDED.preferred_sizes,
-                updated_at = CURRENT_TIMESTAMP
-        ''', (user_id, data['proxy'], data['bookmark_method'], 
-              len(data.get('sizes', [])) > 0, ','.join(data.get('sizes', []))))
-    
-    # Completion embed
-    embed = discord.Embed(
-        title="✅ Setup Complete!",
-        description="You're all set up! Here's what you can do now:",
-        color=0x00ff00
-    )
-    
-    embed.add_field(
-        name="👍 React to Listings",
-        value="Thumbs up listings you like - they'll be auto-bookmarked!",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📊 Track Your Activity", 
-        value="Use `!stats` to see your preferences and activity",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📌 View Bookmarks",
-        value="Use `!my_bookmarks` to see your saved items",
-        inline=False
-    )
-    
-    await state['message'].edit(embed=embed)
-    await state['message'].clear_reactions()
-    
-    # Clean up setup state
-    del setup_states[user_id]
-
-async def cancel_setup(user, state):
-    embed = discord.Embed(
-        title="❌ Setup Cancelled",
-        description="Setup was cancelled. You can run `!setup` again anytime.",
-        color=0xff0000
-    )
-    
-    await state['message'].edit(embed=embed)
-    await state['message'].clear_reactions()
-    
-    # Clean up setup state
-    del setup_states[user_id]
 
 @bot.command(name='setup')
 async def setup_command(ctx):
-    """Enhanced comprehensive setup"""
     user_id = ctx.author.id
     
-    # Check if already completed setup
-    result = db_manager.execute_query(
-        'SELECT setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT setup_complete FROM user_preferences WHERE user_id = ?',
-        (user_id,),
-        fetch_one=True
-    )
+    proxy_service, setup_complete = get_user_proxy_preference(user_id)
     
-    if result and result[0]:
-        # User already completed setup
+    if setup_complete:
+        current_proxy = SUPPORTED_PROXIES[proxy_service]
         embed = discord.Embed(
-            title="⚙️ Setup Already Complete",
-            description="You've already completed setup! Use `!preferences` to modify your settings.",
+            title="⚙️ Your Current Setup",
+            description=f"You're already set up! Your current proxy service is **{current_proxy['name']}** {current_proxy['emoji']}",
             color=0x00ff00
         )
+        
+        bookmark_count = db_manager.execute_query(
+            'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
+            (user_id,),
+            fetch_one=True
+        )
+        
+        if bookmark_count:
+            embed.add_field(
+                name="📚 Your Bookmarks",
+                value=f"You have **{bookmark_count[0]}** bookmarked items",
+                inline=False
+            )
+        
         await ctx.send(embed=embed)
         return
     
-    # Welcome embed
     embed = discord.Embed(
-        title="🚀 Welcome to Archive Collective Setup",
-        description="Let's get you set up with personalized auction alerts! This will take 2-3 minutes.",
+        title="🎯 Welcome to Auction Sniper Setup!",
+        description="Let's get you set up to receive auction listings. First, I need to know which proxy service you use to buy from Yahoo Auctions Japan.",
+        color=0x0099ff
+    )
+    
+    proxy_options = ""
+    for key, proxy in SUPPORTED_PROXIES.items():
+        proxy_options += f"{proxy['emoji']} **{proxy['name']}**\n{proxy['description']}\n\n"
+    
+    embed.add_field(
+        name="📋 Available Proxy Services",
+        value=proxy_options,
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎮 How to choose:",
+        value="React with the emoji below that matches your proxy service!",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📚 Auto-Bookmarking",
+        value="After setup, any listing you react 👍 to will be automatically bookmarked in your own private channel!",
+        inline=False
+    )
+    
+    message = await ctx.send(embed=embed)
+    
+    for proxy in SUPPORTED_PROXIES.values():
+        await message.add_reaction(proxy['emoji'])
+
+async def handle_setup_reaction(reaction, user):
+    emoji = str(reaction.emoji)
+    
+    selected_proxy = None
+    for key, proxy in SUPPORTED_PROXIES.items():
+        if proxy['emoji'] == emoji:
+            selected_proxy = key
+            break
+    
+    if not selected_proxy:
+        return
+    
+    set_user_proxy_preference(user.id, selected_proxy)
+    
+    proxy_info = SUPPORTED_PROXIES[selected_proxy]
+    embed = discord.Embed(
+        title="✅ Setup Complete!",
+        description=f"Great choice! You've selected **{proxy_info['name']}** {proxy_info['emoji']}",
         color=0x00ff00
     )
     
     embed.add_field(
-        name="📋 What We'll Configure:",
-        value="• Proxy service preference\n• Size preferences & alerts\n• Price thresholds\n• Bookmark method\n• Notification settings",
+        name="🎯 What happens now?",
+        value=f"All auction listings will now include links formatted for {proxy_info['name']}. You can start reacting to listings with 👍/👎 to train your personal AI!",
         inline=False
     )
     
     embed.add_field(
-        name="🎯 Next Steps:",
-        value="React with ✅ to start setup, or ❌ to cancel",
+        name="📚 Bookmarks",
+        value="When you react 👍 to listings, they'll be automatically bookmarked in your own private channel!",
         inline=False
     )
     
-    setup_msg = await ctx.send(embed=embed)
-    await setup_msg.add_reaction("✅")
-    await setup_msg.add_reaction("❌")
+    dm_channel = await user.create_dm()
+    await dm_channel.send(embed=embed)
     
-    # Store setup state
-    setup_states[user_id] = {
-        'step': 'confirm',
-        'message': setup_msg,
-        'data': {}
-    }
+    await reaction.message.channel.send(f"✅ {user.mention} - Setup complete! Check your DMs.", delete_after=10)
 
 @bot.command(name='set_sizes')
 async def set_sizes_command(ctx, *sizes):
