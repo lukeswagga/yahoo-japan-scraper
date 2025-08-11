@@ -3005,4 +3005,4 @@ if __name__ == "__main__":
     
     # Run the bot
     print("🤖 Starting Discord bot...")
-    bot.run(DISCORD_TOKEN)
+    main()
