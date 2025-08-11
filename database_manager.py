@@ -451,8 +451,10 @@ def set_user_proxy_preference(user_id, proxy_service):
             db_manager.execute_query('''
                 INSERT OR REPLACE INTO user_preferences 
                 (user_id, proxy_service, setup_complete, updated_at)
-                VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)
+                VALUES (?, ?, 1, CURRENT_TIMESTAMP)
             ''', (user_id, proxy_service))
+        
+        print(f"✅ Set user {user_id} setup_complete = TRUE")  # Debug line
         return True
     except Exception as e:
         print(f"❌ Error setting user preference: {e}")

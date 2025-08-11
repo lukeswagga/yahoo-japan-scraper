@@ -1190,9 +1190,16 @@ async def handle_setup_reaction(reaction, user):
     if not selected_proxy:
         return
     
-    set_user_proxy_preference(user.id, selected_proxy)
+    # Save proxy preference AND mark setup complete
+    success = set_user_proxy_preference(user.id, selected_proxy)
+    
+    if not success:
+        await user.send("❌ Error saving setup. Please try again.")
+        return
     
     proxy_info = SUPPORTED_PROXIES[selected_proxy]
+    
+    # Create comprehensive setup completion message
     embed = discord.Embed(
         title="✅ Setup Complete!",
         description=f"Great choice! You've selected **{proxy_info['name']}** {proxy_info['emoji']}",
@@ -1201,26 +1208,44 @@ async def handle_setup_reaction(reaction, user):
     
     embed.add_field(
         name="🎯 What happens now?",
-        value=f"All auction listings will now include links formatted for {proxy_info['name']}. You can start reacting to listings with 👍/👎 to train your personal AI!",
+        value="You can start reacting to listings with 👍/👎 to train your personal AI and auto-bookmark items!",
         inline=False
     )
     
     embed.add_field(
-        name="📚 Bookmarks",
-        value="When you react 👍 to listings, they'll be automatically bookmarked in your own private channel!",
+        name="📏 Optional: Set Size Preferences",
+        value="Use `!set_sizes S M L` to get alerts for items in your sizes!\nExample: `!set_sizes S M` or `!set_sizes 1 2 3`",
         inline=False
     )
     
     embed.add_field(
-        name="📏 Next: Set Your Sizes (Optional)",
-        value="Use `!set_sizes S M L` to set size preferences for alerts!",
+        name="📚 Auto-Bookmarking",
+        value="When you react 👍 to listings, they'll be automatically bookmarked!",
         inline=False
     )
     
     dm_channel = await user.create_dm()
     await dm_channel.send(embed=embed)
     
-    await reaction.message.channel.send(f"✅ {user.mention} - Setup complete! Check your DMs.", delete_after=10)
+    await reaction.message.channel.send(f"✅ {user.mention} - Setup complete! Check your DMs for next steps.", delete_after=10)
+
+@bot.command(name='debug_setup')
+async def debug_setup(ctx):
+    """Debug command to check setup status"""
+    user_id = ctx.author.id
+    
+    result = db_manager.execute_query(
+        'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?',
+        (user_id,),
+        fetch_one=True
+    )
+    
+    if result:
+        proxy = result[0] if isinstance(result, (list, tuple)) else result.get('proxy_service')
+        setup_complete = result[1] if isinstance(result, (list, tuple)) else result.get('setup_complete')
+        await ctx.send(f"Database shows: proxy={proxy}, setup_complete={setup_complete}")
+    else:
+        await ctx.send("No user preferences found in database")
 
 @bot.command(name='set_sizes')
 async def set_sizes_command(ctx, *sizes):
