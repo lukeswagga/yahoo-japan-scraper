@@ -1939,7 +1939,7 @@ async def commands_command(ctx):
     
     await ctx.send(embed=embed)
 
-@@app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['POST'])
 def webhook():
     global batch_buffer, last_batch_time
     
