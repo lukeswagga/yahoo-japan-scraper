@@ -425,10 +425,11 @@ class AdaptiveKeywordManager:
             self.brand_keyword_success[brand][keyword] = self.brand_keyword_success[brand].get(keyword, 0) + finds_count
         else:
             perf['consecutive_fails'] += 1
-            if perf['consecutive_fails'] >= 15:
-                self.dead_keywords.add(keyword)
-                self.hot_keywords.discard(keyword)
-                perf['cycles_dead'] += 1
+            # DISABLED: Dead keyword marking - was too aggressive
+            # if perf['consecutive_fails'] >= 15:
+            #     self.dead_keywords.add(keyword)
+            #     self.hot_keywords.discard(keyword)
+            #     perf['cycles_dead'] += 1
     
     def should_revive_keyword(self, keyword):
         if keyword not in self.keyword_performance:
@@ -510,23 +511,45 @@ class OptimizedTieredSystem:
         self.iteration_counter = 0
         self.performance_tracker = {}
         self.tier_config = {
-            'premium': {
-                'brands': ['Stone Island', 'Rick Owens', 'Balenciaga'],
-                'max_pages': 3,
-                'delay': 2.0,
-                'max_keywords': 8
-            },
-            'high': {
-                'brands': ['Supreme', 'Off-White', 'Palace'],
-                'max_pages': 2,
-                'delay': 1.5,
-                'max_keywords': 6
-            },
-            'standard': {
-                'brands': ['Bape', 'Nike', 'Adidas'],
+            'tier_1': {
+                'brands': ['Raf Simons', 'Rick Owens', 'Maison Margiela', 'Balenciaga'],
+                'search_frequency': 1,  # Every cycle
+                'max_keywords': 4,
                 'max_pages': 2,
                 'delay': 1.0,
-                'max_keywords': 4
+                'max_listings': 5
+            },
+            'tier_2': {
+                'brands': ['Jean Paul Gaultier', 'Yohji Yamamoto', 'Comme Des Garcons', 'Junya Watanabe'],
+                'search_frequency': 1,  # Every cycle
+                'max_keywords': 4,
+                'max_pages': 2,
+                'delay': 1.0,
+                'max_listings': 5
+            },
+            'tier_3': {
+                'brands': ['Undercover', 'Vetements', 'Martine Rose', 'Alyx'],
+                'search_frequency': 1,  # Every cycle
+                'max_keywords': 4,
+                'max_pages': 2,
+                'delay': 1.0,
+                'max_listings': 5
+            },
+            'tier_4': {
+                'brands': ['Celine', 'Bottega Veneta', 'Kiko Kostadinov', 'Chrome Hearts'],
+                'search_frequency': 1,  # Every cycle
+                'max_keywords': 4,
+                'max_pages': 2,
+                'delay': 1.0,
+                'max_listings': 5
+            },
+            'tier_5': {
+                'brands': ['Prada', 'Miu Miu', 'Helmut Lang', 'Hysteric Glamour'],
+                'search_frequency': 1,  # Every cycle
+                'max_keywords': 4,
+                'max_pages': 2,
+                'delay': 1.0,
+                'max_listings': 5
             }
         }
         self.load_performance_data()
@@ -1635,7 +1658,7 @@ def generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, c
 
 def main_loop():
     """Main search loop with enhanced error handling and no threading issues"""
-    print("🎯 Starting OPTIMIZED Yahoo Japan Sniper with HIGH VOLUME MODE...")
+    print("🎯 Starting SIMPLIFIED Yahoo Japan Sniper - ALL BRANDS EVERY CYCLE...")
     
     # Start health server for Railway
     health_thread = threading.Thread(target=run_health_server, daemon=True)
@@ -1647,13 +1670,14 @@ def main_loop():
     keyword_manager = AdaptiveKeywordManager()
     emergency_manager = EmergencyModeManager()
     
-    print("\n🏆 HIGH VOLUME SYSTEM INITIALIZED:")
-    print("✅ Enhanced spam detection enabled")
-    print("✅ Quality checker initialized") 
-    print("✅ HTTP error handling improved")
+    print("\n🏆 SIMPLIFIED SYSTEM INITIALIZED:")
+    print("✅ ALL 20 BRANDS EVERY CYCLE - No tier skipping")
+    print("✅ 4 keywords per brand, 2 pages each")
+    print("✅ Dead keyword system DISABLED")
+    print("✅ Guaranteed coverage of all brands")
     print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
     print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
-    print(f"🎯 Target: MAXIMUM VOLUME with quality items")
+    print(f"🎯 Target: SIMPLIFIED COVERAGE - All brands every cycle")
     
     # Initial setup
     get_usd_jpy_rate()
@@ -1680,8 +1704,9 @@ def main_loop():
             
             # SEQUENTIAL PROCESSING (NO THREADING ISSUES)
             for tier_name, tier_config in tiered_system.tier_config.items():
-                if not tiered_system.should_search_tier(tier_name):
-                    continue
+                # DISABLED: Tier frequency check - search all tiers every cycle
+                # if not tiered_system.should_search_tier(tier_name):
+                #     continue
                 
                 print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config['brands'])} brands")
                 tier_searches = 0
@@ -1696,10 +1721,11 @@ def main_loop():
                     brand_listings = []
                     
                     for keyword in keywords:
-                        if (keyword_manager and keyword_manager.keyword_performance and 
-                            keyword in keyword_manager.dead_keywords):
-                            print(f"⏭️ Skipping dead keyword: {keyword}")
-                            continue
+                        # DISABLED: Dead keyword check - was blocking too many searches
+                        # if (keyword_manager and keyword_manager.keyword_performance and 
+                        #     keyword in keyword_manager.dead_keywords):
+                        #     print(f"⏭️ Skipping dead keyword: {keyword}")
+                        #     continue
                         
                         print(f"🔍 Searching: {keyword} (up to {tier_config['max_pages']} pages)")
                         
@@ -1828,7 +1854,7 @@ def main_loop():
             # Log scraper statistics to database
             log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches)
             
-            actual_sleep = max(120, sleep_time - cycle_duration)
+            actual_sleep = max(180, sleep_time - cycle_duration)  # 3 minutes minimum
             print(f"⏳ Cycle complete. Sleeping for {actual_sleep:.0f} seconds...")
             time.sleep(actual_sleep)
             
