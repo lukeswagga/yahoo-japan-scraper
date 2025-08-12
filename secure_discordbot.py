@@ -3118,6 +3118,70 @@ async def list_channels_command(ctx):
     
     await ctx.send(embed=embed)
 
+@bot.command(name='show_all_channels')
+async def show_all_channels(ctx):
+    """Show all text channels organized by category"""
+    
+    guild = ctx.guild
+    output = []
+    
+    # Group channels by category
+    categories = {}
+    no_category = []
+    
+    for channel in guild.text_channels:
+        if channel.category:
+            cat_name = channel.category.name
+            if cat_name not in categories:
+                categories[cat_name] = []
+            categories[cat_name].append(channel.name)
+        else:
+            no_category.append(channel.name)
+    
+    # Format output
+    output.append("📋 **COMPLETE CHANNEL STRUCTURE**\n")
+    
+    # Channels with categories
+    for category_name, channels in categories.items():
+        output.append(f"📁 **{category_name.upper()}**")
+        for channel in sorted(channels):
+            output.append(f"  #{channel}")
+        output.append("")  # Empty line
+    
+    # Channels without category
+    if no_category:
+        output.append("📁 **NO CATEGORY**")
+        for channel in sorted(no_category):
+            output.append(f"  #{channel}")
+        output.append("")
+    
+    # Summary
+    total_channels = len(guild.text_channels)
+    output.append(f"📊 **SUMMARY:** {total_channels} total text channels")
+    
+    # Send as code block to preserve formatting
+    full_output = "\n".join(output)
+    
+    if len(full_output) > 1900:  # Discord message limit
+        # Split into multiple messages
+        chunks = []
+        current_chunk = ""
+        
+        for line in output:
+            if len(current_chunk + line + "\n") > 1900:
+                chunks.append(f"```\n{current_chunk}\n```")
+                current_chunk = line
+            else:
+                current_chunk += line + "\n"
+        
+        if current_chunk:
+            chunks.append(f"```\n{current_chunk}\n```")
+        
+        for chunk in chunks:
+            await ctx.send(chunk)
+    else:
+        await ctx.send(f"```\n{full_output}\n```")
+
 # Health check endpoint for the Discord bot
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
