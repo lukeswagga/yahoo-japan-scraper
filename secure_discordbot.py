@@ -1654,23 +1654,27 @@ async def db_debug_command(ctx):
         await ctx.send(f"PostgreSQL available: {db_manager.use_postgres}")
         await ctx.send(f"Database URL exists: {bool(db_manager.database_url)}")
         
-        result = db_manager.execute_query('SELECT COUNT(*) as count FROM user_preferences', fetch_one=True)
-        await ctx.send(f"User preferences count: {result['count'] if result else 'Error'}")
+        result = db_manager.execute_query('SELECT COUNT(*) FROM user_preferences', fetch_one=True)
+        count = result['count'] if isinstance(result, dict) and 'count' in result else result[0] if result else 0
+        await ctx.send(f"User preferences count: {count}")
         
-        result2 = db_manager.execute_query('SELECT COUNT(*) as count FROM reactions', fetch_one=True)
-        await ctx.send(f"Reactions count: {result2['count'] if result2 else 'Error'}")
+        result2 = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
+        count2 = result2['count'] if isinstance(result2, dict) and 'count' in result2 else result2[0] if result2 else 0
+        await ctx.send(f"Reactions count: {count2}")
         
-        listings_count = db_manager.execute_query('SELECT COUNT(*) as count FROM listings', fetch_one=True)
-        await ctx.send(f"Total listings in DB: {listings_count['count'] if listings_count else 'Error'}")
+        listings_count = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
+        count3 = listings_count['count'] if isinstance(listings_count, dict) and 'count' in listings_count else listings_count[0] if listings_count else 0
+        await ctx.send(f"Total listings in DB: {count3}")
         
         recent_listings = db_manager.execute_query('''
-            SELECT COUNT(*) as count FROM listings 
+            SELECT COUNT(*) FROM listings 
             WHERE created_at > NOW() - INTERVAL '1 day'
         ''' if db_manager.use_postgres else '''
-            SELECT COUNT(*) as count FROM listings 
+            SELECT COUNT(*) FROM listings 
             WHERE created_at > datetime('now', '-1 day')
         ''', fetch_one=True)
-        await ctx.send(f"Recent listings (24h): {recent_listings['count'] if recent_listings else 'Error'}")
+        count4 = recent_listings['count'] if isinstance(recent_listings, dict) and 'count' in recent_listings else recent_listings[0] if recent_listings else 0
+        await ctx.send(f"Recent listings (24h): {count4}")
         
         recent_ids = db_manager.execute_query('''
             SELECT auction_id, title, created_at FROM listings 
@@ -1678,17 +1682,21 @@ async def db_debug_command(ctx):
         ''', fetch_all=True)
         
         if recent_ids:
-            ids_text = "\n".join([f"{r['auction_id'][:10]}... - {r['title'][:30]}... - {r['created_at']}" for r in recent_ids])
+            ids_text = "\n".join([f"{r['auction_id'][:10]}... - {r['title'][:30]}..." for r in recent_ids])
             await ctx.send(f"Recent auction IDs:\n```{ids_text}```")
         
-        result3 = db_manager.execute_query('SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?', (ctx.author.id,), fetch_one=True)
-        await ctx.send(f"Your settings: {result3 if result3 else 'None found'}")
+        # FIX: Use proper parameter syntax
+        user_prefs = db_manager.execute_query('''
+            SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = %s
+        ''' if db_manager.use_postgres else '''
+            SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?
+        ''', (ctx.author.id,), fetch_one=True)
         
-        bookmark_count = db_manager.execute_query('SELECT COUNT(*) as count FROM user_bookmarks WHERE user_id = ?', (ctx.author.id,), fetch_one=True)
-        await ctx.send(f"Your bookmarks: {bookmark_count['count'] if bookmark_count else 0}")
+        if user_prefs:
+            await ctx.send(f"Your setup: {user_prefs['proxy_service']}, complete: {user_prefs['setup_complete']}")
         
     except Exception as e:
-        await ctx.send(f"Database error: {e}")
+        await ctx.send(f"❌ Database debug error: {str(e)}")
 
 @bot.command(name='clear_recent_listings')
 @commands.has_permissions(administrator=True)
@@ -1971,53 +1979,63 @@ async def create_bookmark_channel_for_user(user, auction_data):
 
 @bot.command(name='preferences')
 async def preferences_command(ctx):
-    user_id = ctx.author.id
+    try:
+        user_id = ctx.author.id
+        
+        prefs = db_manager.execute_query('''
+            SELECT proxy_service, notifications_enabled, min_quality_threshold, max_price_alert 
+            FROM user_preferences WHERE user_id = %s
+        ''' if db_manager.use_postgres else '''
+            SELECT proxy_service, notifications_enabled, min_quality_threshold, max_price_alert 
+            FROM user_preferences WHERE user_id = ?
+        ''', (user_id,), fetch_one=True)
+        
+        if not prefs:
+            await ctx.send("❌ No preferences found. Run `!setup` first!")
+            return
     
-    prefs = db_manager.execute_query('''
-        SELECT proxy_service, notifications_enabled, min_quality_threshold, max_price_alert 
-        FROM user_preferences WHERE user_id = %s
-    ''' if db_manager.use_postgres else '''
-        SELECT proxy_service, notifications_enabled, min_quality_threshold, max_price_alert 
-        FROM user_preferences WHERE user_id = ?
-    ''', (user_id,), fetch_one=True)
-    
-    if not prefs:
-        await ctx.send("❌ No preferences found. Run `!setup` first!")
-        return
-    
-    proxy_service, notifications, min_quality, max_price = prefs
-    proxy_info = SUPPORTED_PROXIES.get(proxy_service, {"name": "Unknown", "emoji": "❓"})
-    
-    embed = discord.Embed(
-        title="⚙️ Your Preferences",
-        color=0x0099ff
-    )
-    
-    embed.add_field(
-        name="🛒 Proxy Service",
-        value=f"{proxy_info['emoji']} {proxy_info['name']}",
-        inline=True
-    )
-    
-    embed.add_field(
-        name="🔔 Notifications",
-        value="✅ Enabled" if notifications else "❌ Disabled",
-        inline=True
-    )
-    
-    embed.add_field(
-        name="⭐ Min Quality",
-        value=f"{min_quality:.1%}",
-        inline=True
-    )
-    
-    embed.add_field(
-        name="💰 Max Price Alert",
-        value=f"${max_price:.0f}",
-        inline=True
-    )
-    
-    await ctx.send(embed=embed)
+        # Handle dict results properly
+        proxy_service = prefs['proxy_service']
+        notifications = prefs['notifications_enabled'] 
+        min_quality = prefs['min_quality_threshold']
+        max_price = prefs['max_price_alert']
+        
+        proxy_info = SUPPORTED_PROXIES.get(proxy_service, {"name": "Unknown", "emoji": "❓"})
+        
+        embed = discord.Embed(
+            title="⚙️ Your Preferences",
+            color=0x0099ff
+        )
+        
+        embed.add_field(
+            name="🛒 Proxy Service",
+            value=f"{proxy_info['emoji']} {proxy_info['name']}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🔔 Notifications",
+            value="✅ Enabled" if notifications else "❌ Disabled",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="⭐ Min Quality",
+            value=f"{min_quality:.1%}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="💰 Max Price Alert",
+            value=f"${max_price:.0f}",
+            inline=True
+        )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        print(f"❌ Preferences error: {str(e)}")
+        await ctx.send(f"❌ Error loading preferences: {str(e)}")
 
 @bot.command(name='export')
 async def export_command(ctx):
