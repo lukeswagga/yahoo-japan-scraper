@@ -1297,6 +1297,25 @@ async def debug_setup_flow(ctx):
     
     await ctx.send(f"Setup check result: {setup_complete}")
 
+@bot.command(name='reset_my_setup')
+async def reset_my_setup(ctx):
+    """Reset your setup to test the setup flow"""
+    try:
+        db_manager.execute_query('''
+            UPDATE user_preferences 
+            SET setup_complete = FALSE 
+            WHERE user_id = %s
+        ''' if db_manager.use_postgres else '''
+            UPDATE user_preferences 
+            SET setup_complete = 0 
+            WHERE user_id = ?
+        ''', (ctx.author.id,))
+        
+        await ctx.send("✅ Your setup has been reset. Try `!setup` now to test the flow!")
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
 @bot.command(name='db_health')
 async def db_health_check(ctx):
     """Check database health and show table information"""
@@ -2153,7 +2172,7 @@ async def commands_command(ctx):
     
     embed.add_field(
         name="⚙️ Setup & Configuration",
-        value="**!setup** - Initial setup for new users\n**!preferences** - View your current preferences",
+        value="**!setup** - Initial setup for new users\n**!preferences** - View your current preferences\n**!reset_my_setup** - Reset your setup to test the flow",
         inline=False
     )
     
