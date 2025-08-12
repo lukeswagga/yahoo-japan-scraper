@@ -1044,6 +1044,8 @@ async def on_reaction_add(reaction, user):
     # For thumbs up, create bookmark channel
     if str(reaction.emoji) == "👍":
         try:
+            print(f"🔍 Looking up auction: {auction_id}")
+            
             # FIXED QUERY - use the correct column names from your database
             result = db_manager.execute_query('''
                 SELECT title, brand, price_jpy, price_usd, seller_id, zenmarket_url, deal_quality
@@ -1053,17 +1055,35 @@ async def on_reaction_add(reaction, user):
                 FROM listings WHERE auction_id = ?
             ''', (auction_id,), fetch_one=True)
             
-            if result:
-                auction_data = {
-                    'auction_id': auction_id,
-                    'title': result[0],
-                    'brand': result[1],
-                    'price_jpy': result[2],
-                    'price_usd': result[3],
-                    'seller_id': result[4],
-                    'zenmarket_url': result[5],  # Changed from yahoo_url to zenmarket_url
-                    'deal_quality': result[6]
-                }
+            print(f"🔍 Query result: {result}")
+            print(f"🔍 Result type: {type(result)}")
+            
+            if result and len(result) > 0:
+                # Handle both dict and tuple results
+                if isinstance(result, dict):
+                    auction_data = {
+                        'auction_id': auction_id,
+                        'title': result['title'],
+                        'brand': result['brand'],
+                        'price_jpy': result['price_jpy'],
+                        'price_usd': result['price_usd'],
+                        'seller_id': result['seller_id'],
+                        'zenmarket_url': result['zenmarket_url'],
+                        'deal_quality': result['deal_quality']
+                    }
+                else:
+                    auction_data = {
+                        'auction_id': auction_id,
+                        'title': result[0],
+                        'brand': result[1],
+                        'price_jpy': result[2],
+                        'price_usd': result[3],
+                        'seller_id': result[4],
+                        'zenmarket_url': result[5],
+                        'deal_quality': result[6]
+                    }
+                
+                print(f"🔍 Auction data: {auction_data}")
                 
                 # Create bookmark channel
                 success = await create_bookmark_channel_for_user(user, auction_data)
@@ -1076,9 +1096,10 @@ async def on_reaction_add(reaction, user):
                     print(f"⚠️ Bookmark failed for {user.name}")
             else:
                 print(f"❌ No listing found for auction ID: {auction_id}")
+                await reaction.message.add_reaction("❓")
                 
         except Exception as e:
-            print(f"❌ Error in thumbs up handler: {e}")
+            print(f"❌ Error in thumbs up handler: {str(e)} | Type: {type(e)}")
             await reaction.message.add_reaction("⚠️")
 
 
@@ -1198,22 +1219,144 @@ async def handle_setup_reaction(reaction, user):
     await reaction.message.channel.send(f"✅ {user.mention} - Setup complete! Check your DMs for next steps.", delete_after=10)
 
 @bot.command(name='debug_setup')
-async def debug_setup(ctx):
-    """Debug command to check setup status"""
-    user_id = ctx.author.id
+async def debug_setup_command(ctx):
+    """Debug user setup status"""
+    try:
+        result = db_manager.execute_query(
+            'SELECT * FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT * FROM user_preferences WHERE user_id = ?',
+            (ctx.author.id,),
+            fetch_one=True
+        )
+        
+        if result:
+            await ctx.send(f"✅ User setup found: {result}")
+        else:
+            await ctx.send("❌ No user setup found")
+            
+    except Exception as e:
+        await ctx.send(f"❌ Debug error: {e}")
+
+@bot.command(name='debug_reaction')
+async def debug_reaction(ctx, auction_id=None):
+    """Debug what's in the database for a specific auction"""
+    if not auction_id:
+        # Get the most recent auction
+        recent = db_manager.execute_query('''
+            SELECT auction_id FROM listings ORDER BY created_at DESC LIMIT 1
+        ''', fetch_one=True)
+        if recent:
+            auction_id = recent[0] if isinstance(recent, (list, tuple)) else recent['auction_id']
+        else:
+            await ctx.send("No listings found")
+            return
     
-    result = db_manager.execute_query(
-        'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?',
-        (user_id,),
-        fetch_one=True
-    )
+    # Check if listing exists
+    result = db_manager.execute_query('''
+        SELECT title, brand, price_jpy, price_usd, seller_id, zenmarket_url, deal_quality
+        FROM listings WHERE auction_id = %s
+    ''' if db_manager.use_postgres else '''
+        SELECT title, brand, price_jpy, price_usd, seller_id, zenmarket_url, deal_quality
+        FROM listings WHERE auction_id = ?
+    ''', (auction_id,), fetch_one=True)
+    
+    await ctx.send(f"Auction ID: {auction_id}")
+    await ctx.send(f"Query result: {result}")
+    await ctx.send(f"Result type: {type(result)}")
     
     if result:
-        proxy = result[0] if isinstance(result, (list, tuple)) else result.get('proxy_service')
-        setup_complete = result[1] if isinstance(result, (list, tuple)) else result.get('setup_complete')
-        await ctx.send(f"Database shows: proxy={proxy}, setup_complete={setup_complete}")
+        await ctx.send(f"Result length: {len(result) if hasattr(result, '__len__') else 'N/A'}")
+        
+        # Show individual fields
+        if isinstance(result, dict):
+            await ctx.send(f"Title: {result.get('title', 'N/A')}")
+            await ctx.send(f"Brand: {result.get('brand', 'N/A')}")
+            await ctx.send(f"Price JPY: {result.get('price_jpy', 'N/A')}")
+        else:
+            await ctx.send(f"Title: {result[0] if len(result) > 0 else 'N/A'}")
+            await ctx.send(f"Brand: {result[1] if len(result) > 1 else 'N/A'}")
+            await ctx.send(f"Price JPY: {result[2] if len(result) > 2 else 'N/A'}")
     else:
-        await ctx.send("No user preferences found in database")
+        await ctx.send("❌ No listing found with that auction ID")
+
+@bot.command(name='db_health')
+async def db_health_check(ctx):
+    """Check database health and show table information"""
+    try:
+        # Check listings table
+        listings_count = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
+        await ctx.send(f"📊 Listings count: {listings_count[0] if listings_count else 0}")
+        
+        # Check reactions table
+        reactions_count = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
+        await ctx.send(f"📊 Reactions count: {reactions_count[0] if reactions_count else 0}")
+        
+        # Check recent listings
+        recent_listings = db_manager.execute_query('''
+            SELECT auction_id, title, brand, price_jpy 
+            FROM listings 
+            ORDER BY created_at DESC 
+            LIMIT 3
+        ''', fetch_all=True)
+        
+        if recent_listings:
+            await ctx.send("📋 Recent listings:")
+            for listing in recent_listings:
+                if isinstance(listing, dict):
+                    await ctx.send(f"  - {listing['auction_id']}: {listing['title'][:50]}...")
+                else:
+                    await ctx.send(f"  - {listing[0]}: {listing[1][:50]}...")
+        else:
+            await ctx.send("❌ No recent listings found")
+            
+        # Check database type
+        await ctx.send(f"🗄️ Database type: {'PostgreSQL' if db_manager.use_postgres else 'SQLite'}")
+        
+    except Exception as e:
+        await ctx.send(f"❌ Database health check error: {str(e)} | Type: {type(e)}")
+
+@bot.command(name='test_database')
+async def test_database(ctx):
+    """Test database connection and show raw results"""
+    try:
+        await ctx.send("🔍 Testing database connection...")
+        
+        # Test basic query
+        test_result = db_manager.execute_query('SELECT 1 as test_value', fetch_one=True)
+        await ctx.send(f"✅ Basic query test: {test_result}")
+        
+        # Test listings table structure
+        await ctx.send("🔍 Checking listings table structure...")
+        try:
+            structure_result = db_manager.execute_query('''
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'listings'
+                ORDER BY ordinal_position
+            ''' if db_manager.use_postgres else '''
+                PRAGMA table_info(listings)
+            ''', fetch_all=True)
+            await ctx.send(f"📋 Table structure: {structure_result}")
+        except Exception as e:
+            await ctx.send(f"⚠️ Could not get table structure: {e}")
+        
+        # Test a simple listings query
+        await ctx.send("🔍 Testing listings query...")
+        try:
+            sample_listing = db_manager.execute_query('''
+                SELECT auction_id, title, brand FROM listings LIMIT 1
+            ''', fetch_one=True)
+            await ctx.send(f"📋 Sample listing: {sample_listing}")
+            if sample_listing:
+                await ctx.send(f"📋 Sample listing type: {type(sample_listing)}")
+                if isinstance(sample_listing, dict):
+                    await ctx.send(f"📋 Sample listing keys: {list(sample_listing.keys())}")
+                else:
+                    await ctx.send(f"📋 Sample listing length: {len(sample_listing)}")
+        except Exception as e:
+            await ctx.send(f"⚠️ Could not query listings: {e}")
+            
+    except Exception as e:
+        await ctx.send(f"❌ Database test error: {str(e)} | Type: {type(e)}")
 
 @bot.command(name='set_sizes')
 async def set_sizes_command(ctx, *sizes):
@@ -1902,6 +2045,9 @@ async def export_command(ctx):
             ORDER BY r.created_at DESC
         ''', (ctx.author.id,), fetch_all=True)
         
+        await ctx.send(f"Debug: Query returned {type(all_reactions)}")
+        await ctx.send(f"Debug: Result count: {len(all_reactions) if all_reactions else 0}")
+        
         if not all_reactions:
             await ctx.send("❌ No reactions found! React to some listings first.")
             return
@@ -1958,7 +2104,7 @@ async def export_command(ctx):
         
     except Exception as e:
         print(f"❌ Export error: {e}")
-        await ctx.send(f"❌ Error creating export: {e}")
+        await ctx.send(f"❌ Export error details: {str(e)} | Type: {type(e)}")
 
 @bot.command(name='scraper_stats')
 async def scraper_stats_command(ctx):

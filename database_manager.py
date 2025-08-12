@@ -12,8 +12,8 @@ class DatabaseManager:
         self.use_postgres = bool(self.database_url)
         
         if not self.use_postgres:
-            self.db_path = 'yahoo_sniper.db'
-            print("🗄️ Using SQLite database")
+            self.db_path = 'auction_tracking.db'
+            print("🗄️ Using SQLite database: auction_tracking.db")
         else:
             print("🐘 Using PostgreSQL database")
         
@@ -33,7 +33,7 @@ class DatabaseManager:
                 conn.close()
         else:
             conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            # Don't use Row factory for SQLite to maintain tuple compatibility
             try:
                 yield conn
             finally:
