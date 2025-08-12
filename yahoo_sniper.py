@@ -516,7 +516,7 @@ class OptimizedTieredSystem:
                 'search_frequency': 1,  # Every cycle
                 'max_keywords': 4,
                 'max_pages': 2,
-                'delay': 1.0,
+                'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
                 'max_listings': 5
             },
             'tier_2': {
@@ -524,7 +524,7 @@ class OptimizedTieredSystem:
                 'search_frequency': 1,  # Every cycle
                 'max_keywords': 4,
                 'max_pages': 2,
-                'delay': 1.0,
+                'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
                 'max_listings': 5
             },
             'tier_3': {
@@ -532,7 +532,7 @@ class OptimizedTieredSystem:
                 'search_frequency': 1,  # Every cycle
                 'max_keywords': 4,
                 'max_pages': 2,
-                'delay': 1.0,
+                'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
                 'max_listings': 5
             },
             'tier_4': {
@@ -540,7 +540,7 @@ class OptimizedTieredSystem:
                 'search_frequency': 1,  # Every cycle
                 'max_keywords': 4,
                 'max_pages': 2,
-                'delay': 1.0,
+                'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
                 'max_listings': 5
             },
             'tier_5': {
@@ -548,7 +548,7 @@ class OptimizedTieredSystem:
                 'search_frequency': 1,  # Every cycle
                 'max_keywords': 4,
                 'max_pages': 2,
-                'delay': 1.0,
+                'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
                 'max_listings': 5
             }
         }
@@ -1692,7 +1692,7 @@ def main_loop():
     try:
         while True:
             cycle_start_time = datetime.now()
-            tiered_system.next_iteration()
+            tiered_system.next_iteration()  # This should be here
             
             print(f"\n🔄 CYCLE {tiered_system.iteration_counter} - {cycle_start_time.strftime('%H:%M:%S')}")
             
@@ -1703,18 +1703,24 @@ def main_loop():
             total_searches = 0
             
             # SEQUENTIAL PROCESSING (NO THREADING ISSUES)
+            print(f"\n🔍 TIER PROCESSING DEBUG:")
+            for tier_name in tiered_system.tier_config.keys():
+                print(f"   • {tier_name}: {len(tiered_system.tier_config[tier_name]['brands'])} brands")
+
+            print(f"📊 TOTAL BRANDS TO PROCESS: {sum(len(config['brands']) for config in tiered_system.tier_config.values())}")
+            
             for tier_name, tier_config in tiered_system.tier_config.items():
-                # DISABLED: Tier frequency check - search all tiers every cycle
-                # if not tiered_system.should_search_tier(tier_name):
-                #     continue
-                
+                # FORCE ALL TIERS EVERY CYCLE - No skipping allowed
                 print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config['brands'])} brands")
                 tier_searches = 0
                 tier_finds = 0
                 
                 for brand in tier_config['brands']:
                     if brand not in BRAND_DATA:
+                        print(f"⚠️ Brand '{brand}' not found in BRAND_DATA, skipping...")
                         continue
+                    
+                    print(f"🏷️ Processing brand: {brand}")
                     
                     keywords = generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, tiered_system.iteration_counter)
                     
@@ -1742,12 +1748,14 @@ def main_loop():
                             print(f"✅ {brand} rare: {len(listings)} quality items found")
                         
                         time.sleep(tier_config['delay'])
+                        time.sleep(2)  # Extra 2 seconds between keywords to avoid rate limiting
                     
                     # Sort by priority and send ALL listings
                     brand_listings.sort(key=lambda x: x["priority"], reverse=True)
                     
-                    for listing_data in brand_listings:
+                    for i, listing_data in enumerate(brand_listings, 1):
                         quality_filtered += 1
+                        print(f"   [{i}/{len(brand_listings)}] Processing: {listing_data['title'][:50]}...")
                         
                         # Send to Discord bot (or fallback)
                         success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
@@ -1798,22 +1806,25 @@ def main_loop():
                 keyword_manager.save_keyword_data()
             tiered_system.save_performance_data()
             
-            # Cycle statistics
-            cycle_end_time = datetime.now()
-            cycle_duration = (cycle_end_time - cycle_start_time).total_seconds()
-            
-            cycle_efficiency = sent_to_discord / max(1, total_searches)
-            conversion_rate = (quality_filtered / max(1, total_found)) * 100 if total_found > 0 else 0
-            
-            print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
-            print(f"⏱️  Duration: {cycle_duration:.1f}s")
-            print(f"🔍 Total searches: {total_searches}")
-            print(f"📊 Raw items found: {total_found}")
-            print(f"✅ Quality filtered: {quality_filtered}")
-            print(f"📤 Sent to Discord: {sent_to_discord}")
-            print(f"❌ HTTP errors: {total_errors}")
-            print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
-            print(f"🎯 Conversion rate: {conversion_rate:.1f}%")
+            try:
+                # Cycle statistics
+                cycle_end_time = datetime.now()
+                cycle_duration = (cycle_end_time - cycle_start_time).total_seconds()
+                
+                cycle_efficiency = sent_to_discord / max(1, total_searches)
+                conversion_rate = (quality_filtered / max(1, total_found)) * 100 if total_found > 0 else 0
+                
+                print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
+                print(f"⏱️  Duration: {cycle_duration:.1f}s")
+                print(f"🔍 Total searches: {total_searches}")
+                print(f"📊 Raw items found: {total_found}")
+                print(f"✅ Quality filtered: {quality_filtered}")
+                print(f"📤 Sent to Discord: {sent_to_discord}")
+                print(f"❌ HTTP errors: {total_errors}")
+                print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
+                print(f"🎯 Conversion rate: {conversion_rate:.1f}%")
+            except Exception as e:
+                print(f"❌ Error in cycle summary: {e}")
             
             # Check Discord bot health periodically
             if USE_DISCORD_BOT and tiered_system.iteration_counter % 5 == 0:
