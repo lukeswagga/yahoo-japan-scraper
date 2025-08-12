@@ -2364,36 +2364,50 @@ class PremiumTierManager:
             'elite': 'Elite User'
         }
         
+        # Updated to match your EXACT channel structure
         self.tier_channels = {
             'free': [
-                '📦-daily-digest',
-                '💰-budget-steals', 
-                '🗳️-community-votes',
+                # Welcome & Community (accessible to all)
+                '🎭-introductions',
+                '🎯-daily-discussion', 
                 '💬-general-chat',
-                '💡-style-advice'
+                '📋-start-here',
+                '📸-fit-pics',
+                '🗳️-community-votes',
+                '💡-style-advice',
+                '🔄-buy-sell-trade',
+                '🤝-legit-checks',
+                # Free tier alerts (delayed)
+                '🌅-daily-digest',
+                '🎯-auction-alerts',  # Main delayed feed for free users
+                '💰-budget-steals'
             ],
             'pro': [
+                # Pro tier gets immediate access to Find Alerts
                 '⏰-hourly-drops',
+                '🎯-trending-pieces', 
                 '🔔-size-alerts',
-                '📊-price-tracker',
-                '🔍-sold-listings',
-                '🏷️-raf-simons', '🏷️-rick-owens', '🏷️-maison-margiela',
-                '🏷️-jean-paul-gaultier', '🏷️-yohji_yamamoto', '🏷️-junya-watanabe',
-                '🏷️-undercover', '🏷️-vetements', '🏷️-martine-rose',
-                '🏷️-balenciaga', '🏷️-alyx', '🏷️-celine', '🏷️-bottega-veneta',
-                '🏷️-kiko-kostadinov', '🏷️-chrome-hearts', '🏷️-comme-des-garcons',
-                '🏷️-prada', '🏷️-miu-miu', '🏷️-hysteric-glamour'
+                # All brand channels (immediate access)
+                '🏷️-alyx', '🏷️-balenciaga', '🏷️-bottega-veneta', '🏷️-celine',
+                '🏷️-chrome-hearts', '🏷️-comme-des-garcons', '🏷️-gosha-rubchinskiy',
+                '🏷️-helmut-lang', '🏷️-hysteric-glamour', '🏷️-jean-paul-gaultier',
+                '🏷️-junya-watanabe', '🏷️-kiko-kostadinov', '🏷️-maison-margiela',
+                '🏷️-martine-rose', '🏷️-miu-miu', '🏷️-prada', '🏷️-raf-simons',
+                '🏷️-rick-owens', '🏷️-undercover', '🏷️-vetements', '🏷️-yohji_yamamoto',
+                # Market analytics
+                '📈-market-analytics'
             ],
             'elite': [
-                '⚡-instant-alerts',
-                '🔥-grail-hunter', 
+                # Premium vault - Elite exclusive
+                '⚡-instant-alerts',     # The fastest feed
                 '🎯-personal-alerts',
-                '📊-market-intelligence',
-                '🛡️-verified-sellers',
-                '💎-investment-pieces',
                 '🏆-vip-lounge',
-                '📈-trend-analysis',
-                '💹-investment-tracking'
+                '💎-investment-pieces',
+                '💹-investment-tracking',
+                '📈-trend-analysis', 
+                '📊-market-intelligence',
+                '🔥-grail-hunter',
+                '🛡️-verified-sellers'
             ]
         }
         
@@ -3181,6 +3195,53 @@ async def show_all_channels(ctx):
             await ctx.send(chunk)
     else:
         await ctx.send(f"```\n{full_output}\n```")
+
+@bot.command(name='verify_channels_updated')
+async def verify_channels_updated(ctx):
+    """Test the updated channel mapping"""
+    if not tier_manager:
+        await ctx.send("❌ Tier system not initialized. Run `!setup_tiers` first")
+        return
+    
+    all_channels = [channel.name for channel in ctx.guild.text_channels]
+    
+    embed = discord.Embed(title="🔍 Updated Channel Verification", color=0x3498db)
+    
+    for tier, channels in tier_manager.tier_channels.items():
+        existing = [ch for ch in channels if ch in all_channels]
+        missing = [ch for ch in channels if ch not in all_channels]
+        
+        embed.add_field(
+            name=f"{tier.title()} Tier",
+            value=f"✅ Found: {len(existing)}\n❌ Missing: {len(missing)}",
+            inline=True
+        )
+        
+        if missing and len(missing) <= 3:  # Show missing if just a few
+            embed.add_field(
+                name=f"Missing {tier.title()}",
+                value="\n".join([f"• {ch}" for ch in missing]),
+                inline=True
+            )
+        elif missing:
+            embed.add_field(
+                name=f"Missing {tier.title()}",
+                value=f"• {missing[0]}\n• {missing[1]}\n• ... and {len(missing)-2} more",
+                inline=True
+            )
+    
+    total_configured = sum(len(channels) for channels in tier_manager.tier_channels.values())
+    total_existing = sum(len([ch for ch in channels if ch in all_channels]) 
+                        for channels in tier_manager.tier_channels.values())
+    
+    embed.add_field(
+        name="📊 Summary",
+        value=f"**{total_existing}/{total_configured}** tier channels exist\n"
+              f"**{len(all_channels)}** total channels in server",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
 
 # Health check endpoint for the Discord bot
 from http.server import HTTPServer, BaseHTTPRequestHandler
