@@ -517,7 +517,7 @@ class OptimizedTieredSystem:
                 'max_keywords': 4,
                 'max_pages': 2,
                 'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
-                'max_listings': 5
+                'max_listings': 100
             },
             'tier_2': {
                 'brands': ['Jean Paul Gaultier', 'Yohji Yamamoto', 'Comme Des Garcons', 'Junya Watanabe'],
@@ -525,7 +525,7 @@ class OptimizedTieredSystem:
                 'max_keywords': 4,
                 'max_pages': 2,
                 'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
-                'max_listings': 5
+                'max_listings': 100
             },
             'tier_3': {
                 'brands': ['Undercover', 'Vetements', 'Martine Rose', 'Alyx'],
@@ -533,7 +533,7 @@ class OptimizedTieredSystem:
                 'max_keywords': 4,
                 'max_pages': 2,
                 'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
-                'max_listings': 5
+                'max_listings': 100
             },
             'tier_4': {
                 'brands': ['Celine', 'Bottega Veneta', 'Kiko Kostadinov', 'Chrome Hearts'],
@@ -541,7 +541,7 @@ class OptimizedTieredSystem:
                 'max_keywords': 4,
                 'max_pages': 2,
                 'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
-                'max_listings': 5
+                'max_listings': 100
             },
             'tier_5': {
                 'brands': ['Prada', 'Miu Miu', 'Helmut Lang', 'Hysteric Glamour'],
@@ -549,7 +549,7 @@ class OptimizedTieredSystem:
                 'max_keywords': 4,
                 'max_pages': 2,
                 'delay': 3.0,  # Increased from 1.0 to 3.0 seconds
-                'max_listings': 5
+                'max_listings': 100
             }
         }
         self.load_performance_data()

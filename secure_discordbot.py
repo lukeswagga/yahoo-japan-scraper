@@ -260,8 +260,8 @@ AUCTION_CATEGORY_NAME = "🎯 AUCTION SNIPES"
 AUCTION_CHANNEL_NAME = "🎯-auction-alerts"
 
 batch_buffer = []
-BATCH_SIZE = 4
-BATCH_TIMEOUT = 30
+BATCH_SIZE = 10  # Increase from 4 to 10
+BATCH_TIMEOUT = 60  # Increase from 30 to 60 seconds
 last_batch_time = None
 
 SUPPORTED_PROXIES = {
@@ -958,7 +958,7 @@ async def send_individual_listings_with_rate_limit(batch_data):
                 print(f"⚠️ Skipped {i}/{len(batch_data)}")
             
             if i < len(batch_data):
-                await asyncio.sleep(3)
+                await asyncio.sleep(1.5)  # Reduced from 3 to 1.5 seconds
         
     except Exception as e:
         print(f"❌ Error in rate-limited sending: {e}")
