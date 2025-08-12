@@ -1316,6 +1316,44 @@ async def reset_my_setup(ctx):
     except Exception as e:
         await ctx.send(f"❌ Error: {e}")
 
+@bot.command(name='debug_full_setup')
+async def debug_full_setup(ctx):
+    """Debug the entire setup process"""
+    try:
+        user_id = ctx.author.id
+        
+        # Check what's in the database
+        result = db_manager.execute_query('''
+            SELECT * FROM user_preferences WHERE user_id = %s
+        ''' if db_manager.use_postgres else '''
+            SELECT * FROM user_preferences WHERE user_id = ?
+        ''', (user_id,), fetch_one=True)
+        
+        await ctx.send(f"Full database record: {result}")
+        
+        # Test the get_user_proxy_preference function
+        proxy, complete = get_user_proxy_preference(user_id)
+        await ctx.send(f"get_user_proxy_preference returns: proxy='{proxy}', complete={complete}")
+        
+        # Test the setup complete check used in reactions
+        result2 = db_manager.execute_query('''
+            SELECT setup_complete FROM user_preferences WHERE user_id = %s
+        ''' if db_manager.use_postgres else '''
+            SELECT setup_complete FROM user_preferences WHERE user_id = ?
+        ''', (user_id,), fetch_one=True)
+        
+        setup_complete = False
+        if result2:
+            if isinstance(result2, dict):
+                setup_complete = result2.get('setup_complete', False)
+            elif isinstance(result2, (list, tuple)) and len(result2) > 0:
+                setup_complete = bool(result2[0])
+        
+        await ctx.send(f"Reaction check would return: {setup_complete}")
+        
+    except Exception as e:
+        await ctx.send(f"Debug error: {e}")
+
 @bot.command(name='db_health')
 async def db_health_check(ctx):
     """Check database health and show table information"""
@@ -2190,7 +2228,7 @@ async def commands_command(ctx):
     
     embed.add_field(
         name="🧠 Bot Testing & Maintenance",
-        value="**!test** - Test if bot is working\n**!commands** - Show this help\n**!db_debug** - Database diagnostics\n**!clear_recent_listings** - Clear recent duplicates\n**!force_clear_all** - Emergency: clear all listings",
+        value="**!test** - Test if bot is working\n**!commands** - Show this help\n**!db_debug** - Database diagnostics\n**!debug_full_setup** - Debug entire setup process\n**!clear_recent_listings** - Clear recent duplicates\n**!force_clear_all** - Emergency: clear all listings",
         inline=False
     )
     
