@@ -1046,7 +1046,6 @@ async def on_reaction_add(reaction, user):
         try:
             print(f"🔍 Looking up auction: {auction_id}")
             
-            # FIXED QUERY - use the correct column names from your database
             result = db_manager.execute_query('''
                 SELECT title, brand, price_jpy, price_usd, seller_id, zenmarket_url, deal_quality
                 FROM listings WHERE auction_id = %s
@@ -1056,32 +1055,19 @@ async def on_reaction_add(reaction, user):
             ''', (auction_id,), fetch_one=True)
             
             print(f"🔍 Query result: {result}")
-            print(f"🔍 Result type: {type(result)}")
             
-            if result and len(result) > 0:
-                # Handle both dict and tuple results
-                if isinstance(result, dict):
-                    auction_data = {
-                        'auction_id': auction_id,
-                        'title': result['title'],
-                        'brand': result['brand'],
-                        'price_jpy': result['price_jpy'],
-                        'price_usd': result['price_usd'],
-                        'seller_id': result['seller_id'],
-                        'zenmarket_url': result['zenmarket_url'],
-                        'deal_quality': result['deal_quality']
-                    }
-                else:
-                    auction_data = {
-                        'auction_id': auction_id,
-                        'title': result[0],
-                        'brand': result[1],
-                        'price_jpy': result[2],
-                        'price_usd': result[3],
-                        'seller_id': result[4],
-                        'zenmarket_url': result[5],
-                        'deal_quality': result[6]
-                    }
+            if result:
+                # Your database returns dict objects, so access them correctly
+                auction_data = {
+                    'auction_id': auction_id,
+                    'title': result['title'],
+                    'brand': result['brand'],
+                    'price_jpy': result['price_jpy'],
+                    'price_usd': result['price_usd'],
+                    'seller_id': result['seller_id'],
+                    'zenmarket_url': result['zenmarket_url'],
+                    'deal_quality': result['deal_quality']
+                }
                 
                 print(f"🔍 Auction data: {auction_data}")
                 
@@ -1099,7 +1085,9 @@ async def on_reaction_add(reaction, user):
                 await reaction.message.add_reaction("❓")
                 
         except Exception as e:
-            print(f"❌ Error in thumbs up handler: {str(e)} | Type: {type(e)}")
+            print(f"❌ Error in thumbs up handler: {str(e)}")
+            import traceback
+            traceback.print_exc()
             await reaction.message.add_reaction("⚠️")
 
 
@@ -1666,23 +1654,23 @@ async def db_debug_command(ctx):
         await ctx.send(f"PostgreSQL available: {db_manager.use_postgres}")
         await ctx.send(f"Database URL exists: {bool(db_manager.database_url)}")
         
-        result = db_manager.execute_query('SELECT COUNT(*) FROM user_preferences', fetch_one=True)
-        await ctx.send(f"User preferences count: {result[0] if result else 'Error'}")
+        result = db_manager.execute_query('SELECT COUNT(*) as count FROM user_preferences', fetch_one=True)
+        await ctx.send(f"User preferences count: {result['count'] if result else 'Error'}")
         
-        result2 = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
-        await ctx.send(f"Reactions count: {result2[0] if result2 else 'Error'}")
+        result2 = db_manager.execute_query('SELECT COUNT(*) as count FROM reactions', fetch_one=True)
+        await ctx.send(f"Reactions count: {result2['count'] if result2 else 'Error'}")
         
-        listings_count = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
-        await ctx.send(f"Total listings in DB: {listings_count[0] if listings_count else 'Error'}")
+        listings_count = db_manager.execute_query('SELECT COUNT(*) as count FROM listings', fetch_one=True)
+        await ctx.send(f"Total listings in DB: {listings_count['count'] if listings_count else 'Error'}")
         
         recent_listings = db_manager.execute_query('''
-            SELECT COUNT(*) FROM listings 
+            SELECT COUNT(*) as count FROM listings 
             WHERE created_at > NOW() - INTERVAL '1 day'
         ''' if db_manager.use_postgres else '''
-            SELECT COUNT(*) FROM listings 
+            SELECT COUNT(*) as count FROM listings 
             WHERE created_at > datetime('now', '-1 day')
         ''', fetch_one=True)
-        await ctx.send(f"Recent listings (24h): {recent_listings[0] if recent_listings else 'Error'}")
+        await ctx.send(f"Recent listings (24h): {recent_listings['count'] if recent_listings else 'Error'}")
         
         recent_ids = db_manager.execute_query('''
             SELECT auction_id, title, created_at FROM listings 
@@ -1690,14 +1678,14 @@ async def db_debug_command(ctx):
         ''', fetch_all=True)
         
         if recent_ids:
-            ids_text = "\n".join([f"{aid[:10]}... - {title[:30]}... - {created}" for aid, title, created in recent_ids])
+            ids_text = "\n".join([f"{r['auction_id'][:10]}... - {r['title'][:30]}... - {r['created_at']}" for r in recent_ids])
             await ctx.send(f"Recent auction IDs:\n```{ids_text}```")
         
         result3 = db_manager.execute_query('SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?', (ctx.author.id,), fetch_one=True)
         await ctx.send(f"Your settings: {result3 if result3 else 'None found'}")
         
-        bookmark_count = db_manager.execute_query('SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?', (ctx.author.id,), fetch_one=True)
-        await ctx.send(f"Your bookmarks: {bookmark_count[0] if bookmark_count else 0}")
+        bookmark_count = db_manager.execute_query('SELECT COUNT(*) as count FROM user_bookmarks WHERE user_id = ?', (ctx.author.id,), fetch_one=True)
+        await ctx.send(f"Your bookmarks: {bookmark_count['count'] if bookmark_count else 0}")
         
     except Exception as e:
         await ctx.send(f"Database error: {e}")
@@ -1707,14 +1695,14 @@ async def db_debug_command(ctx):
 async def clear_recent_listings_command(ctx):
     try:
         recent_count = db_manager.execute_query('''
-            SELECT COUNT(*) FROM listings 
+            SELECT COUNT(*) as count FROM listings 
             WHERE created_at > NOW() - INTERVAL '6 hours'
         ''' if db_manager.use_postgres else '''
-            SELECT COUNT(*) FROM listings 
+            SELECT COUNT(*) as count FROM listings 
             WHERE created_at > datetime('now', '-6 hours')
         ''', fetch_one=True)
         
-        recent_listings = recent_count[0] if recent_count else 0
+        recent_listings = recent_count['count'] if recent_count else 0
         
         if recent_listings == 0:
             await ctx.send("✅ No recent listings to clear!")
@@ -1752,26 +1740,31 @@ async def clear_recent_listings_command(ctx):
 @commands.has_permissions(administrator=True)
 async def force_clear_all_command(ctx):
     try:
-        total_count = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
-        total_listings = total_count[0] if total_count else 0
+        # Get count first
+        total_result = db_manager.execute_query('SELECT COUNT(*) as count FROM listings', fetch_one=True)
+        total_listings = total_result['count'] if total_result else 0
         
         if total_listings == 0:
-            await ctx.send("✅ No listings to clear!")
+            await ctx.send("No listings to clear.")
             return
         
+        # Clear tables
         db_manager.execute_query('DELETE FROM listings')
         db_manager.execute_query('DELETE FROM reactions')
-        db_manager.execute_query('DELETE FROM user_bookmarks WHERE user_id = ?', (ctx.author.id,))
+        db_manager.execute_query('DELETE FROM user_bookmarks')
         
         embed = discord.Embed(
             title="🚨 ALL LISTINGS CLEARED",
-            description=f"**EMERGENCY RESET**: Removed **{total_listings}** listings and all associated data.\n\nFresh listings should start appearing within 5 minutes!",
+            description=f"**EMERGENCY RESET**: Removed **{total_listings}** listings and all associated data.",
             color=0xff4444
         )
         await ctx.send(embed=embed)
         
     except Exception as e:
-        await ctx.send(f"❌ Error clearing all listings: {e}")
+        print(f"❌ Clear error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        await ctx.send(f"❌ Error: {str(e)}")
 
 @bot.command(name='test')
 async def test_command(ctx):
@@ -1800,11 +1793,13 @@ async def stats_command(ctx):
         await ctx.send("❌ No stats found. React to some listings first!")
         return
     
-    total, thumbs_up, thumbs_down = stats[0] if isinstance(stats, (list, tuple)) else (stats.get('total', 0), stats.get('thumbs_up', 0), stats.get('thumbs_down', 0))
+    total = stats.get('total', 0)
+    thumbs_up = stats.get('thumbs_up', 0)
+    thumbs_down = stats.get('thumbs_down', 0)
     
     # Fix the other queries too
     bookmark_count = db_manager.execute_query(
-        'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = %s' if db_manager.use_postgres else 'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
+        'SELECT COUNT(*) as count FROM user_bookmarks WHERE user_id = %s' if db_manager.use_postgres else 'SELECT COUNT(*) as count FROM user_bookmarks WHERE user_id = ?',
         (ctx.author.id,),
         fetch_one=True
     )
@@ -1821,7 +1816,7 @@ async def stats_command(ctx):
     )
     
     if bookmark_count:
-        count = bookmark_count[0] if isinstance(bookmark_count, (list, tuple)) else bookmark_count.get('count', 0)
+        count = bookmark_count.get('count', 0)
         embed.add_field(
             name="📚 Bookmarks",
             value=f"Total: {count}",
@@ -2045,66 +2040,49 @@ async def export_command(ctx):
             ORDER BY r.created_at DESC
         ''', (ctx.author.id,), fetch_all=True)
         
-        await ctx.send(f"Debug: Query returned {type(all_reactions)}")
-        await ctx.send(f"Debug: Result count: {len(all_reactions) if all_reactions else 0}")
-        
         if not all_reactions:
-            await ctx.send("❌ No reactions found! React to some listings first.")
+            await ctx.send("❌ No reactions found!")
             return
         
         export_text = f"# {ctx.author.display_name}'s Auction Reactions Export\n"
         export_text += f"# Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
         export_text += f"# Total Reactions: {len(all_reactions)}\n\n"
         
-        liked_count = sum(1 for r in all_reactions if r[0] == 'thumbs_up')
+        # Process dict results correctly
+        liked_count = sum(1 for r in all_reactions if r['reaction_type'] == 'thumbs_up')
         disliked_count = len(all_reactions) - liked_count
         
         export_text += f"## Summary\n"
         export_text += f"👍 Liked: {liked_count}\n"
-        export_text += f"👎 Disliked: {disliked_count}\n"
-        export_text += f"Positivity Rate: {liked_count/len(all_reactions)*100:.1f}%\n\n"
+        export_text += f"👎 Disliked: {disliked_count}\n\n"
         
         for reaction_type in ['thumbs_up', 'thumbs_down']:
             emoji = "👍 LIKED" if reaction_type == 'thumbs_up' else "👎 DISLIKED"
             export_text += f"## {emoji} LISTINGS\n\n"
             
-            filtered_reactions = [r for r in all_reactions if r[0] == reaction_type]
+            filtered_reactions = [r for r in all_reactions if r['reaction_type'] == reaction_type]
             
-            for i, reaction_data in enumerate(filtered_reactions, 1):
-                (_, created_at, title, brand, price_jpy, price_usd, seller_id, zenmarket_url, yahoo_url, auction_id, deal_quality, priority) = reaction_data
-                export_text += f"{i}. **{title}**\n"
-                export_text += f"   Brand: {brand}\n"
-                export_text += f"   Price: ¥{price_jpy:,} (~${price_usd:.2f})\n"
-                export_text += f"   Quality: {deal_quality:.1%} | Priority: {priority:.0f}\n"
-                export_text += f"   Seller: {seller_id}\n"
-                export_text += f"   Date: {created_at}\n"
-                export_text += f"   ZenMarket: {zenmarket_url}\n"
-                if yahoo_url:
-                    export_text += f"   Yahoo: {yahoo_url}\n"
-                export_text += f"\n"
+            for i, r in enumerate(filtered_reactions, 1):
+                export_text += f"{i}. **{r['title']}**\n"
+                export_text += f"   Brand: {r['brand']}\n"
+                export_text += f"   Price: ¥{r['price_jpy']:,} (~${r['price_usd']:.2f})\n"
+                export_text += f"   Seller: {r['seller_id']}\n"
+                export_text += f"   Date: {r['created_at']}\n"
+                export_text += f"   ZenMarket: {r['zenmarket_url']}\n\n"
         
-        # Send as file
-        filename = f"auction_reactions_{ctx.author.id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.txt"
-        
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(export_text)
-        
-        with open(filename, 'rb') as f:
-            file = discord.File(f, filename)
-            embed = discord.Embed(
-                title="📋 Your Complete Reaction Export",
-                description=f"**Total Reactions:** {len(all_reactions)}\n**Liked:** {liked_count}\n**Disliked:** {disliked_count}",
-                color=0x0099ff
-            )
-            await ctx.send(embed=embed, file=file)
-        
-        # Clean up file
-        import os
-        os.remove(filename)
-        
+        # Send as message (simplified)
+        if len(export_text) < 2000:
+            await ctx.send(f"```{export_text}```")
+        else:
+            # Send first part
+            await ctx.send(f"```{export_text[:1900]}```")
+            await ctx.send("... (truncated)")
+            
     except Exception as e:
-        print(f"❌ Export error: {e}")
-        await ctx.send(f"❌ Export error details: {str(e)} | Type: {type(e)}")
+        print(f"❌ Export error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        await ctx.send(f"❌ Export error: {str(e)}")
 
 @bot.command(name='scraper_stats')
 async def scraper_stats_command(ctx):
