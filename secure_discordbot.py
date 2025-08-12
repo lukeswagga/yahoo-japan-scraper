@@ -994,6 +994,16 @@ async def on_reaction_add(reaction, user):
     if user.bot:
         return
     
+    # SETUP REACTION DETECTION - Must be FIRST
+    if reaction.message.embeds and len(reaction.message.embeds) > 0:
+        embed = reaction.message.embeds[0]
+        # Check if this is a setup message
+        if embed.title and ("Setup" in embed.title or "Auction Sniper Setup" in embed.title):
+            print(f"🔧 Setup reaction detected from {user.name}: {reaction.emoji}")
+            await handle_setup_reaction(reaction, user)
+            return
+    
+    # Regular reaction handling continues below...
     if str(reaction.emoji) not in ["👍", "👎"]:
         return
     
@@ -1160,19 +1170,25 @@ async def setup_command(ctx):
         await message.add_reaction(proxy['emoji'])
 
 async def handle_setup_reaction(reaction, user):
+    print(f"🔧 handle_setup_reaction called: user={user.name}, emoji={reaction.emoji}")
+    
     emoji = str(reaction.emoji)
     
     selected_proxy = None
     for key, proxy in SUPPORTED_PROXIES.items():
         if proxy['emoji'] == emoji:
             selected_proxy = key
+            print(f"🔧 Proxy selected: {selected_proxy}")
             break
     
     if not selected_proxy:
+        print(f"🔧 No proxy found for emoji: {emoji}")
         return
     
     # Save proxy preference
+    print(f"🔧 Calling set_user_proxy_preference({user.id}, {selected_proxy})")
     success = set_user_proxy_preference(user.id, selected_proxy)
+    print(f"🔧 set_user_proxy_preference returned: {success}")
     
     if not success:
         await reaction.message.channel.send(f"❌ {user.mention} - Error saving setup. Please try again.")
@@ -1189,25 +1205,11 @@ async def handle_setup_reaction(reaction, user):
     
     embed.add_field(
         name="🎯 What happens now?",
-        value="You can start reacting to listings with 👍/👎 to train your personal AI and auto-bookmark items!",
+        value="You can start reacting to listings with 👍/👎 to auto-bookmark items!",
         inline=False
     )
     
-    embed.add_field(
-        name="📏 Optional: Set Size Preferences",
-        value="Use `!size_alerts S M L` to get alerts for items in your sizes!",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📚 Auto-Bookmarking",
-        value="When you react 👍 to listings, they'll be automatically bookmarked in your private channel!",
-        inline=False
-    )
-    
-    # Send in the channel where !setup was used
     await reaction.message.channel.send(embed=embed)
-    
     print(f"✅ Setup completed for {user.name}")
 
 @bot.command(name='debug_setup')
