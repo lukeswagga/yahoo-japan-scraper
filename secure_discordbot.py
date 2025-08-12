@@ -1069,32 +1069,49 @@ async def on_reaction_add(reaction, user):
                 FROM listings WHERE auction_id = ?
             ''', (auction_id,), fetch_one=True)
             
-            print(f"🔍 Query result: {result}")
-            
             if result:
-                # Your database returns dict objects, so access them correctly
-                auction_data = {
-                    'auction_id': auction_id,
-                    'title': result['title'],
-                    'brand': result['brand'],
-                    'price_jpy': result['price_jpy'],
-                    'price_usd': result['price_usd'],
-                    'seller_id': result['seller_id'],
-                    'zenmarket_url': result['zenmarket_url'],
-                    'deal_quality': result['deal_quality']
-                }
-                
-                print(f"🔍 Auction data: {auction_data}")
-                
-                # Create bookmark channel
-                success = await create_bookmark_channel_for_user(user, auction_data)
-                
-                if success:
-                    await reaction.message.add_reaction("✅")
-                    print(f"✅ Created bookmark for {user.name}")
+                # Get the original embed from the message
+                if reaction.message.embeds:
+                    original_embed = reaction.message.embeds[0]
+                    
+                    # Create EXACT copy of the original embed
+                    bookmark_embed = discord.Embed(
+                        title=original_embed.title,
+                        url=original_embed.url,
+                        description=original_embed.description,
+                        color=0x00ff00,  # Change color to green for bookmarks
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    
+                    # Copy the thumbnail exactly
+                    if original_embed.thumbnail:
+                        bookmark_embed.set_thumbnail(url=original_embed.thumbnail.url)
+                    
+                    # Copy all fields exactly
+                    for field in original_embed.fields:
+                        bookmark_embed.add_field(
+                            name=field.name,
+                            value=field.value,
+                            inline=field.inline
+                        )
+                    
+                    # Just change the footer to show it's bookmarked
+                    bookmark_embed.set_footer(text=f"📌 Bookmarked • {original_embed.footer.text}")
+                    
+                    # Create/get bookmark channel
+                    bookmark_channel = await get_or_create_bookmark_channel(user)
+                    
+                    if bookmark_channel:
+                        # Send the EXACT copy
+                        await bookmark_channel.send(embed=bookmark_embed)
+                        await reaction.message.add_reaction("✅")
+                        print(f"✅ Created exact bookmark copy for {user.name}")
+                    else:
+                        await reaction.message.add_reaction("⚠️")
+                        print(f"⚠️ Could not create bookmark channel for {user.name}")
                 else:
-                    await reaction.message.add_reaction("⚠️")
-                    print(f"⚠️ Bookmark failed for {user.name}")
+                    print(f"❌ No embeds found in original message")
+                    await reaction.message.add_reaction("❓")
             else:
                 print(f"❌ No listing found for auction ID: {auction_id}")
                 await reaction.message.add_reaction("❓")
@@ -1105,6 +1122,45 @@ async def on_reaction_add(reaction, user):
             traceback.print_exc()
             await reaction.message.add_reaction("⚠️")
 
+
+async def get_or_create_bookmark_channel(user):
+    """Get or create bookmark channel for user"""
+    try:
+        channel_name = f"bookmarks-{user.name.lower()}"
+        
+        # Check if channel exists
+        existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
+        if existing_channel:
+            return existing_channel
+        
+        # Find or create category
+        bookmarks_category = discord.utils.get(guild.categories, name="📚 USER BOOKMARKS")
+        if not bookmarks_category:
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            }
+            bookmarks_category = await guild.create_category("📚 USER BOOKMARKS", overwrites=overwrites)
+        
+        # Create channel
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        
+        bookmark_channel = await guild.create_text_channel(
+            channel_name,
+            category=bookmarks_category,
+            overwrites=overwrites,
+            topic=f"Private bookmark channel for {user.display_name}"
+        )
+        
+        return bookmark_channel
+        
+    except Exception as e:
+        print(f"❌ Error creating bookmark channel: {e}")
+        return None
 
 
 @bot.command(name='setup')
