@@ -571,20 +571,31 @@ class OptimizedTieredSystem:
         
         return True
     
-    def update_performance(self, tier_name, searches_made, finds_count):
+    def update_performance(self, tier_name, searches_count, finds_count):
+        """Update performance tracking with defensive initialization"""
         if tier_name not in self.performance_tracker:
-            self.performance_tracker[tier_name] = {
-                'total_searches': 0,
-                'total_finds': 0,
-                'avg_efficiency': 0.0
-            }
+            self.performance_tracker[tier_name] = {}
         
         tracker = self.performance_tracker[tier_name]
-        tracker['total_searches'] += searches_made
+        
+        # Defensive initialization - ensure all keys exist
+        if 'total_searches' not in tracker:
+            tracker['total_searches'] = 0
+        if 'total_finds' not in tracker:
+            tracker['total_finds'] = 0
+        if 'efficiency' not in tracker:
+            tracker['efficiency'] = 0.0
+        if 'last_updated' not in tracker:
+            tracker['last_updated'] = datetime.now().isoformat()
+        
+        # Now safely update
+        tracker['total_searches'] += searches_count
         tracker['total_finds'] += finds_count
         
         if tracker['total_searches'] > 0:
-            tracker['avg_efficiency'] = tracker['total_finds'] / tracker['total_searches']
+            tracker['efficiency'] = tracker['total_finds'] / tracker['total_searches']
+        
+        tracker['last_updated'] = datetime.now().isoformat()
     
     def load_performance_data(self):
         try:
