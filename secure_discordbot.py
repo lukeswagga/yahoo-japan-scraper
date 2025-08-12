@@ -1171,59 +1171,44 @@ async def handle_setup_reaction(reaction, user):
     if not selected_proxy:
         return
     
-    # Save proxy preference AND mark setup complete
+    # Save proxy preference
     success = set_user_proxy_preference(user.id, selected_proxy)
     
     if not success:
-        try:
-            await user.send("❌ Error saving setup. Please try again.")
-        except:
-            pass
+        await reaction.message.channel.send(f"❌ {user.mention} - Error saving setup. Please try again.")
         return
     
     proxy_info = SUPPORTED_PROXIES[selected_proxy]
     
-    # Send completion message to user's DM
-    try:
-        embed = discord.Embed(
-            title="✅ Setup Complete!",
-            description=f"Great choice! You've selected **{proxy_info['name']}** {proxy_info['emoji']}",
-            color=0x00ff00
-        )
-        
-        embed.add_field(
-            name="🎯 What happens now?",
-            value="You can start reacting to listings with 👍/👎 to train your personal AI and auto-bookmark items!",
-            inline=False
-        )
-        
-        embed.add_field(
-            name="📏 Optional: Set Size Preferences",
-            value="Use `!size_alerts S M L` to get alerts for items in your sizes!\nExample: `!size_alerts S M` or `!size_alerts 1 2 3`",
-            inline=False
-        )
-        
-        embed.add_field(
-            name="📚 Auto-Bookmarking",
-            value="When you react 👍 to listings, they'll be automatically bookmarked in your private channel!",
-            inline=False
-        )
-        
-        dm_channel = await user.create_dm()
-        await dm_channel.send(embed=embed)
-        
-        # Also send confirmation in the setup channel
-        await reaction.message.channel.send(f"✅ {user.mention} - Setup complete! Check your DMs for next steps.", delete_after=10)
-        
-        print(f"✅ Setup completed for {user.name}")
-        
-    except Exception as e:
-        print(f"❌ Error sending setup completion: {e}")
-        # Fallback - send in channel if DM fails
-        try:
-            await reaction.message.channel.send(f"✅ {user.mention} - Setup complete! You can now react to listings with 👍/👎")
-        except:
-            pass
+    # Send completion message in the SAME CHANNEL as the setup command
+    embed = discord.Embed(
+        title="✅ Setup Complete!",
+        description=f"Great choice! {user.mention} has selected **{proxy_info['name']}** {proxy_info['emoji']}",
+        color=0x00ff00
+    )
+    
+    embed.add_field(
+        name="🎯 What happens now?",
+        value="You can start reacting to listings with 👍/👎 to train your personal AI and auto-bookmark items!",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📏 Optional: Set Size Preferences",
+        value="Use `!size_alerts S M L` to get alerts for items in your sizes!",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📚 Auto-Bookmarking",
+        value="When you react 👍 to listings, they'll be automatically bookmarked in your private channel!",
+        inline=False
+    )
+    
+    # Send in the channel where !setup was used
+    await reaction.message.channel.send(embed=embed)
+    
+    print(f"✅ Setup completed for {user.name}")
 
 @bot.command(name='debug_setup')
 async def debug_setup_command(ctx):
@@ -2285,6 +2270,30 @@ def webhook_listing():
             
     except Exception as e:
         print(f"❌ Webhook error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/webhook/stats', methods=['POST'])
+def webhook_stats():
+    """Log scraper statistics"""
+    try:
+        stats_data = request.get_json()
+        
+        db_manager.execute_query('''
+            INSERT INTO scraper_stats (total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched)
+            VALUES (%s, %s, %s, %s, %s)
+        ''' if db_manager.use_postgres else '''
+            INSERT INTO scraper_stats (total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (
+            stats_data['total_found'],
+            stats_data['quality_filtered'], 
+            stats_data['sent_to_discord'],
+            stats_data['errors_count'],
+            stats_data['keywords_searched']
+        ))
+        
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 class PremiumTierManager:

@@ -1825,6 +1825,9 @@ def main_loop():
             else:
                 sleep_time = base_sleep_time
             
+            # Log scraper statistics to database
+            log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches)
+            
             actual_sleep = max(120, sleep_time - cycle_duration)
             print(f"⏳ Cycle complete. Sleeping for {actual_sleep:.0f} seconds...")
             time.sleep(actual_sleep)
@@ -1854,6 +1857,26 @@ def main_loop():
         raise
 
 load_exchange_rate()
+
+def log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches):
+    """Log scraper statistics to database"""
+    try:
+        if USE_DISCORD_BOT:
+            response = requests.post(
+                f"{DISCORD_BOT_URL}/webhook/stats",
+                json={
+                    "total_found": total_found,
+                    "quality_filtered": quality_filtered, 
+                    "sent_to_discord": sent_to_discord,
+                    "errors_count": total_errors,
+                    "keywords_searched": total_searches
+                },
+                timeout=5
+            )
+            if response.status_code == 200:
+                print(f"✅ Logged stats: {sent_to_discord} sent, {total_errors} errors")
+    except Exception as e:
+        print(f"⚠️ Could not log stats: {e}")
 
 if __name__ == "__main__":
     main_loop()
