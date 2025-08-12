@@ -1175,40 +1175,55 @@ async def handle_setup_reaction(reaction, user):
     success = set_user_proxy_preference(user.id, selected_proxy)
     
     if not success:
-        await user.send("❌ Error saving setup. Please try again.")
+        try:
+            await user.send("❌ Error saving setup. Please try again.")
+        except:
+            pass
         return
     
     proxy_info = SUPPORTED_PROXIES[selected_proxy]
     
-    # Create comprehensive setup completion message
-    embed = discord.Embed(
-        title="✅ Setup Complete!",
-        description=f"Great choice! You've selected **{proxy_info['name']}** {proxy_info['emoji']}",
-        color=0x00ff00
-    )
-    
-    embed.add_field(
-        name="🎯 What happens now?",
-        value="You can start reacting to listings with 👍/👎 to train your personal AI and auto-bookmark items!",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📏 Optional: Set Size Preferences",
-        value="Use `!set_sizes S M L` to get alerts for items in your sizes!\nExample: `!set_sizes S M` or `!set_sizes 1 2 3`",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📚 Auto-Bookmarking",
-        value="When you react 👍 to listings, they'll be automatically bookmarked!",
-        inline=False
-    )
-    
-    dm_channel = await user.create_dm()
-    await dm_channel.send(embed=embed)
-    
-    await reaction.message.channel.send(f"✅ {user.mention} - Setup complete! Check your DMs for next steps.", delete_after=10)
+    # Send completion message to user's DM
+    try:
+        embed = discord.Embed(
+            title="✅ Setup Complete!",
+            description=f"Great choice! You've selected **{proxy_info['name']}** {proxy_info['emoji']}",
+            color=0x00ff00
+        )
+        
+        embed.add_field(
+            name="🎯 What happens now?",
+            value="You can start reacting to listings with 👍/👎 to train your personal AI and auto-bookmark items!",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="📏 Optional: Set Size Preferences",
+            value="Use `!size_alerts S M L` to get alerts for items in your sizes!\nExample: `!size_alerts S M` or `!size_alerts 1 2 3`",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="📚 Auto-Bookmarking",
+            value="When you react 👍 to listings, they'll be automatically bookmarked in your private channel!",
+            inline=False
+        )
+        
+        dm_channel = await user.create_dm()
+        await dm_channel.send(embed=embed)
+        
+        # Also send confirmation in the setup channel
+        await reaction.message.channel.send(f"✅ {user.mention} - Setup complete! Check your DMs for next steps.", delete_after=10)
+        
+        print(f"✅ Setup completed for {user.name}")
+        
+    except Exception as e:
+        print(f"❌ Error sending setup completion: {e}")
+        # Fallback - send in channel if DM fails
+        try:
+            await reaction.message.channel.send(f"✅ {user.mention} - Setup complete! You can now react to listings with 👍/👎")
+        except:
+            pass
 
 @bot.command(name='debug_setup')
 async def debug_setup_command(ctx):
@@ -1269,6 +1284,33 @@ async def debug_reaction(ctx, auction_id=None):
             await ctx.send(f"Price JPY: {result[2] if len(result) > 2 else 'N/A'}")
     else:
         await ctx.send("❌ No listing found with that auction ID")
+
+@bot.command(name='debug_setup_flow')
+async def debug_setup_flow(ctx):
+    """Debug the setup process"""
+    user_id = ctx.author.id
+    
+    # Check current setup status
+    result = db_manager.execute_query(
+        'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?',
+        (user_id,),
+        fetch_one=True
+    )
+    
+    if result:
+        await ctx.send(f"Current setup: proxy={result['proxy_service']}, complete={result['setup_complete']}")
+    else:
+        await ctx.send("No setup record found")
+    
+    # Test setup completion check
+    setup_complete = False
+    if result:
+        if isinstance(result, dict):
+            setup_complete = result.get('setup_complete', False)
+        elif isinstance(result, (list, tuple)) and len(result) > 0:
+            setup_complete = bool(result[0])
+    
+    await ctx.send(f"Setup check result: {setup_complete}")
 
 @bot.command(name='db_health')
 async def db_health_check(ctx):
@@ -1353,24 +1395,21 @@ async def test_database(ctx):
 @bot.command(name='check_bookmarks_table')
 async def check_bookmarks_table(ctx):
     try:
+        schema = db_manager.execute_query('''
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'user_bookmarks'
+            ORDER BY ordinal_position
+        ''' if db_manager.use_postgres else '''
+            PRAGMA table_info(user_bookmarks)
+        ''', fetch_all=True)
+        
         if db_manager.use_postgres:
-            schema = db_manager.execute_query('''
-                SELECT column_name, data_type 
-                FROM information_schema.columns 
-                WHERE table_name = 'user_bookmarks'
-                ORDER BY ordinal_position
-            ''', fetch_all=True)
-            
-            await ctx.send(f"user_bookmarks columns: {[col['column_name'] for col in schema]}")
+            columns = [col['column_name'] for col in schema]
         else:
-            # SQLite version
-            schema = db_manager.execute_query('PRAGMA table_info(user_bookmarks)', fetch_all=True)
+            columns = [col[1] for col in schema]  # SQLite returns tuples
             
-            if schema:
-                columns = [col['name'] for col in schema]
-                await ctx.send(f"user_bookmarks columns: {columns}")
-            else:
-                await ctx.send("No user_bookmarks table found")
+        await ctx.send(f"user_bookmarks columns: {columns}")
         
     except Exception as e:
         await ctx.send(f"Error: {e}")
@@ -2077,32 +2116,47 @@ async def export_command(ctx):
 
 @bot.command(name='scraper_stats')
 async def scraper_stats_command(ctx):
-    recent_stats = db_manager.execute_query('''
-        SELECT timestamp, total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched
-        FROM scraper_stats 
-        ORDER BY timestamp DESC 
-        LIMIT 5
-    ''', fetch_all=True)
-    
-    if not recent_stats:
-        await ctx.send("❌ No scraper statistics found!")
-        return
-    
-    embed = discord.Embed(
-        title="🤖 Recent Scraper Statistics",
-        color=0x0099ff
-    )
-    
-    for i, (timestamp, total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched) in enumerate(recent_stats, 1):
-        success_rate = (sent_to_discord / total_found * 100) if total_found > 0 else 0
+    try:
+        recent_stats = db_manager.execute_query('''
+            SELECT timestamp, total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched
+            FROM scraper_stats 
+            ORDER BY timestamp DESC 
+            LIMIT 5
+        ''', fetch_all=True)
         
-        embed.add_field(
-            name=f"Run #{i} - {timestamp}",
-            value=f"🔍 Keywords: {keywords_searched}\n📊 Found: {total_found}\n✅ Quality: {quality_filtered}\n📤 Sent: {sent_to_discord}\n❌ Errors: {errors_count}\n📈 Success: {success_rate:.1f}%",
-            inline=True
+        if not recent_stats:
+            await ctx.send("❌ No scraper statistics found! The scraper hasn't logged stats yet.")
+            return
+        
+        embed = discord.Embed(
+            title="🤖 Recent Scraper Statistics",
+            color=0x0099ff
         )
-    
-    await ctx.send(embed=embed)
+        
+        for i, stat in enumerate(recent_stats, 1):
+            if isinstance(stat, dict):
+                timestamp = stat['timestamp']
+                total_found = stat['total_found']
+                quality_filtered = stat['quality_filtered'] 
+                sent_to_discord = stat['sent_to_discord']
+                errors_count = stat['errors_count']
+                keywords_searched = stat['keywords_searched']
+            else:
+                timestamp, total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched = stat
+            
+            success_rate = (sent_to_discord / total_found * 100) if total_found > 0 else 0
+            
+            embed.add_field(
+                name=f"Run #{i} - {timestamp}",
+                value=f"🔍 Keywords: {keywords_searched}\n📊 Found: {total_found}\n✅ Quality: {quality_filtered}\n📤 Sent: {sent_to_discord}\n❌ Errors: {errors_count}\n📈 Success: {success_rate:.1f}%",
+                inline=True
+            )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        print(f"❌ Scraper stats error: {e}")
+        await ctx.send(f"❌ Error getting scraper stats: {e}")
 
 @bot.command(name='commands')
 async def commands_command(ctx):
