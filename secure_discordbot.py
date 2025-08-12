@@ -67,19 +67,23 @@ def set_user_size_preferences(user_id, sizes):
         print(f"❌ Error setting size preferences: {e}")
         return False
 
-def add_user_bookmark(user_id, auction_id, message_id, channel_id):
+def add_user_bookmark(user_id, auction_id, bookmark_message_id, bookmark_channel_id):
     """Add a user bookmark to the database"""
     try:
         if db_manager.use_postgres:
             db_manager.execute_query('''
-                INSERT INTO user_bookmarks (user_id, auction_id, message_id, channel_id)
+                INSERT INTO user_bookmarks (user_id, auction_id, bookmark_message_id, bookmark_channel_id)
                 VALUES (%s, %s, %s, %s)
-            ''', (user_id, auction_id, message_id, channel_id))
+                ON CONFLICT (user_id, auction_id) DO UPDATE SET
+                    bookmark_message_id = EXCLUDED.bookmark_message_id,
+                    bookmark_channel_id = EXCLUDED.bookmark_channel_id
+            ''', (user_id, auction_id, bookmark_message_id, bookmark_channel_id))
         else:
             db_manager.execute_query('''
-                INSERT INTO user_bookmarks (user_id, auction_id, message_id, channel_id)
+                INSERT OR REPLACE INTO user_bookmarks 
+                (user_id, auction_id, bookmark_message_id, bookmark_channel_id)
                 VALUES (?, ?, ?, ?)
-            ''', (user_id, auction_id, message_id, channel_id))
+            ''', (user_id, auction_id, bookmark_message_id, bookmark_channel_id))
         
         return True
         
@@ -1346,6 +1350,31 @@ async def test_database(ctx):
     except Exception as e:
         await ctx.send(f"❌ Database test error: {str(e)} | Type: {type(e)}")
 
+@bot.command(name='check_bookmarks_table')
+async def check_bookmarks_table(ctx):
+    try:
+        if db_manager.use_postgres:
+            schema = db_manager.execute_query('''
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'user_bookmarks'
+                ORDER BY ordinal_position
+            ''', fetch_all=True)
+            
+            await ctx.send(f"user_bookmarks columns: {[col['column_name'] for col in schema]}")
+        else:
+            # SQLite version
+            schema = db_manager.execute_query('PRAGMA table_info(user_bookmarks)', fetch_all=True)
+            
+            if schema:
+                columns = [col['name'] for col in schema]
+                await ctx.send(f"user_bookmarks columns: {columns}")
+            else:
+                await ctx.send("No user_bookmarks table found")
+        
+    except Exception as e:
+        await ctx.send(f"Error: {e}")
+
 @bot.command(name='set_sizes')
 async def set_sizes_command(ctx, *sizes):
     """Set preferred sizes for alerts"""
@@ -1905,77 +1934,21 @@ async def create_bookmark_channel_for_user(user, auction_data):
         # Send to bookmark channel
         bookmark_message = await bookmark_channel.send(embed=embed)
         
-        # Save to database for !stats
-        add_user_bookmark(user.id, auction_data['auction_id'], bookmark_message.id, bookmark_channel.id)
+        # Save to database with correct column names
+        success = add_user_bookmark(user.id, auction_data['auction_id'], bookmark_message.id, bookmark_channel.id)
         
-        print(f"✅ Created bookmark in #{channel_name} for {user.name}")
-        return True
+        if success:
+            print(f"✅ Created bookmark in #{channel_name} for {user.name}")
+            return True
+        else:
+            print(f"❌ Failed to save bookmark to database for {user.name}")
+            return False
         
     except Exception as e:
         print(f"❌ Error creating bookmark channel: {e}")
         return False
 
-async def create_bookmark_channel_for_user(user, auction_data):
-    """Create private bookmark channel for user"""
-    try:
-        # Create channel name like: bookmarks-lukeswagga
-        channel_name = f"bookmarks-{user.name.lower()}"
-        
-        # Check if channel already exists
-        existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
-        
-        if not existing_channel:
-            # Create private channel with proper permissions
-            overwrites = {
-                guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-            }
-            
-            bookmark_channel = await guild.create_text_channel(
-                channel_name,
-                overwrites=overwrites,
-                topic=f"Private bookmark channel for {user.display_name}"
-            )
-            
-            # Send welcome message
-            welcome_embed = discord.Embed(
-                title="📚 Welcome to Your Personal Bookmark Channel!",
-                description=f"Hi {user.mention}! This is your private bookmark channel.\n\nWhenever you react 👍 to auction listings, they'll be automatically saved here.",
-                color=0x0099ff
-            )
-            await bookmark_channel.send(embed=welcome_embed)
-            
-        else:
-            bookmark_channel = existing_channel
-        
-        # Create the bookmark embed
-        embed = discord.Embed(
-            title=f"📌 {auction_data['brand']} {auction_data['title'][:50]}...",
-            url=auction_data['zenmarket_url'],
-            color=0x00ff00
-        )
-        
-        embed.add_field(name="💰 Price", value=f"¥{auction_data['price_jpy']:,} (~${auction_data['price_usd']:.2f})", inline=True)
-        embed.add_field(name="🏷️ Brand", value=auction_data['brand'], inline=True)
-        embed.add_field(name="📊 Quality", value=f"{auction_data.get('deal_quality', 0.5):.1%}", inline=True)
-        embed.add_field(name="👤 Seller", value=auction_data.get('seller_id', 'unknown'), inline=True)
-        
-        current_time = datetime.now().strftime('%Y-%m-%d at %H:%M:%S UTC')
-        embed.set_footer(text=f"📌 Bookmarked from ID: {auction_data['auction_id']} | {current_time}")
-        
-        # Send to bookmark channel
-        await bookmark_channel.send(embed=embed)
-        
-        # Save to database
-        add_user_bookmark(user.id, auction_data['auction_id'], 0, bookmark_channel.id)
-        
-        print(f"✅ Created bookmark in #{channel_name} for {user.name}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error creating bookmark channel: {e}")
-        return False
+
 
 @bot.command(name='preferences')
 async def preferences_command(ctx):
