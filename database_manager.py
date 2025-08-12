@@ -428,9 +428,22 @@ def get_user_proxy_preference(user_id):
         )
         
         if result:
-            return result[0], result[1]
+            # Handle dict results properly
+            if isinstance(result, dict):
+                proxy_service = result.get('proxy_service', 'zenmarket')
+                setup_complete = result.get('setup_complete', False)
+            else:
+                # Handle tuple results
+                proxy_service = result[0] if len(result) > 0 else 'zenmarket'
+                setup_complete = result[1] if len(result) > 1 else False
+            
+            # Ensure setup_complete is boolean
+            setup_complete = bool(setup_complete)
+            
+            return proxy_service, setup_complete
         else:
             return "zenmarket", False
+            
     except Exception as e:
         print(f"❌ Error getting user preference: {e}")
         return "zenmarket", False
