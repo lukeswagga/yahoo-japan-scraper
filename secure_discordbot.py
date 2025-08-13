@@ -862,49 +862,70 @@ async def process_batch_buffer():
         # The old batch logic is commented out since we're sending immediately
 
 async def send_single_listing_enhanced(auction_data):
-    """Send listing with proper database error handling"""
+    """Enhanced single listing sender with better error handling"""
     try:
-        title = auction_data.get('title', 'Unknown Item')[:100]
-        brand = auction_data.get('brand', 'Unknown')
-        sizes = extract_sizes_from_title(title) if title else []
+        auction_id = auction_data.get('auction_id')
+        title = auction_data.get('title', 'Unknown Title')
+        brand = auction_data.get('brand', 'Unknown Brand')
         
-        # Check for duplicates first
+        print(f"🔍 Processing: {auction_id} - {title[:50]}...")
+        
+        # Check for duplicates in database
         existing = db_manager.execute_query(
-            'SELECT id FROM listings WHERE auction_id = %s' if db_manager.use_postgres else 'SELECT id FROM listings WHERE auction_id = ?', 
-            (auction_data['auction_id'],), 
+            'SELECT auction_id FROM listings WHERE auction_id = ?',
+            (auction_id,),
             fetch_one=True
         )
         
         if existing:
-            print(f"⚠️ Duplicate found, skipping: {auction_data['auction_id']}")
+            print(f"⚠️ Duplicate found, skipping: {auction_id}")
             return False
         
-        # Send to main channel
+        # Get the guild and main channel
+        if not guild:
+            print("❌ Guild not found")
+            return False
+            
         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
-        main_message = None
-        if main_channel:
+        if not main_channel:
+            print("❌ Main auction channel not found")
+            return False
+        
+        # Create and send embed to main channel
+        try:
             embed = create_listing_embed(auction_data)
             main_message = await main_channel.send(embed=embed)
             print(f"📤 Sent to MAIN channel: {title[:30]}...")
             
-            # Add to database with end time - fixed function call
+            # Add to database
             success = add_listing(auction_data, main_message.id)
             if not success:
-                print(f"❌ Failed to add listing to database: {auction_data['auction_id']}")
+                print(f"❌ Failed to add listing to database: {auction_id}")
+                return False
+            
+        except discord.HTTPException as e:
+            print(f"❌ Discord HTTP error sending to main channel: {e}")
+            return False
+        except Exception as e:
+            print(f"❌ Error sending to main channel: {e}")
+            return False
         
-        # Send to brand channel
-        brand_channel = None
+        # Send to brand channel if applicable
         if brand and brand in BRAND_CHANNEL_MAP:
-            brand_channel = await get_or_create_brand_channel(brand)
-            if brand_channel:
-                embed = create_listing_embed(auction_data)
-                brand_message = await brand_channel.send(embed=embed)
-                print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
+            try:
+                brand_channel = await get_or_create_brand_channel(brand)
+                if brand_channel:
+                    embed = create_listing_embed(auction_data)
+                    brand_message = await brand_channel.send(embed=embed)
+                    print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
+            except Exception as e:
+                print(f"⚠️ Error sending to brand channel: {e}")
+                # Don't fail the whole operation if brand channel fails
         
         return True
         
     except Exception as e:
-        print(f"❌ Full traceback: {e}")
+        print(f"❌ Error in send_single_listing_enhanced: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -2188,45 +2209,78 @@ def stats():
 
 @app.route('/webhook/listing', methods=['POST'])
 def webhook_listing():
-    """Receive listing from Yahoo sniper and send IMMEDIATELY"""
+    """Receive listing from Yahoo sniper"""
     try:
         if not request.is_json:
+            print("❌ Request is not JSON")
             return jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
         
         listing_data = request.get_json()
+        print(f"📥 Received webhook data: {listing_data.get('title', 'No title')[:50]}...")
         
         if not listing_data or 'auction_id' not in listing_data:
+            print("❌ Invalid listing data - missing auction_id")
             return jsonify({"status": "error", "message": "Invalid listing data"}), 400
         
-        # IMMEDIATE SEND - NO BUFFERING
-        if bot.is_ready():
-            # Send immediately using asyncio
-            future = asyncio.run_coroutine_threadsafe(
-                send_single_listing_enhanced(listing_data), 
-                bot.loop
-            )
-            
-            # Wait for completion (with timeout)
-            try:
-                result = future.result(timeout=10)
-                if result:
-                    print(f"✅ IMMEDIATE SEND: {listing_data.get('title', '')[:50]}...")
-                    return jsonify({"status": "success", "message": "Listing sent immediately"}), 200
-                else:
-                    print(f"⚠️ SEND FAILED: {listing_data.get('auction_id', 'unknown')}")
-                    return jsonify({"status": "error", "message": "Send failed"}), 500
-            except Exception as e:
-                print(f"❌ SEND ERROR: {e}")
-                return jsonify({"status": "error", "message": str(e)}), 500
-        else:
-            print("❌ Bot not ready")
+        # Validate required fields
+        required_fields = ['auction_id', 'title', 'brand', 'price_jpy', 'price_usd', 'zenmarket_url']
+        missing_fields = [field for field in required_fields if field not in listing_data]
+        
+        if missing_fields:
+            print(f"❌ Missing required fields: {missing_fields}")
+            return jsonify({"status": "error", "message": f"Missing fields: {missing_fields}"}), 400
+        
+        # Add default fields if missing
+        if 'auction_end_time' not in listing_data:
+            listing_data['auction_end_time'] = None
+        if 'seller_id' not in listing_data:
+            listing_data['seller_id'] = 'unknown'
+        if 'image_url' not in listing_data:
+            listing_data['image_url'] = None
+        if 'yahoo_url' not in listing_data:
+            listing_data['yahoo_url'] = None
+        
+        # Check if bot is ready
+        if not bot.is_ready():
+            print("❌ Bot is not ready")
             return jsonify({"status": "error", "message": "Bot not ready"}), 503
+        
+        print(f"✅ Processing listing: {listing_data['auction_id']}")
+        
+        # Schedule the async function to run in the bot's event loop
+        future = asyncio.run_coroutine_threadsafe(
+            send_single_listing_enhanced(listing_data), 
+            bot.loop
+        )
+        
+        # Wait for the result with timeout
+        try:
+            result = future.result(timeout=10.0)
+            if result:
+                print(f"✅ Successfully sent listing to Discord: {listing_data['auction_id']}")
+                return jsonify({"status": "success", "message": "Listing sent to Discord"}), 200
+            else:
+                print(f"⚠️ Listing was skipped (duplicate or error): {listing_data['auction_id']}")
+                return jsonify({"status": "skipped", "message": "Listing was skipped"}), 200
+        except Exception as e:
+            print(f"❌ Error waiting for result: {e}")
+            return jsonify({"status": "error", "message": f"Processing error: {str(e)}"}), 500
             
     except Exception as e:
         print(f"❌ Webhook error: {e}")
         import traceback
-        traceback.print_exc()
+        print(f"❌ Full traceback: {traceback.format_exc()}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# Add health check endpoint specifically for webhook status
+@app.route('/webhook/health', methods=['GET'])
+def webhook_health():
+    return jsonify({
+        "webhook_status": "ready",
+        "bot_ready": bot.is_ready() if bot else False,
+        "guild_connected": guild is not None,
+        "main_channel_exists": discord.utils.get(guild.text_channels, name="🎯-auction-alerts") is not None if guild else False
+    }), 200
 
 @app.route('/webhook/stats', methods=['POST'])
 def webhook_stats():
