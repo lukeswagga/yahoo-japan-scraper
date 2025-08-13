@@ -855,38 +855,11 @@ async def get_or_create_user_bookmark_channel(user):
         return None
 
 async def process_batch_buffer():
-    global batch_buffer, last_batch_time
-    
+    """Disabled batch buffer - using immediate sends now"""
+    print("📦 Batch buffer disabled - using immediate sends")
     while True:
-        await asyncio.sleep(1)
-        
-        if not batch_buffer:
-            continue
-            
-        current_time = datetime.now(timezone.utc)
-        buffer_size = len(batch_buffer)
-        
-        # Add this logging back
-        if buffer_size > 0:
-            print(f"📦 Buffer status: {buffer_size} items waiting")
-        
-        time_since_batch = 0
-        if last_batch_time:
-            time_since_batch = (current_time - last_batch_time).total_seconds()
-        
-        should_send = (
-            buffer_size >= BATCH_SIZE or 
-            time_since_batch >= BATCH_TIMEOUT
-        )
-        
-        if should_send:
-            items_to_send = batch_buffer[:BATCH_SIZE]
-            batch_buffer = batch_buffer[BATCH_SIZE:]
-            
-            last_batch_time = current_time
-            
-            print(f"📤 Processing {len(items_to_send)} items from buffer (remaining: {len(batch_buffer)})...")
-            await send_individual_listings_with_rate_limit(items_to_send)
+        await asyncio.sleep(60)  # Just sleep, don't process batches
+        # The old batch logic is commented out since we're sending immediately
 
 async def send_single_listing_enhanced(auction_data):
     """Send listing with proper database error handling"""
@@ -2215,7 +2188,7 @@ def stats():
 
 @app.route('/webhook/listing', methods=['POST'])
 def webhook_listing():
-    """Receive listing from Yahoo sniper"""
+    """Receive listing from Yahoo sniper and send IMMEDIATELY"""
     try:
         if not request.is_json:
             return jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
@@ -2225,18 +2198,34 @@ def webhook_listing():
         if not listing_data or 'auction_id' not in listing_data:
             return jsonify({"status": "error", "message": "Invalid listing data"}), 400
         
-        # Run the async function in the bot's event loop
+        # IMMEDIATE SEND - NO BUFFERING
         if bot.is_ready():
-            asyncio.run_coroutine_threadsafe(
+            # Send immediately using asyncio
+            future = asyncio.run_coroutine_threadsafe(
                 send_single_listing_enhanced(listing_data), 
                 bot.loop
             )
-            return jsonify({"status": "success", "message": "Listing received"}), 200
+            
+            # Wait for completion (with timeout)
+            try:
+                result = future.result(timeout=10)
+                if result:
+                    print(f"✅ IMMEDIATE SEND: {listing_data.get('title', '')[:50]}...")
+                    return jsonify({"status": "success", "message": "Listing sent immediately"}), 200
+                else:
+                    print(f"⚠️ SEND FAILED: {listing_data.get('auction_id', 'unknown')}")
+                    return jsonify({"status": "error", "message": "Send failed"}), 500
+            except Exception as e:
+                print(f"❌ SEND ERROR: {e}")
+                return jsonify({"status": "error", "message": str(e)}), 500
         else:
+            print("❌ Bot not ready")
             return jsonify({"status": "error", "message": "Bot not ready"}), 503
             
     except Exception as e:
         print(f"❌ Webhook error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/webhook/stats', methods=['POST'])
