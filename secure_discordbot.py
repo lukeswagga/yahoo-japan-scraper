@@ -94,15 +94,7 @@ def add_user_bookmark(user_id, auction_id, bookmark_message_id, bookmark_channel
 
 
 
-# REMOVED: BookmarkReminderSystem class - auction_end_time functionality temporarily disabled
-    
-# REMOVED: check_1h_reminders method - auction_end_time functionality temporarily disabled
-    
-# REMOVED: check_5m_reminders method - auction_end_time functionality temporarily disabled
 
-# REMOVED: get_pending_reminders function - auction_end_time functionality temporarily disabled
-
-# REMOVED: mark_reminder_sent function - auction_end_time functionality temporarily disabled
 
 class SizeAlertSystem:
     def __init__(self, bot):
@@ -926,8 +918,6 @@ async def send_single_listing_enhanced(auction_data):
             success = add_listing(auction_data, main_message.id)
             if not success:
                 print(f"❌ Failed to add listing to database: {auction_data['auction_id']}")
-            
-            # REMOVED: Auto reactions - users will add their own
         
         # Send to brand channel
         brand_channel = None
@@ -936,10 +926,7 @@ async def send_single_listing_enhanced(auction_data):
             if brand_channel:
                 embed = create_listing_embed(auction_data)
                 brand_message = await brand_channel.send(embed=embed)
-                # REMOVED: Auto reactions - users will add their own
                 print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
-        
-        # REMOVED: Size alert functionality to prevent errors
         
         return True
         
@@ -1269,185 +1256,17 @@ async def handle_setup_reaction(reaction, user):
     await reaction.message.channel.send(embed=embed)
     print(f"✅ Setup completed for {user.name}")
 
-@bot.command(name='debug_setup')
-async def debug_setup_command(ctx):
-    """Debug user setup status"""
-    try:
-        result = db_manager.execute_query(
-            'SELECT * FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT * FROM user_preferences WHERE user_id = ?',
-            (ctx.author.id,),
-            fetch_one=True
-        )
-        
-        if result:
-            await ctx.send(f"✅ User setup found: {result}")
-        else:
-            await ctx.send("❌ No user setup found")
-            
-    except Exception as e:
-        await ctx.send(f"❌ Debug error: {e}")
 
-@bot.command(name='debug_reaction')
-async def debug_reaction(ctx, auction_id=None):
-    """Debug what's in the database for a specific auction"""
-    if not auction_id:
-        # Get the most recent auction
-        recent = db_manager.execute_query('''
-            SELECT auction_id FROM listings ORDER BY created_at DESC LIMIT 1
-        ''', fetch_one=True)
-        if recent:
-            auction_id = recent[0] if isinstance(recent, (list, tuple)) else recent['auction_id']
-        else:
-            await ctx.send("No listings found")
-            return
-    
-    # Check if listing exists
-    result = db_manager.execute_query('''
-        SELECT title, brand, price_jpy, price_usd, seller_id, zenmarket_url, deal_quality
-        FROM listings WHERE auction_id = %s
-    ''' if db_manager.use_postgres else '''
-        SELECT title, brand, price_jpy, price_usd, seller_id, zenmarket_url, deal_quality
-        FROM listings WHERE auction_id = ?
-    ''', (auction_id,), fetch_one=True)
-    
-    await ctx.send(f"Auction ID: {auction_id}")
-    await ctx.send(f"Query result: {result}")
-    await ctx.send(f"Result type: {type(result)}")
-    
-    if result:
-        await ctx.send(f"Result length: {len(result) if hasattr(result, '__len__') else 'N/A'}")
-        
-        # Show individual fields
-        if isinstance(result, dict):
-            await ctx.send(f"Title: {result.get('title', 'N/A')}")
-            await ctx.send(f"Brand: {result.get('brand', 'N/A')}")
-            await ctx.send(f"Price JPY: {result.get('price_jpy', 'N/A')}")
-        else:
-            await ctx.send(f"Title: {result[0] if len(result) > 0 else 'N/A'}")
-            await ctx.send(f"Brand: {result[1] if len(result) > 1 else 'N/A'}")
-            await ctx.send(f"Price JPY: {result[2] if len(result) > 2 else 'N/A'}")
-    else:
-        await ctx.send("❌ No listing found with that auction ID")
 
-@bot.command(name='debug_setup_flow')
-async def debug_setup_flow(ctx):
-    """Debug the setup process"""
-    user_id = ctx.author.id
-    
-    # Check current setup status
-    result = db_manager.execute_query(
-        'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT proxy_service, setup_complete FROM user_preferences WHERE user_id = ?',
-        (user_id,),
-        fetch_one=True
-    )
-    
-    if result:
-        await ctx.send(f"Current setup: proxy={result['proxy_service']}, complete={result['setup_complete']}")
-    else:
-        await ctx.send("No setup record found")
-    
-    # Test setup completion check
-    setup_complete = False
-    if result:
-        if isinstance(result, dict):
-            setup_complete = result.get('setup_complete', False)
-        elif isinstance(result, (list, tuple)) and len(result) > 0:
-            setup_complete = bool(result[0])
-    
-    await ctx.send(f"Setup check result: {setup_complete}")
 
-@bot.command(name='reset_my_setup')
-async def reset_my_setup(ctx):
-    """Reset your setup to test the setup flow"""
-    try:
-        db_manager.execute_query('''
-            UPDATE user_preferences 
-            SET setup_complete = FALSE 
-            WHERE user_id = %s
-        ''' if db_manager.use_postgres else '''
-            UPDATE user_preferences 
-            SET setup_complete = 0 
-            WHERE user_id = ?
-        ''', (ctx.author.id,))
-        
-        await ctx.send("✅ Your setup has been reset. Try `!setup` now to test the flow!")
-        
-    except Exception as e:
-        await ctx.send(f"❌ Error: {e}")
 
-@bot.command(name='debug_full_setup')
-async def debug_full_setup(ctx):
-    """Debug the entire setup process"""
-    try:
-        user_id = ctx.author.id
-        
-        # Check what's in the database
-        result = db_manager.execute_query('''
-            SELECT * FROM user_preferences WHERE user_id = %s
-        ''' if db_manager.use_postgres else '''
-            SELECT * FROM user_preferences WHERE user_id = ?
-        ''', (user_id,), fetch_one=True)
-        
-        await ctx.send(f"Full database record: {result}")
-        
-        # Test the get_user_proxy_preference function
-        proxy, complete = get_user_proxy_preference(user_id)
-        await ctx.send(f"get_user_proxy_preference returns: proxy='{proxy}', complete={complete}")
-        
-        # Test the setup complete check used in reactions
-        result2 = db_manager.execute_query('''
-            SELECT setup_complete FROM user_preferences WHERE user_id = %s
-        ''' if db_manager.use_postgres else '''
-            SELECT setup_complete FROM user_preferences WHERE user_id = ?
-        ''', (user_id,), fetch_one=True)
-        
-        setup_complete = False
-        if result2:
-            if isinstance(result2, dict):
-                setup_complete = result2.get('setup_complete', False)
-            elif isinstance(result2, (list, tuple)) and len(result2) > 0:
-                setup_complete = bool(result2[0])
-        
-        await ctx.send(f"Reaction check would return: {setup_complete}")
-        
-    except Exception as e:
-        await ctx.send(f"Debug error: {e}")
 
-@bot.command(name='db_health')
-async def db_health_check(ctx):
-    """Check database health and show table information"""
-    try:
-        # Check listings table
-        listings_count = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
-        await ctx.send(f"📊 Listings count: {listings_count[0] if listings_count else 0}")
-        
-        # Check reactions table
-        reactions_count = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
-        await ctx.send(f"📊 Reactions count: {reactions_count[0] if reactions_count else 0}")
-        
-        # Check recent listings
-        recent_listings = db_manager.execute_query('''
-            SELECT auction_id, title, brand, price_jpy 
-            FROM listings 
-            ORDER BY created_at DESC 
-            LIMIT 3
-        ''', fetch_all=True)
-        
-        if recent_listings:
-            await ctx.send("📋 Recent listings:")
-            for listing in recent_listings:
-                if isinstance(listing, dict):
-                    await ctx.send(f"  - {listing['auction_id']}: {listing['title'][:50]}...")
-                else:
-                    await ctx.send(f"  - {listing[0]}: {listing[1][:50]}...")
-        else:
-            await ctx.send("❌ No recent listings found")
-            
-        # Check database type
-        await ctx.send(f"🗄️ Database type: {'PostgreSQL' if db_manager.use_postgres else 'SQLite'}")
-        
-    except Exception as e:
-        await ctx.send(f"❌ Database health check error: {str(e)} | Type: {type(e)}")
+
+
+
+
+
+
 
 @bot.command(name='test_database')
 async def test_database(ctx):
@@ -1943,9 +1762,7 @@ async def force_clear_all_command(ctx):
         traceback.print_exc()
         await ctx.send(f"❌ Error: {str(e)}")
 
-@bot.command(name='test')
-async def test_command(ctx):
-    await ctx.send("✅ Bot is working!")
+
 
 @bot.command(name='stats')
 async def stats_command(ctx):
@@ -3287,122 +3104,7 @@ async def show_all_channels(ctx):
     else:
         await ctx.send(f"```\n{full_output}\n```")
 
-@bot.command(name='verify_channels_updated')
-async def verify_channels_updated(ctx):
-    """Test the updated channel mapping"""
-    if not tier_manager:
-        await ctx.send("❌ Tier system not initialized. Run `!setup_tiers` first")
-        return
-    
-    all_channels = [channel.name for channel in ctx.guild.text_channels]
-    
-    embed = discord.Embed(title="🔍 Updated Channel Verification", color=0x3498db)
-    
-    for tier, channels in tier_manager.tier_channels.items():
-        existing = [ch for ch in channels if ch in all_channels]
-        missing = [ch for ch in channels if ch not in all_channels]
-        
-        embed.add_field(
-            name=f"{tier.title()} Tier",
-            value=f"✅ Found: {len(existing)}\n❌ Missing: {len(missing)}",
-            inline=True
-        )
-        
-        if missing and len(missing) <= 3:  # Show missing if just a few
-            embed.add_field(
-                name=f"Missing {tier.title()}",
-                value="\n".join([f"• {ch}" for ch in missing]),
-                inline=True
-            )
-        elif missing:
-            embed.add_field(
-                name=f"Missing {tier.title()}",
-                value=f"• {missing[0]}\n• {missing[1]}\n• ... and {len(missing)-2} more",
-                inline=True
-            )
-    
-    total_configured = sum(len(channels) for channels in tier_manager.tier_channels.values())
-    total_existing = sum(len([ch for ch in channels if ch in all_channels]) 
-                        for channels in tier_manager.tier_channels.values())
-    
-    embed.add_field(
-        name="📊 Summary",
-        value=f"**{total_existing}/{total_configured}** tier channels exist\n"
-              f"**{len(all_channels)}** total channels in server",
-        inline=False
-    )
-    
-    await ctx.send(embed=embed)
 
-@bot.command(name='debug_bookmarks')
-async def debug_bookmarks(ctx):
-    """Debug what's actually stored in the bookmark database"""
-    try:
-        user_id = ctx.author.id
-        
-        # Check user_bookmarks table
-        bookmarks = db_manager.execute_query('''
-            SELECT auction_id, title, brand, price_usd, zenmarket_url, created_at
-            FROM user_bookmarks 
-            WHERE user_id = %s
-            ORDER BY created_at DESC 
-            LIMIT 10
-        ''' if db_manager.use_postgres else '''
-            SELECT auction_id, title, brand, price_usd, zenmarket_url, created_at
-            FROM user_bookmarks 
-            WHERE user_id = ?
-            ORDER BY created_at DESC 
-            LIMIT 10
-        ''', (user_id,), fetch_all=True)
-        
-        await ctx.send(f"📚 Bookmarks in database: {len(bookmarks) if bookmarks else 0}")
-        
-        if bookmarks:
-            for bookmark in bookmarks[:3]:  # Show first 3
-                if isinstance(bookmark, dict):
-                    await ctx.send(f"• {bookmark['auction_id']}: {bookmark['title'][:50]}...")
-                else:
-                    await ctx.send(f"• {bookmark[0]}: {bookmark[1][:50]}...")
-        
-        # Check reactions table for thumbs up
-        reactions = db_manager.execute_query('''
-            SELECT auction_id, reaction_type, created_at
-            FROM reactions 
-            WHERE user_id = %s AND reaction_type = 'thumbs_up'
-            ORDER BY created_at DESC 
-            LIMIT 5
-        ''' if db_manager.use_postgres else '''
-            SELECT auction_id, reaction_type, created_at
-            FROM reactions 
-            WHERE user_id = ? AND reaction_type = 'thumbs_up'
-            ORDER BY created_at DESC 
-            LIMIT 5
-        ''', (user_id,), fetch_all=True)
-        
-        await ctx.send(f"👍 Thumbs up reactions: {len(reactions) if reactions else 0}")
-        
-        if reactions:
-            for reaction in reactions[:3]:
-                if isinstance(reaction, dict):
-                    await ctx.send(f"• 👍 {reaction['auction_id']} at {reaction['created_at']}")
-                else:
-                    await ctx.send(f"• 👍 {reaction[0]} at {reaction[2]}")
-        
-        # Check if user_bookmarks table exists
-        table_check = db_manager.execute_query('''
-            SELECT table_name FROM information_schema.tables 
-            WHERE table_name = 'user_bookmarks'
-        ''' if db_manager.use_postgres else '''
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name='user_bookmarks'
-        ''', fetch_all=True)
-        
-        await ctx.send(f"🗃️ user_bookmarks table exists: {bool(table_check)}")
-        
-    except Exception as e:
-        await ctx.send(f"❌ Debug error: {e}")
-        import traceback
-        traceback.print_exc()
 
 @bot.command(name='check_bookmarks')
 async def check_bookmarks(ctx):
