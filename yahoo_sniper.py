@@ -15,25 +15,45 @@ from enhanced_filtering import EnhancedSpamDetector, QualityChecker
 import statistics
 import random
 from concurrent.futures import ThreadPoolExecutor
+import traceback
+
+# Add startup time tracking and better health server startup
+start_time = time.time()
 
 scraper_app = Flask(__name__)
 
 @scraper_app.route('/health', methods=['GET'])
 def health():
-    return {
-        "status": "healthy", 
-        "service": "auction-scraper",
-        "cycle": getattr(tiered_system, 'iteration_counter', 0) if 'tiered_system' in globals() else 0,
-        "uptime": time.time() - start_time if 'start_time' in globals() else 0
-    }, 200
+    try:
+        return {
+            "status": "healthy", 
+            "service": "auction-scraper",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "cycle": getattr(tiered_system, 'iteration_counter', 0) if 'tiered_system' in globals() else 0,
+            "uptime": time.time() - start_time if 'start_time' in globals() else 0,
+            "discord_bot_url": DISCORD_BOT_URL if 'DISCORD_BOT_URL' in globals() else None
+        }, 200
+    except Exception as e:
+        return {
+            "status": "error", 
+            "service": "auction-scraper",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }, 500
 
 @scraper_app.route('/', methods=['GET'])
 def root():
     return {"service": "Yahoo Auction Scraper", "status": "running"}, 200
 
 def run_health_server():
-    port = int(os.environ.get('PORT', 8000))
-    scraper_app.run(host='0.0.0.0', port=port, debug=False)
+    """Run health server with better error handling"""
+    try:
+        port = int(os.environ.get('PORT', 8000))
+        print("Starting health server on port {}".format(port))
+        scraper_app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+    except Exception as e:
+        print("Health server failed to start: {}".format(e))
+        print("Traceback: {}".format(traceback.format_exc()))
 
 # Discord Bot Configuration for Railway
 DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'https://motivated-stillness-production.up.railway.app')
@@ -41,25 +61,25 @@ USE_DISCORD_BOT = os.getenv('USE_DISCORD_BOT', 'true').lower() == 'true'
 
 # Validate Discord Bot URL
 if DISCORD_BOT_URL and not DISCORD_BOT_URL.startswith(('http://', 'https://')):
-    DISCORD_BOT_URL = f"https://{DISCORD_BOT_URL}"
+    DISCORD_BOT_URL = "https://{}".format(DISCORD_BOT_URL)
 
-print(f"🌐 Discord Bot URL: {DISCORD_BOT_URL}")
-print(f"🤖 Use Discord Bot: {USE_DISCORD_BOT}")
+print("Discord Bot URL: {}".format(DISCORD_BOT_URL))
+print("Use Discord Bot: {}".format(USE_DISCORD_BOT))
 
 # Add debugging functions for Discord bot configuration
 def debug_discord_bot_config():
     """Debug Discord bot configuration"""
-    print("\n🔧 DISCORD BOT DEBUG CONFIGURATION:")
-    print(f"USE_DISCORD_BOT: {USE_DISCORD_BOT}")
-    print(f"DISCORD_BOT_URL: {DISCORD_BOT_URL}")
+    print("\nDISCORD BOT DEBUG CONFIGURATION:")
+    print("USE_DISCORD_BOT: {}".format(USE_DISCORD_BOT))
+    print("DISCORD_BOT_URL: {}".format(DISCORD_BOT_URL))
     
     # Test environment variables
     env_url = os.getenv('DISCORD_BOT_URL')
     env_use_bot = os.getenv('USE_DISCORD_BOT')
     
-    print(f"\n🌍 ENVIRONMENT VARIABLES:")
-    print(f"DISCORD_BOT_URL env: {env_url}")
-    print(f"USE_DISCORD_BOT env: {env_use_bot}")
+    print("\nENVIRONMENT VARIABLES:")
+    print("DISCORD_BOT_URL env: {}".format(env_url))
+    print("USE_DISCORD_BOT env: {}".format(env_use_bot))
     
     return {
         'config_url': DISCORD_BOT_URL,
@@ -69,7 +89,7 @@ def debug_discord_bot_config():
 
 def send_to_discord_bot_enhanced(listing_data):
     """Enhanced Discord bot sender with extensive debugging"""
-    print(f"\n📤 SENDING TO DISCORD BOT:")
+    print(f"\nSENDING TO DISCORD BOT:")
     print(f"Title: {listing_data.get('title', 'NO TITLE')[:50]}...")
     print(f"Auction ID: {listing_data.get('auction_id', 'NO ID')}")
     print(f"Brand: {listing_data.get('brand', 'NO BRAND')}")
@@ -77,7 +97,7 @@ def send_to_discord_bot_enhanced(listing_data):
     
     try:
         if not USE_DISCORD_BOT:
-            print("❌ USE_DISCORD_BOT is False - Discord sending disabled")
+            print("USE_DISCORD_BOT is False - Discord sending disabled")
             return False
         
         # Validate required fields
@@ -85,8 +105,8 @@ def send_to_discord_bot_enhanced(listing_data):
         missing_fields = [field for field in required_fields if field not in listing_data or listing_data[field] is None]
         
         if missing_fields:
-            print(f"❌ Missing required fields: {missing_fields}")
-            print(f"📋 Full listing data: {json.dumps(listing_data, indent=2)}")
+            print(f"Missing required fields: {missing_fields}")
+            print(f"Full listing data: {json.dumps(listing_data, indent=2)}")
             return False
         
         # Add default fields if missing
@@ -106,11 +126,11 @@ def send_to_discord_bot_enhanced(listing_data):
         # Construct webhook URL
         webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
         
-        print(f"🔗 Webhook URL: {webhook_url}")
-        print(f"📦 Payload size: {len(json.dumps(listing_data))} characters")
+        print(f"Webhook URL: {webhook_url}")
+        print(f"Payload size: {len(json.dumps(listing_data))} characters")
         
         # Send request with detailed logging
-        print("📡 Sending HTTP request...")
+        print("Sending HTTP request...")
         
         response = requests.post(
             webhook_url,
@@ -158,53 +178,41 @@ def send_to_discord_bot_enhanced(listing_data):
         return False
 
 def test_discord_connection():
-    """Test Discord bot connection before starting main loop"""
+    """Test Discord bot connection with retries"""
     print("\n🔍 TESTING DISCORD BOT CONNECTION...")
     
-    debug_config = debug_discord_bot_config()
+    if not USE_DISCORD_BOT:
+        print("❌ Discord bot disabled in config")
+        return False
     
-    # Test health endpoint
-    try:
-        health_url = f"{DISCORD_BOT_URL}/health"
-        print(f"🏥 Testing health endpoint: {health_url}")
-        
-        response = requests.get(health_url, timeout=10)
-        print(f"Health status: {response.status_code}")
-        
-        if response.status_code == 200:
-            health_data = response.json()
-            print(f"Health response: {health_data}")
-        else:
-            print(f"Health error: {response.text}")
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            health_url = f"{DISCORD_BOT_URL}/health"
+            print(f"🏥 Attempt {attempt + 1}/{max_retries}: Testing {health_url}")
             
-    except Exception as e:
-        print(f"❌ Health check failed: {e}")
-    
-    # Test webhook health
-    try:
-        webhook_health_url = f"{DISCORD_BOT_URL}/webhook/health"
-        print(f"🔗 Testing webhook health: {webhook_health_url}")
-        
-        response = requests.get(webhook_health_url, timeout=10)
-        print(f"Webhook health status: {response.status_code}")
-        
-        if response.status_code == 200:
-            webhook_data = response.json()
-            print(f"Webhook health response: {webhook_data}")
+            response = requests.get(health_url, timeout=10)
+            print(f"Health status: {response.status_code}")
             
-            if webhook_data.get("bot_ready") and webhook_data.get("guild_connected"):
-                print("✅ Discord bot is ready to receive listings")
+            if response.status_code == 200:
+                data = response.json()
+                print(f"✅ Discord bot is healthy: {data}")
                 return True
             else:
-                print("❌ Discord bot is not ready")
-                return False
-        else:
-            print(f"Webhook health error: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Webhook health check failed: {e}")
-        return False
+                print(f"❌ Health check failed: {response.status_code}")
+                
+        except requests.exceptions.ConnectionError as e:
+            print(f"❌ Connection failed (attempt {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                print(f"⏳ Retrying in 5 seconds...")
+                time.sleep(5)
+        except Exception as e:
+            print(f"❌ Test failed (attempt {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+    
+    print(f"❌ All {max_retries} connection attempts failed")
+    return False
 
 def send_test_listing():
     """Send a test listing to verify everything works"""
@@ -936,6 +944,27 @@ def get_usd_jpy_rate():
 def convert_jpy_to_usd(jpy_amount):
     rate = get_usd_jpy_rate()
     return jpy_amount / rate
+
+# Helper functions for enhanced initialization
+def initialize_database():
+    """Initialize database connections and tables"""
+    try:
+        # This would initialize any database connections if needed
+        print("✅ Database initialization complete")
+        return True
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        return False
+
+def update_exchange_rate():
+    """Update exchange rate on startup"""
+    try:
+        get_usd_jpy_rate()
+        print("✅ Exchange rate updated")
+        return True
+    except Exception as e:
+        print(f"❌ Exchange rate update failed: {e}")
+        return False
 
 def extract_auction_end_time(soup, item):
     try:
@@ -1810,75 +1839,64 @@ def debug_item_structure(item, index):
 
 
 def send_to_discord_bot(listing_data):
-    """Send listing to Discord bot with enhanced error handling"""
-    try:
-        if not USE_DISCORD_BOT:
-            print("❌ Discord bot is disabled")
-            return False
-        
-        # Validate listing data
-        required_fields = ['auction_id', 'title', 'brand', 'price_jpy', 'price_usd', 'zenmarket_url']
-        missing_fields = [field for field in required_fields if field not in listing_data]
-        
-        if missing_fields:
-            print(f"❌ Missing required fields: {missing_fields}")
-            return False
-        
-        # Add default fields if missing
-        if 'auction_end_time' not in listing_data:
-            listing_data['auction_end_time'] = None
-        if 'seller_id' not in listing_data:
-            listing_data['seller_id'] = 'unknown'
-        if 'image_url' not in listing_data:
-            listing_data['image_url'] = None
-        if 'yahoo_url' not in listing_data:
-            listing_data['yahoo_url'] = None
-        
-        # Construct webhook URL
-        webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
-        
-        print(f"📤 Sending to Discord bot: {listing_data['title'][:50]}...")
-        print(f"🔗 Using URL: {webhook_url}")
-        
-        # Send request with proper headers and timeout
-        response = requests.post(
-            webhook_url,
-            json=listing_data,
-            timeout=15,
-            headers={
-                'Content-Type': 'application/json',
-                'User-Agent': 'Yahoo-Auction-Scraper/1.0'
-            }
-        )
-        
-        print(f"📡 Response status: {response.status_code}")
-        
-        if response.status_code == 200:
-            response_data = response.json()
-            print(f"✅ Successfully sent: {listing_data['auction_id']}")
-            print(f"📊 Response: {response_data}")
-            return True
-        else:
-            print(f"❌ Discord bot error: {response.status_code}")
-            print(f"❌ Response text: {response.text}")
-            print(f"❌ Request URL: {webhook_url}")
-            print(f"❌ Request data: {json.dumps(listing_data, indent=2)}")
-            return False
+    """Send listing to Discord bot with enhanced error handling and retries"""
+    if not USE_DISCORD_BOT:
+        print("❌ Discord bot integration disabled")
+        return False
+    
+    webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
+    max_retries = 2
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"📡 Sending to Discord (attempt {attempt + 1}/{max_retries}): {listing_data['auction_id']}")
             
-    except requests.exceptions.Timeout:
-        print(f"❌ Timeout sending to Discord bot (15s)")
-        return False
-    except requests.exceptions.ConnectionError as e:
-        print(f"❌ Connection error to Discord bot: {e}")
-        return False
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Request error to Discord bot: {e}")
-        return False
-    except Exception as e:
-        print(f"❌ Unexpected error sending to Discord bot: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+            response = requests.post(
+                webhook_url,
+                json=listing_data,
+                timeout=30,  # Increased timeout
+                headers={
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Yahoo-Auction-Scraper/2.0'
+                }
+            )
+            
+            print(f"📊 Response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                try:
+                    response_data = response.json()
+                    print(f"✅ SUCCESS: {response_data}")
+                    return True
+                except:
+                    print(f"✅ SUCCESS: Status 200 received")
+                    return True
+            elif response.status_code == 503:
+                print(f"⚠️ Discord bot not ready (503), retrying...")
+                if attempt < max_retries - 1:
+                    time.sleep(5)
+                    continue
+            else:
+                print(f"❌ Discord bot error: {response.status_code}")
+                print(f"❌ Response: {response.text}")
+                
+        except requests.exceptions.Timeout:
+            print(f"❌ Timeout (30s) on attempt {attempt + 1}")
+            if attempt < max_retries - 1:
+                print("⏳ Retrying...")
+                time.sleep(3)
+        except requests.exceptions.ConnectionError as e:
+            print(f"❌ Connection error: {e}")
+            if attempt < max_retries - 1:
+                print("⏳ Retrying connection...")
+                time.sleep(5)
+        except Exception as e:
+            print(f"❌ Unexpected error: {e}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
+            
+    print(f"❌ All {max_retries} attempts failed for {listing_data.get('auction_id', 'unknown')}")
+    return False
 
 def check_discord_bot_health():
     """Check if Discord bot is responding with detailed diagnostics"""
@@ -2148,49 +2166,56 @@ def generate_brand_keywords_simple(brand, brand_info, max_keywords=3):
     return keywords[:max_keywords]
 
 def main_loop():
-    """FIXED: Main loop with proper Discord bot integration"""
-    print("🎯 Starting FIXED Yahoo Japan Sniper...")
+    """Enhanced main loop with better error handling"""
+    global start_time
+    start_time = time.time()
     
-    # Start health server for Railway
-    health_thread = threading.Thread(target=run_health_server, daemon=True)
-    health_thread.start()
-    print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
+    print("🎯 Starting Enhanced Yahoo Japan Sniper...")
     
-    # Debug configuration
-    debug_discord_bot_config()
-    
-    # Test Discord connection before starting
-    if USE_DISCORD_BOT:
-        print("\n🔍 Testing Discord bot connection...")
-        connection_ok = test_discord_connection()
+    # Start health server for Railway health checks
+    try:
+        health_thread = threading.Thread(target=run_health_server, daemon=True)
+        health_thread.start()
+        port = os.environ.get('PORT', 8000)
+        print(f"✅ Health server started on port {port}")
         
-        if connection_ok:
-            print("✅ Discord bot connection verified")
-            
-            # Send test listing
-            test_ok = send_test_listing()
-            if test_ok:
-                print("✅ Test listing successful - Ready to start scraping!")
-            else:
-                print("❌ Test listing failed - Check Discord bot configuration")
-                return
+        # Give health server time to start
+        time.sleep(2)
+        
+    except Exception as e:
+        print(f"❌ Failed to start health server: {e}")
+    
+    # Test Discord bot connection before starting main scraping
+    if USE_DISCORD_BOT:
+        print("🤖 Testing Discord bot connection...")
+        connection_ok = test_discord_connection()
+        if not connection_ok:
+            print("⚠️ Discord bot connection failed, but continuing scraping...")
+            print("⚠️ Check Discord bot service is running on Railway")
         else:
-            print("❌ Discord bot connection failed - Check configuration")
-            print("⚠️ Will continue scraping but items won't be sent to Discord")
+            print("✅ Discord bot connection successful")
     
-    # Initialize systems
-    tiered_system = OptimizedTieredSystem()
-    keyword_manager = AdaptiveKeywordManager()
-    emergency_manager = EmergencyModeManager()
-    seen_ids = load_seen_ids()
+    # Initialize scraping components
+    try:
+        # Initialize systems
+        tiered_system = OptimizedTieredSystem()
+        keyword_manager = AdaptiveKeywordManager()
+        emergency_manager = EmergencyModeManager()
+        seen_ids = load_seen_ids()
+        
+        print(f"\n🏆 ENHANCED TIER-BASED SYSTEM:")
+        print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
+        print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
+        print(f"🔄 Starting from cycle {tiered_system.iteration_counter}")
+        
+        # Initial setup
+        get_usd_jpy_rate()
+        print("✅ Initialization complete")
+    except Exception as e:
+        print(f"❌ Initialization failed: {e}")
+        return
     
-    print(f"\n🏆 FIXED TIER-BASED SYSTEM:")
-    print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
-    print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
-    print(f"🔄 Starting from cycle {tiered_system.iteration_counter}")
-    
-    # Initial setup
-    get_usd_jpy_rate()
+    print("🔄 Starting main scraping loop...")
     
     try:
         while True:

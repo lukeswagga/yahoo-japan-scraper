@@ -221,12 +221,17 @@ def health():
         return jsonify({
             "status": "healthy",
             "service": "discord-bot",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "bot_ready": bot.is_ready() if bot else False,
+            "database_connected": bool(db_manager),
+            "uptime": time.time() - start_time if 'start_time' in globals() else 0
         }), 200
     except Exception as e:
         return jsonify({
-            "status": "error", 
-            "error": str(e)
+            "status": "error",
+            "service": "discord-bot", 
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }), 500
 
 @app.route('/', methods=['GET'])
@@ -2327,78 +2332,91 @@ def stats():
 
 @app.route('/webhook/listing', methods=['POST'])
 def webhook_listing():
-    """Receive listing from Yahoo sniper - FIXED DATABASE QUERIES"""
     try:
-        if not request.is_json:
-            print("❌ Request is not JSON")
-            return jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
         
-        listing_data = request.get_json()
-        print(f"📥 Received webhook data: {listing_data.get('title', 'No title')[:50]}...")
-        
-        if not listing_data or 'auction_id' not in listing_data:
-            print("❌ Invalid listing data - missing auction_id")
-            return jsonify({"status": "error", "message": "Invalid listing data"}), 400
-        
-        # Validate required fields
         required_fields = ['auction_id', 'title', 'brand', 'price_jpy', 'price_usd', 'zenmarket_url']
-        missing_fields = [field for field in required_fields if field not in listing_data]
+        missing_fields = [field for field in required_fields if field not in data]
         
         if missing_fields:
             print(f"❌ Missing required fields: {missing_fields}")
             return jsonify({"status": "error", "message": f"Missing fields: {missing_fields}"}), 400
         
         # Add default fields if missing
-        if 'auction_end_time' not in listing_data:
-            listing_data['auction_end_time'] = None
-        if 'seller_id' not in listing_data:
-            listing_data['seller_id'] = 'unknown'
-        if 'image_url' not in listing_data:
-            listing_data['image_url'] = None
-        if 'yahoo_url' not in listing_data:
-            listing_data['yahoo_url'] = None
+        if 'auction_end_time' not in data:
+            data['auction_end_time'] = None
+        if 'seller_id' not in data:
+            data['seller_id'] = 'unknown'
+        if 'image_url' not in data:
+            data['image_url'] = None
+        if 'yahoo_url' not in data:
+            data['yahoo_url'] = None
         
         # Check if bot is ready
         if not bot.is_ready():
             print("❌ Bot is not ready")
             return jsonify({"status": "error", "message": "Bot not ready"}), 503
         
-        print(f"✅ Processing listing: {listing_data['auction_id']}")
+        print(f"✅ Processing listing: {data['auction_id']}")
         
         # Schedule the async function to run in the bot's event loop
         future = asyncio.run_coroutine_threadsafe(
-            send_single_listing_enhanced_fixed(listing_data), 
+            send_single_listing_enhanced_fixed(data), 
             bot.loop
         )
         
         # Wait for the result with timeout
         try:
-            result = future.result(timeout=10.0)
+            result = future.result(timeout=30.0)  # Increased timeout
             if result:
-                print(f"✅ Successfully sent listing to Discord: {listing_data['auction_id']}")
-                return jsonify({"status": "success", "message": "Listing sent to Discord"}), 200
+                print(f"✅ Successfully sent listing to Discord: {data['auction_id']}")
+                return jsonify({
+                    "status": "success",
+                    "message": "Listing sent to Discord",
+                    "auction_id": data['auction_id']
+                }), 200
             else:
-                print(f"⚠️ Listing was skipped (duplicate or error): {listing_data['auction_id']}")
-                return jsonify({"status": "skipped", "message": "Listing was skipped"}), 200
-        except Exception as e:
-            print(f"❌ Error waiting for result: {e}")
-            return jsonify({"status": "error", "message": f"Processing error: {str(e)}"}), 500
+                print(f"❌ Failed to send listing to Discord: {data['auction_id']}")
+                return jsonify({
+                    "status": "error", 
+                    "message": "Failed to send to Discord",
+                    "auction_id": data['auction_id']
+                }), 500
+        except asyncio.TimeoutError:
+            print(f"❌ Timeout processing listing: {data['auction_id']}")
+            return jsonify({
+                "status": "error",
+                "message": "Processing timeout",
+                "auction_id": data['auction_id']
+            }), 504
             
     except Exception as e:
         print(f"❌ Webhook error: {e}")
         import traceback
         print(f"❌ Full traceback: {traceback.format_exc()}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({
+            "status": "error", 
+            "message": str(e)
+        }), 500
 
 # Add health check endpoint specifically for webhook status
 @app.route('/webhook/health', methods=['GET'])
 def webhook_health():
-    return jsonify({
-        "webhook_status": "ready",
-        "bot_ready": bot.is_ready() if bot else False,
-        "guild_connected": guild is not None,
-        "main_channel_exists": discord.utils.get(guild.text_channels, name="🎯-auction-alerts") is not None if guild else False
-    }), 200
+    try:
+        return jsonify({
+            "status": "healthy",
+            "service": "discord-bot-webhook",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "bot_ready": bot.is_ready() if bot else False
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "service": "discord-bot-webhook",
+            "error": str(e)
+        }), 500
 
 @app.route('/webhook/stats', methods=['POST'])
 def webhook_stats():
@@ -3497,7 +3515,6 @@ async def preferences_command(ctx):
         
         embed.add_field(
             name="🛒 Proxy Service",
-            value=f"{proxy_info['emoji']} {proxy_info['name']}",
             value=f"{proxy_info['emoji']} {proxy_info['name']}",
             inline=True
         )
