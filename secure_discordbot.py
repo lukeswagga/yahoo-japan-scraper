@@ -92,9 +92,29 @@ def add_user_bookmark(user_id, auction_id, bookmark_message_id, bookmark_channel
         print(f"❌ Error adding bookmark: {e}")
         return False
 
+# Database query fixes for PostgreSQL/SQLite compatibility
+def fix_database_placeholders():
+    """Quick function to test database syntax"""
+    try:
+        print(f"🔍 Database type: {'PostgreSQL' if db_manager.use_postgres else 'SQLite'}")
+        
+        # Test a simple query
+        if db_manager.use_postgres:
+            result = db_manager.execute_query('SELECT 1 as test', fetch_one=True)
+        else:
+            result = db_manager.execute_query('SELECT 1 as test', fetch_one=True)
+            
+        print(f"✅ Database connection working: {result}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        return False
 
-
-
+# Helper function to get the right placeholder
+def get_placeholder():
+    """Get the correct placeholder for the current database"""
+    return '%s' if db_manager.use_postgres else '?'
 
 class SizeAlertSystem:
     def __init__(self, bot):
@@ -862,7 +882,7 @@ async def process_batch_buffer():
         # The old batch logic is commented out since we're sending immediately
 
 async def send_single_listing_enhanced(auction_data):
-    """Enhanced single listing sender with better error handling"""
+    """Enhanced single listing sender with FIXED PostgreSQL queries"""
     try:
         auction_id = auction_data.get('auction_id')
         title = auction_data.get('title', 'Unknown Title')
@@ -870,12 +890,19 @@ async def send_single_listing_enhanced(auction_data):
         
         print(f"🔍 Processing: {auction_id} - {title[:50]}...")
         
-        # Check for duplicates in database
-        existing = db_manager.execute_query(
-            'SELECT auction_id FROM listings WHERE auction_id = ?',
-            (auction_id,),
-            fetch_one=True
-        )
+        # FIXED: Use proper PostgreSQL placeholder syntax
+        if db_manager.use_postgres:
+            existing = db_manager.execute_query(
+                'SELECT auction_id FROM listings WHERE auction_id = %s',
+                (auction_id,),
+                fetch_one=True
+            )
+        else:
+            existing = db_manager.execute_query(
+                'SELECT auction_id FROM listings WHERE auction_id = ?',
+                (auction_id,),
+                fetch_one=True
+            )
         
         if existing:
             print(f"⚠️ Duplicate found, skipping: {auction_id}")
@@ -930,6 +957,77 @@ async def send_single_listing_enhanced(auction_data):
         traceback.print_exc()
         return False
 
+async def send_single_listing_enhanced_fixed(auction_data):
+    """FIXED version with proper PostgreSQL syntax"""
+    try:
+        auction_id = auction_data.get('auction_id')
+        title = auction_data.get('title', 'Unknown Title')
+        brand = auction_data.get('brand', 'Unknown Brand')
+        
+        print(f"🔍 Processing: {auction_id} - {title[:50]}...")
+        
+        # FIXED: Use proper database syntax based on database type
+        placeholder = get_placeholder()
+        
+        existing = db_manager.execute_query(
+            f'SELECT auction_id FROM listings WHERE auction_id = {placeholder}',
+            (auction_id,),
+            fetch_one=True
+        )
+        
+        if existing:
+            print(f"⚠️ Duplicate found, skipping: {auction_id}")
+            return False
+        
+        # Get the guild and main channel
+        if not guild:
+            print("❌ Guild not found")
+            return False
+            
+        main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
+        if not main_channel:
+            print("❌ Main auction channel not found")
+            return False
+        
+        # Create and send embed to main channel
+        try:
+            embed = create_listing_embed(auction_data)
+            main_message = await main_channel.send(embed=embed)
+            print(f"📤 Sent to MAIN channel: {title[:30]}...")
+            
+            # Add to database
+            success = add_listing(auction_data, main_message.id)
+            if not success:
+                print(f"❌ Failed to add listing to database: {auction_id}")
+                return False
+            
+        except discord.HTTPException as e:
+            print(f"❌ Discord HTTP error sending to main channel: {e}")
+            return False
+        except Exception as e:
+            print(f"❌ Error sending to main channel: {e}")
+            return False
+        
+        # Send to brand channel if applicable
+        if brand and brand in BRAND_CHANNEL_MAP:
+            try:
+                brand_channel = await get_or_create_brand_channel(brand)
+                if brand_channel:
+                    embed = create_listing_embed(auction_data)
+                    brand_message = await brand_channel.send(embed=embed)
+                    print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
+            except Exception as e:
+                print(f"⚠️ Error sending to brand channel: {e}")
+                # Don't fail the whole operation if brand channel fails
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error in send_single_listing_enhanced_fixed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 async def send_individual_listings_with_rate_limit(batch_data):
     try:
         for i, auction_data in enumerate(batch_data, 1):
@@ -948,27 +1046,47 @@ async def send_individual_listings_with_rate_limit(batch_data):
 @bot.event
 async def on_ready():
     global guild, auction_channel, preference_learner, tier_manager, delayed_manager, reminder_system, size_alert_system
-    print(f'✅ Bot connected as {bot.user}!')
-    guild = bot.get_guild(GUILD_ID)
     
-    if guild:
-        print(f'🎯 Connected to server: {guild.name}')
-        auction_channel = await get_or_create_auction_channel()
-        
-        preference_learner = UserPreferenceLearner()
-        tier_manager = PremiumTierManager(bot)
-        delayed_manager = DelayedListingManager()
-        
-        # Start background tasks
-        bot.loop.create_task(process_batch_buffer())
-        bot.loop.create_task(delayed_manager.process_delayed_queue())
-        
-        print("⏰ Started batch buffer processor")
-        print("🧠 User preference learning system initialized")
-        print("💎 Premium tier system initialized")
-        print("⏳ Delayed listing manager started")
+    print(f'✅ Bot connected as {bot.user}!')
+    
+    # Test database connection
+    db_working = fix_database_placeholders()
+    if not db_working:
+        print("❌ Database connection failed - bot may not work properly")
+    
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        print(f"❌ Could not find guild with ID {GUILD_ID}")
+        return
+    
+    print(f"✅ Connected to guild: {guild.name}")
+    
+    auction_channel = await get_or_create_auction_channel()
+    if auction_channel:
+        print(f"✅ Found auction channel: {auction_channel.name}")
     else:
-        print(f'❌ Could not find server with ID: {GUILD_ID}')
+        print(f"⚠️ Auction channel '{AUCTION_CHANNEL_NAME}' not found")
+    
+    # Initialize database tables
+    try:
+        init_subscription_tables()
+        print("✅ Database tables initialized")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+    
+    preference_learner = UserPreferenceLearner()
+    tier_manager = PremiumTierManager(bot)
+    delayed_manager = DelayedListingManager()
+    
+    # Start background tasks
+    bot.loop.create_task(process_batch_buffer())
+    bot.loop.create_task(delayed_manager.process_delayed_queue())
+    
+    print("⏰ Started batch buffer processor")
+    print("🧠 User preference learning system initialized")
+    print("💎 Premium tier system initialized")
+    print("⏳ Delayed listing manager started")
+    print("🚀 Bot is ready to receive auction listings!")
 
 
 @bot.event
@@ -2209,7 +2327,7 @@ def stats():
 
 @app.route('/webhook/listing', methods=['POST'])
 def webhook_listing():
-    """Receive listing from Yahoo sniper"""
+    """Receive listing from Yahoo sniper - FIXED DATABASE QUERIES"""
     try:
         if not request.is_json:
             print("❌ Request is not JSON")
@@ -2249,7 +2367,7 @@ def webhook_listing():
         
         # Schedule the async function to run in the bot's event loop
         future = asyncio.run_coroutine_threadsafe(
-            send_single_listing_enhanced(listing_data), 
+            send_single_listing_enhanced_fixed(listing_data), 
             bot.loop
         )
         
@@ -2305,6 +2423,34 @@ def webhook_stats():
         return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# Fix the check_duplicate endpoint too
+@app.route('/check_duplicate/<auction_id>', methods=['GET'])
+def check_duplicate(auction_id):
+    try:
+        # FIXED: Use proper placeholder for PostgreSQL
+        if db_manager.use_postgres:
+            existing = db_manager.execute_query(
+                'SELECT auction_id FROM listings WHERE auction_id = %s',
+                (auction_id,),
+                fetch_one=True
+            )
+        else:
+            existing = db_manager.execute_query(
+                'SELECT auction_id FROM listings WHERE auction_id = ?',
+                (auction_id,),
+                fetch_one=True
+            )
+        
+        return jsonify({
+            'exists': existing is not None,
+            'auction_id': auction_id
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'exists': False
+        }), 500
 
 class PremiumTierManager:
     def __init__(self, bot):
@@ -3214,9 +3360,232 @@ class HealthHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # Suppress HTTP logs
 
+# Quick database test command
+@bot.command(name='test_db')
+@commands.has_permissions(administrator=True)
+async def test_db_command(ctx):
+    """Test database connection and syntax"""
+    try:
+        placeholder = get_placeholder()
+        print(f"Using placeholder: {placeholder}")
+        
+        # Test basic query
+        result = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
+        count = result[0] if isinstance(result, tuple) else result.get('count', 0)
+        
+        embed = discord.Embed(
+            title="🗄️ Database Test",
+            description=f"Database Type: {'PostgreSQL' if db_manager.use_postgres else 'SQLite'}\nPlaceholder: `{placeholder}`\nTotal Listings: {count}",
+            color=0x00ff00
+        )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Database test failed: {e}")
 
+# Fixed stats command
+@bot.command(name='stats')
+async def stats_command(ctx):
+    try:
+        # FIXED: Use proper placeholder for PostgreSQL
+        if db_manager.use_postgres:
+            stats = db_manager.execute_query('''
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN reaction_type = 'thumbs_up' THEN 1 ELSE 0 END) as thumbs_up,
+                    SUM(CASE WHEN reaction_type = 'thumbs_down' THEN 1 ELSE 0 END) as thumbs_down
+                FROM reactions 
+                WHERE user_id = %s
+            ''', (ctx.author.id,), fetch_one=True)
+        else:
+            stats = db_manager.execute_query('''
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN reaction_type = 'thumbs_up' THEN 1 ELSE 0 END) as thumbs_up,
+                SUM(CASE WHEN reaction_type = 'thumbs_down' THEN 1 ELSE 0 END) as thumbs_down
+                FROM reactions 
+                WHERE user_id = ?
+            ''', (ctx.author.id,), fetch_one=True)
+        
+        if not stats:
+            await ctx.send("❌ No stats found. React to some listings first!")
+            return
+        
+        total = stats.get('total', 0) if isinstance(stats, dict) else stats[0]
+        thumbs_up = stats.get('thumbs_up', 0) if isinstance(stats, dict) else stats[1]
+        thumbs_down = stats.get('thumbs_down', 0) if isinstance(stats, dict) else stats[2]
+        
+        # FIXED: Bookmark count query
+        if db_manager.use_postgres:
+            bookmark_result = db_manager.execute_query(
+                'SELECT COUNT(*) as count FROM user_bookmarks WHERE user_id = %s',
+                (ctx.author.id,), fetch_one=True)
+        else:
+            bookmark_result = db_manager.execute_query(
+                'SELECT COUNT(*) as count FROM user_bookmarks WHERE user_id = ?',
+                (ctx.author.id,), fetch_one=True)
+        
+        bookmark_count = bookmark_result.get('count', 0) if isinstance(bookmark_result, dict) else bookmark_result[0]
+        
+        embed = discord.Embed(
+            title="📊 Your Statistics",
+            color=0x0099ff
+        )
+        
+        embed.add_field(
+            name="👍 Thumbs Up",
+            value=str(thumbs_up),
+            inline=True
+        )
+        
+        embed.add_field(
+            name="👎 Thumbs Down", 
+            value=str(thumbs_down),
+            inline=True
+        )
+        
+        embed.add_field(
+            name="📚 Bookmarks",
+            value=str(bookmark_count),
+            inline=True
+        )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        print(f"❌ Stats error: {str(e)}")
+        await ctx.send(f"❌ Error loading stats: {str(e)}")
 
+# Fixed preferences command
+@bot.command(name='preferences')
+async def preferences_command(ctx):
+    try:
+        user_id = ctx.author.id
+        
+        # FIXED: Use proper placeholder for PostgreSQL
+        if db_manager.use_postgres:
+            prefs = db_manager.execute_query('''
+                SELECT proxy_service, notifications_enabled, min_quality_threshold, max_price_alert
+                FROM user_preferences WHERE user_id = %s
+            ''', (user_id,), fetch_one=True)
+        else:
+            prefs = db_manager.execute_query('''
+                SELECT proxy_service, notifications_enabled, min_quality_threshold, max_price_alert
+                FROM user_preferences WHERE user_id = ?
+            ''', (user_id,), fetch_one=True)
+        
+        if not prefs:
+            await ctx.send("❌ No preferences found. Run `!setup` first!")
+            return
+    
+        # Handle both dict and tuple results
+        if isinstance(prefs, dict):
+            proxy_service = prefs['proxy_service']
+            notifications = prefs['notifications_enabled'] 
+            min_quality = prefs['min_quality_threshold']
+            max_price = prefs['max_price_alert']
+        else:
+            proxy_service, notifications, min_quality, max_price = prefs
+        
+        proxy_info = SUPPORTED_PROXIES.get(proxy_service, {"name": "Unknown", "emoji": "❓"})
+        
+        embed = discord.Embed(
+            title="⚙️ Your Preferences",
+            color=0x0099ff
+        )
+        
+        embed.add_field(
+            name="🛒 Proxy Service",
+            value=f"{proxy_info['emoji']} {proxy_info['name']}",
+            value=f"{proxy_info['emoji']} {proxy_info['name']}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🔔 Notifications",
+            value="✅ Enabled" if notifications else "❌ Disabled",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="⭐ Min Quality",
+            value=f"{min_quality:.1%}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="💰 Max Price Alert",
+            value=f"${max_price:.0f}",
+            inline=True
+        )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        print(f"❌ Preferences error: {str(e)}")
+        await ctx.send(f"❌ Error loading preferences: {str(e)}")
 
+# Fixed bookmarks command
+@bot.command(name='bookmarks')
+async def bookmarks_command(ctx):
+    try:
+        user_id = ctx.author.id
+        
+        # FIXED: Use proper placeholder for PostgreSQL
+        if db_manager.use_postgres:
+            bookmarks = db_manager.execute_query('''
+                SELECT ub.auction_id, l.title, l.brand, l.price_usd, l.zenmarket_url, ub.created_at
+                FROM user_bookmarks ub
+                JOIN listings l ON ub.auction_id = l.auction_id  
+                WHERE ub.user_id = %s
+                ORDER BY ub.created_at DESC
+                LIMIT 10
+            ''', (user_id,), fetch_all=True)
+        else:
+            bookmarks = db_manager.execute_query('''
+                SELECT ub.auction_id, l.title, l.brand, l.price_usd, l.zenmarket_url, ub.created_at
+                FROM user_bookmarks ub
+                JOIN listings l ON ub.auction_id = l.auction_id  
+                WHERE ub.user_id = ?
+                ORDER BY ub.created_at DESC
+                LIMIT 10
+            ''', (user_id,), fetch_all=True)
+        
+        if not bookmarks:
+            embed = discord.Embed(
+                title="📚 Your Bookmarks",
+                description="You haven't bookmarked any items yet!\n\n👍 React with thumbs up to any listing to bookmark it automatically.",
+                color=0x0099ff
+            )
+            await ctx.send(embed=embed)
+            return
+        
+        embed = discord.Embed(
+            title=f"📚 Your Bookmarks ({len(bookmarks)})",
+            color=0x0099ff
+        )
+        
+        for bookmark in bookmarks:
+            if isinstance(bookmark, dict):
+                title = bookmark['title']
+                brand = bookmark['brand']
+                price_usd = bookmark['price_usd']
+                zenmarket_url = bookmark['zenmarket_url']
+            else:
+                _, title, brand, price_usd, zenmarket_url, _ = bookmark
+            
+            embed.add_field(
+                name=f"{brand} - ${price_usd:.2f}",
+                value=f"[{title[:50]}...]({zenmarket_url})",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        print(f"❌ Bookmarks error: {str(e)}")
+        await ctx.send(f"❌ Error loading bookmarks: {str(e)}")
 
 def run_flask():
     try:
@@ -3283,6 +3652,8 @@ def main():
             print("👋 Shutting down...")
 
 if __name__ == "__main__":
+    print("🔧 Database query fixes loaded")
+    
     # Initialize database
     if not test_postgres_connection():
         print("⚠️ Database connection issues detected")
