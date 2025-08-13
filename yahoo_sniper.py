@@ -15,233 +15,29 @@ from enhanced_filtering import EnhancedSpamDetector, QualityChecker
 import statistics
 import random
 from concurrent.futures import ThreadPoolExecutor
-import traceback
-
-# Add startup time tracking and better health server startup
-start_time = time.time()
 
 scraper_app = Flask(__name__)
 
 @scraper_app.route('/health', methods=['GET'])
 def health():
-    try:
-        return {
-            "status": "healthy", 
-            "service": "auction-scraper",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "cycle": getattr(tiered_system, 'iteration_counter', 0) if 'tiered_system' in globals() else 0,
-            "uptime": time.time() - start_time if 'start_time' in globals() else 0,
-            "discord_bot_url": DISCORD_BOT_URL if 'DISCORD_BOT_URL' in globals() else None
-        }, 200
-    except Exception as e:
-        return {
-            "status": "error", 
-            "service": "auction-scraper",
-            "error": str(e),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }, 500
+    return {"status": "healthy", "service": "auction-scraper"}, 200
 
 @scraper_app.route('/', methods=['GET'])
 def root():
     return {"service": "Yahoo Auction Scraper", "status": "running"}, 200
 
 def run_health_server():
-    """Run health server with better error handling"""
-    try:
-        port = int(os.environ.get('PORT', 8000))
-        print("Starting health server on port {}".format(port))
-        scraper_app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
-    except Exception as e:
-        print("Health server failed to start: {}".format(e))
-        print("Traceback: {}".format(traceback.format_exc()))
+    port = int(os.environ.get('PORT', 8000))
+    scraper_app.run(host='0.0.0.0', port=port, debug=False)
 
-# Discord Bot Configuration for Railway
-DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'https://motivated-stillness-production.up.railway.app')
-USE_DISCORD_BOT = os.getenv('USE_DISCORD_BOT', 'true').lower() == 'true'
-
-# Validate Discord Bot URL
+DISCORD_BOT_WEBHOOK = os.getenv('DISCORD_BOT_WEBHOOK', "http://localhost:8000/webhook")
+DISCORD_BOT_HEALTH = os.getenv('DISCORD_BOT_HEALTH', "http://localhost:8000/health") 
+DISCORD_BOT_STATS = os.getenv('DISCORD_BOT_STATS', "http://localhost:8000/stats")
+DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'http://localhost:8000')
+# Add this validation
 if DISCORD_BOT_URL and not DISCORD_BOT_URL.startswith(('http://', 'https://')):
-    DISCORD_BOT_URL = "https://{}".format(DISCORD_BOT_URL)
-
-print("Discord Bot URL: {}".format(DISCORD_BOT_URL))
-print("Use Discord Bot: {}".format(USE_DISCORD_BOT))
-
-# Add debugging functions for Discord bot configuration
-def debug_discord_bot_config():
-    """Debug Discord bot configuration"""
-    print("\nDISCORD BOT DEBUG CONFIGURATION:")
-    print("USE_DISCORD_BOT: {}".format(USE_DISCORD_BOT))
-    print("DISCORD_BOT_URL: {}".format(DISCORD_BOT_URL))
-    
-    # Test environment variables
-    env_url = os.getenv('DISCORD_BOT_URL')
-    env_use_bot = os.getenv('USE_DISCORD_BOT')
-    
-    print("\nENVIRONMENT VARIABLES:")
-    print("DISCORD_BOT_URL env: {}".format(env_url))
-    print("USE_DISCORD_BOT env: {}".format(env_use_bot))
-    
-    return {
-        'config_url': DISCORD_BOT_URL,
-        'env_url': env_url,
-        'use_bot': USE_DISCORD_BOT
-    }
-
-def send_to_discord_bot_enhanced(listing_data):
-    """Enhanced Discord bot sender with extensive debugging"""
-    print(f"\nSENDING TO DISCORD BOT:")
-    print(f"Title: {listing_data.get('title', 'NO TITLE')[:50]}...")
-    print(f"Auction ID: {listing_data.get('auction_id', 'NO ID')}")
-    print(f"Brand: {listing_data.get('brand', 'NO BRAND')}")
-    print(f"Price: ¥{listing_data.get('price_jpy', 0):,} (${listing_data.get('price_usd', 0):.2f})")
-    
-    try:
-        if not USE_DISCORD_BOT:
-            print("USE_DISCORD_BOT is False - Discord sending disabled")
-            return False
-        
-        # Validate required fields
-        required_fields = ['auction_id', 'title', 'brand', 'price_jpy', 'price_usd', 'zenmarket_url']
-        missing_fields = [field for field in required_fields if field not in listing_data or listing_data[field] is None]
-        
-        if missing_fields:
-            print(f"Missing required fields: {missing_fields}")
-            print(f"Full listing data: {json.dumps(listing_data, indent=2)}")
-            return False
-        
-        # Add default fields if missing
-        if 'auction_end_time' not in listing_data:
-            listing_data['auction_end_time'] = None
-        if 'seller_id' not in listing_data:
-            listing_data['seller_id'] = 'unknown'
-        if 'image_url' not in listing_data:
-            listing_data['image_url'] = None
-        if 'yahoo_url' not in listing_data:
-            listing_data['yahoo_url'] = None
-        if 'deal_quality' not in listing_data:
-            listing_data['deal_quality'] = 0.0
-        if 'priority' not in listing_data:
-            listing_data['priority'] = 50
-        
-        # Construct webhook URL
-        webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
-        
-        print(f"Webhook URL: {webhook_url}")
-        print(f"Payload size: {len(json.dumps(listing_data))} characters")
-        
-        # Send request with detailed logging
-        print("Sending HTTP request...")
-        
-        response = requests.post(
-            webhook_url,
-            json=listing_data,
-            timeout=15,
-            headers={
-                'Content-Type': 'application/json',
-                'User-Agent': 'Yahoo-Auction-Scraper/1.0'
-            }
-        )
-        
-        print(f"📊 Response status: {response.status_code}")
-        print(f"📊 Response headers: {dict(response.headers)}")
-        
-        # Try to parse response
-        try:
-            response_data = response.json()
-            print(f"📊 Response JSON: {json.dumps(response_data, indent=2)}")
-        except:
-            print(f"📊 Response text: {response.text}")
-        
-        if response.status_code == 200:
-            print(f"✅ SUCCESS: Sent {listing_data['auction_id']} to Discord")
-            return True
-        else:
-            print(f"❌ FAILED: Status {response.status_code}")
-            print(f"❌ URL: {webhook_url}")
-            print(f"❌ Payload: {json.dumps(listing_data, indent=2)}")
-            return False
-            
-    except requests.exceptions.Timeout:
-        print(f"❌ TIMEOUT: Request took longer than 15 seconds")
-        return False
-    except requests.exceptions.ConnectionError as e:
-        print(f"❌ CONNECTION ERROR: {e}")
-        print(f"❌ Check if Discord bot service is running at: {DISCORD_BOT_URL}")
-        return False
-    except requests.exceptions.RequestException as e:
-        print(f"❌ REQUEST ERROR: {e}")
-        return False
-    except Exception as e:
-        print(f"❌ UNEXPECTED ERROR: {e}")
-        import traceback
-        print(f"❌ TRACEBACK: {traceback.format_exc()}")
-        return False
-
-def test_discord_connection():
-    """Test Discord bot connection with retries"""
-    print("\n🔍 TESTING DISCORD BOT CONNECTION...")
-    
-    if not USE_DISCORD_BOT:
-        print("❌ Discord bot disabled in config")
-        return False
-    
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            health_url = f"{DISCORD_BOT_URL}/health"
-            print(f"🏥 Attempt {attempt + 1}/{max_retries}: Testing {health_url}")
-            
-            response = requests.get(health_url, timeout=10)
-            print(f"Health status: {response.status_code}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                print(f"✅ Discord bot is healthy: {data}")
-                return True
-            else:
-                print(f"❌ Health check failed: {response.status_code}")
-                
-        except requests.exceptions.ConnectionError as e:
-            print(f"❌ Connection failed (attempt {attempt + 1}): {e}")
-            if attempt < max_retries - 1:
-                print(f"⏳ Retrying in 5 seconds...")
-                time.sleep(5)
-        except Exception as e:
-            print(f"❌ Test failed (attempt {attempt + 1}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2)
-    
-    print(f"❌ All {max_retries} connection attempts failed")
-    return False
-
-def send_test_listing():
-    """Send a test listing to verify everything works"""
-    print("\n🧪 SENDING TEST LISTING...")
-    
-    test_listing = {
-        "auction_id": f"test_{int(datetime.now().timestamp())}",
-        "title": "TEST LISTING - Comme Des Garcons SHIRT Supreme Collaboration Tee",
-        "brand": "Comme Des Garcons",
-        "price_jpy": 8000,
-        "price_usd": 53.33,
-        "zenmarket_url": "https://zenmarket.jp/en/auction.aspx?itemCode=test123",
-        "yahoo_url": "https://page.auctions.yahoo.co.jp/jp/auction/test123",
-        "image_url": None,
-        "seller_id": "test_seller",
-        "auction_end_time": None,
-        "deal_quality": 0.35,
-        "priority": 75
-    }
-    
-    success = send_to_discord_bot_enhanced(test_listing)
-    
-    if success:
-        print("✅ Test listing sent successfully!")
-        print("📱 Check your Discord channel for the test listing")
-        return True
-    else:
-        print("❌ Test listing failed!")
-        return False
+    DISCORD_BOT_URL = f"https://{DISCORD_BOT_URL}"
+USE_DISCORD_BOT = True
 
 MAX_PRICE_YEN = 100000
 SEEN_FILE = "seen_yahoo.json"
@@ -269,29 +65,6 @@ BASE_URL = "https://auctions.yahoo.co.jp/search/search?p={}&n=50&b={}&{}&minPric
 
 exchange_rate_cache = {"rate": 150.0, "timestamp": 0}
 current_usd_jpy_rate = 147.0
-
-# PERSIST CYCLE COUNTER TO FILE
-def load_cycle_counter():
-    """Load cycle counter from file to survive restarts"""
-    try:
-        if os.path.exists('cycle_counter.json'):
-            with open('cycle_counter.json', 'r') as f:
-                data = json.load(f)
-                return data.get('iteration_counter', 0)
-    except Exception as e:
-        print(f"⚠️ Could not load cycle counter: {e}")
-    return 0
-
-def save_cycle_counter(counter):
-    """Save cycle counter to file"""
-    try:
-        with open('cycle_counter.json', 'w') as f:
-            json.dump({
-                'iteration_counter': counter,
-                'last_updated': datetime.now().isoformat()
-            }, f)
-    except Exception as e:
-        print(f"⚠️ Could not save cycle counter: {e}")
 
 # Enhanced spam detector class
 class EnhancedSpamDetector:
@@ -760,10 +533,7 @@ class EmergencyModeManager:
 
 class OptimizedTieredSystem:
     def __init__(self):
-        # Load previous cycle counter instead of starting at 0
-        self.iteration_counter = load_cycle_counter()
-        print(f"🔄 Resumed from cycle {self.iteration_counter}")
-        
+        self.iteration_counter = 0
         self.performance_tracker = {}
         self.tier_config = {
             'tier_1': {
@@ -811,8 +581,6 @@ class OptimizedTieredSystem:
     
     def next_iteration(self):
         self.iteration_counter += 1
-        # Save after every increment to persist through crashes
-        save_cycle_counter(self.iteration_counter)
     
     def should_search_tier(self, tier_name):
         if tier_name not in self.performance_tracker:
@@ -868,13 +636,6 @@ class OptimizedTieredSystem:
                 json.dump(self.performance_tracker, f, indent=2)
         except Exception as e:
             print(f"⚠️ Could not save tier performance data: {e}")
-    
-    def get_tier_for_brand(self, brand):
-        """Get the tier name and config for a given brand"""
-        for tier_name, tier_config in self.tier_config.items():
-            if brand in tier_config['brands']:
-                return tier_name, tier_config
-        return 'tier_1', self.tier_config['tier_1']  # Default fallback
 
 def load_brand_data():
     try:
@@ -944,41 +705,6 @@ def get_usd_jpy_rate():
 def convert_jpy_to_usd(jpy_amount):
     rate = get_usd_jpy_rate()
     return jpy_amount / rate
-
-# Helper functions for enhanced initialization
-def initialize_database():
-    """Initialize database connections and tables"""
-    try:
-        # This would initialize any database connections if needed
-        print("✅ Database initialization complete")
-        return True
-    except Exception as e:
-        print(f"❌ Database initialization failed: {e}")
-        return False
-
-def update_exchange_rate():
-    """Update exchange rate on startup"""
-    try:
-        get_usd_jpy_rate()
-        print("✅ Exchange rate updated")
-        return True
-    except Exception as e:
-        print(f"❌ Exchange rate update failed: {e}")
-        return False
-
-def load_seen_ids():
-    """Load seen auction IDs from file"""
-    try:
-        if os.path.exists(SEEN_FILE):
-            with open(SEEN_FILE, "r") as f:
-                seen_data = json.load(f)
-                return set(seen_data)
-        else:
-            print(f"📄 Creating new {SEEN_FILE}")
-            return set()
-    except Exception as e:
-        print(f"❌ Error loading seen IDs: {e}")
-        return set()
 
 def extract_auction_end_time(soup, item):
     try:
@@ -1853,109 +1579,59 @@ def debug_item_structure(item, index):
 
 
 def send_to_discord_bot(listing_data):
-    """Send listing to Discord bot with enhanced error handling and retries"""
-    if not USE_DISCORD_BOT:
-        print("❌ Discord bot integration disabled")
+    """Send listing to Discord bot with correct URL"""
+    try:
+        if not USE_DISCORD_BOT:
+            return False
+        
+        # Add required fields if missing
+        if 'auction_end_time' not in listing_data:
+            listing_data['auction_end_time'] = None
+        
+        if 'seller_id' not in listing_data:
+            listing_data['seller_id'] = 'unknown'
+        
+        # FIXED: Use correct webhook endpoint
+        webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
+        
+        response = requests.post(
+            webhook_url,
+            json=listing_data,
+            timeout=10,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"❌ Discord bot responded with status {response.status_code}")
+            print(f"❌ Response: {response.text}")
+            print(f"❌ URL used: {webhook_url}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error sending to Discord bot: {e}")
         return False
-    
-    webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
-    max_retries = 2
-    
-    for attempt in range(max_retries):
-        try:
-            print(f"📡 Sending to Discord (attempt {attempt + 1}/{max_retries}): {listing_data['auction_id']}")
-            
-            response = requests.post(
-                webhook_url,
-                json=listing_data,
-                timeout=30,  # Increased timeout
-                headers={
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Yahoo-Auction-Scraper/2.0'
-                }
-            )
-            
-            print(f"📊 Response status: {response.status_code}")
-            
-            if response.status_code == 200:
-                try:
-                    response_data = response.json()
-                    print(f"✅ SUCCESS: {response_data}")
-                    return True
-                except:
-                    print(f"✅ SUCCESS: Status 200 received")
-                    return True
-            elif response.status_code == 503:
-                print(f"⚠️ Discord bot not ready (503), retrying...")
-                if attempt < max_retries - 1:
-                    time.sleep(5)
-                    continue
-            else:
-                print(f"❌ Discord bot error: {response.status_code}")
-                print(f"❌ Response: {response.text}")
-                
-        except requests.exceptions.Timeout:
-            print(f"❌ Timeout (30s) on attempt {attempt + 1}")
-            if attempt < max_retries - 1:
-                print("⏳ Retrying...")
-                time.sleep(3)
-        except requests.exceptions.ConnectionError as e:
-            print(f"❌ Connection error: {e}")
-            if attempt < max_retries - 1:
-                print("⏳ Retrying connection...")
-                time.sleep(5)
-        except Exception as e:
-            print(f"❌ Unexpected error: {e}")
-            import traceback
-            print(f"❌ Traceback: {traceback.format_exc()}")
-            
-    print(f"❌ All {max_retries} attempts failed for {listing_data.get('auction_id', 'unknown')}")
-    return False
 
 def check_discord_bot_health():
-    """Check if Discord bot is responding with detailed diagnostics"""
+    """Check if Discord bot is responding"""
     try:
         if not USE_DISCORD_BOT:
             return False, "Discord bot disabled"
         
-        health_url = f"{DISCORD_BOT_URL}/health"
-        webhook_health_url = f"{DISCORD_BOT_URL}/webhook/health"
-        
-        print(f"🏥 Checking Discord bot health at: {health_url}")
-        
-        # Check main health endpoint
-        response = requests.get(health_url, timeout=10)
+        response = requests.get(
+            f"{DISCORD_BOT_HEALTH}",
+            timeout=5
+        )
         
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ Main health check passed: {data}")
-            
-            # Check webhook-specific health
-            try:
-                webhook_response = requests.get(webhook_health_url, timeout=10)
-                if webhook_response.status_code == 200:
-                    webhook_data = webhook_response.json()
-                    print(f"✅ Webhook health check: {webhook_data}")
-                    
-                    if webhook_data.get("bot_ready") and webhook_data.get("guild_connected"):
-                        return True, "Bot healthy and ready"
-                    else:
-                        return False, f"Bot not ready: {webhook_data}"
-                else:
-                    print(f"⚠️ Webhook health check failed: {webhook_response.status_code}")
-                    return False, f"Webhook health check failed: {webhook_response.status_code}"
-            except Exception as e:
-                print(f"⚠️ Webhook health check error: {e}")
-                return False, f"Webhook health check error: {e}"
+            return True, f"Bot healthy: {data.get('status', 'unknown')}"
         else:
-            return False, f"Health check failed: {response.status_code} - {response.text}"
+            return False, f"HTTP {response.status_code}"
             
-    except requests.exceptions.Timeout:
-        return False, "Health check timeout"
-    except requests.exceptions.ConnectionError as e:
-        return False, f"Connection error: {e}"
     except Exception as e:
-        return False, f"Health check error: {e}"
+        return False, f"Health check failed: {str(e)}"
 
 def get_discord_bot_stats():
     """Get Discord bot statistics"""
@@ -2016,28 +1692,43 @@ def generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, c
     
     return unique_keywords[:max_keywords]
 
-def get_all_brands_round_robin(tiered_system):
-    """Get all brands in a round-robin fashion instead of tier-based"""
-    all_brands = []
-    # Collect all brands from all tiers
-
-# Enhanced main loop with better error handling
-def main_scraping_loop():
-    """Main scraping loop with enhanced Discord bot integration"""
-    print("🚀 Starting enhanced scraping loop...")
+def main_loop():
+    """Main search loop with enhanced error handling and no threading issues"""
+    print("🎯 Starting SIMPLIFIED Yahoo Japan Sniper - ALL BRANDS EVERY CYCLE...")
     
-    # Check Discord bot health before starting
-    bot_healthy, status = check_discord_bot_health()
-    if bot_healthy:
-        print("✅ Discord bot is healthy and ready")
-    else:
-        print(f"⚠️ Discord bot status: {status}")
-        print("⚠️ Will attempt to send anyway...")
+    # Start health server for Railway
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
+    print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
+    
+    # Initialize components
+    tiered_system = OptimizedTieredSystem()
+    keyword_manager = AdaptiveKeywordManager()
+    emergency_manager = EmergencyModeManager()
+    
+    print("\n🏆 SIMPLIFIED SYSTEM INITIALIZED:")
+    print("✅ ALL 20 BRANDS EVERY CYCLE - No tier skipping")
+    print("✅ 4 keywords per brand, 2 pages each")
+    print("✅ Dead keyword system DISABLED")
+    print("✅ Guaranteed coverage of all brands")
+    print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
+    print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
+    print(f"🎯 Target: SIMPLIFIED COVERAGE - All brands every cycle")
+    
+    # Initial setup
+    get_usd_jpy_rate()
+    
+    if USE_DISCORD_BOT:
+        bot_healthy, status = check_discord_bot_health()
+        if bot_healthy:
+            print("✅ Discord bot is healthy and ready")
+        else:
+            print(f"⚠️ Discord bot status: {status}")
     
     try:
         while True:
             cycle_start_time = datetime.now()
-            tiered_system.next_iteration()
+            tiered_system.next_iteration()  # This should be here
             
             print(f"\n🔄 CYCLE {tiered_system.iteration_counter} - {cycle_start_time.strftime('%H:%M:%S')}")
             
@@ -2047,393 +1738,214 @@ def main_scraping_loop():
             total_errors = 0
             total_searches = 0
             
-            # Process each tier
+            # SEQUENTIAL PROCESSING (NO THREADING ISSUES)
+            print(f"\n🔍 TIER PROCESSING DEBUG:")
+            for tier_name in tiered_system.tier_config.keys():
+                print(f"   • {tier_name}: {len(tiered_system.tier_config[tier_name]['brands'])} brands")
+
+            print(f"📊 TOTAL BRANDS TO PROCESS: {sum(len(config['brands']) for config in tiered_system.tier_config.values())}")
+            
             for tier_name, tier_config in tiered_system.tier_config.items():
-                if not tiered_system.should_search_tier(tier_name):
-                    continue
-                
-                print(f"\n🎯 Processing {tier_name}...")
+                # FORCE ALL TIERS EVERY CYCLE - No skipping allowed
+                print(f"\n🎯 Processing {tier_name.upper()} - {len(tier_config['brands'])} brands")
+                tier_searches = 0
+                tier_finds = 0
                 
                 for brand in tier_config['brands']:
-                    keyword_variations = keyword_manager.get_brand_keywords(brand)
+                    if brand not in BRAND_DATA:
+                        print(f"⚠️ Brand '{brand}' not found in BRAND_DATA, skipping...")
+                        continue
                     
-                    for keyword_combo in keyword_variations[:tier_config['max_keywords']]:
-                        try:
-                            listings, errors = search_yahoo_multi_page_optimized(
-                                keyword_combo, 
-                                tier_config['max_pages'], 
-                                tier_name, 
-                                keyword_manager
-                            )
-                            
-                            total_found += len(listings)
-                            total_errors += errors
-                            total_searches += 1
-                            
-                            # Process listings with immediate sending
-                            for listing_data in listings[:tier_config['max_listings']]:
-                                try:
-                                    quality_filtered += 1
-                                    
-                                    # Send immediately to Discord bot
-                                    success = send_to_discord_bot(listing_data)
-                                    
-                                    if success:
-                                        seen_ids.add(listing_data["auction_id"])
-                                        sent_to_discord += 1
-                                        
-                                        priority_emoji = "🔥" if listing_data.get("priority", 0) >= 100 else "🌟" if listing_data.get("priority", 0) >= 70 else "✨"
-                                        print(f"{priority_emoji} SENT: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
-                                    else:
-                                        print(f"❌ FAILED to send: {listing_data['title'][:40]}...")
-                                    
-                                    time.sleep(0.5)  # Rate limiting
-                                    
-                                except Exception as e:
-                                    print(f"❌ Error processing listing: {e}")
-                                    total_errors += 1
-                            
-                            time.sleep(tier_config['delay'])
-                            
-                        except Exception as e:
-                            print(f"❌ Error searching {keyword_combo}: {e}")
-                            total_errors += 1
-                            continue
-            
-            # Log cycle statistics
-            cycle_duration = (datetime.now() - cycle_start_time).total_seconds()
-            
-            print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
-            print(f"⏱️ Duration: {cycle_duration:.1f}s")
-            print(f"🔍 Total searches: {total_searches}")
-            print(f"📊 Raw items found: {total_found}")
-            print(f"✅ Quality filtered: {quality_filtered}")
-            print(f"📤 Sent to Discord: {sent_to_discord}")
-            print(f"❌ HTTP errors: {total_errors}")
-            
-            success_rate = (sent_to_discord / quality_filtered * 100) if quality_filtered > 0 else 0
-            print(f"📈 Success rate: {success_rate:.1f}%")
-            
-            # Log stats to Discord bot if available
-            try:
-                if USE_DISCORD_BOT:
-                    stats_data = {
-                        "total_found": total_found,
-                        "quality_filtered": quality_filtered,
-                        "sent_to_discord": sent_to_discord,
-                        "errors_count": total_errors,
-                        "keywords_searched": total_searches
-                    }
+                    print(f"🏷️ Processing brand: {brand}")
                     
-                    stats_response = requests.post(
-                        f"{DISCORD_BOT_URL}/webhook/stats",
-                        json=stats_data,
-                        timeout=5
-                    )
+                    keywords = generate_optimized_keywords_for_brand(brand, tier_config, keyword_manager, tiered_system.iteration_counter)
                     
-                    if stats_response.status_code == 200:
-                        print("📊 Stats logged to Discord bot")
-                    else:
-                        print(f"⚠️ Failed to log stats: {stats_response.status_code}")
-            except Exception as e:
-                print(f"⚠️ Error logging stats: {e}")
-            
-            # Sleep between cycles
-            print(f"😴 Cycle complete. Sleeping for 120 seconds...")
-            time.sleep(120)
-            
-    except KeyboardInterrupt:
-        print("\n🛑 Scraping stopped by user")
-    except Exception as e:
-        print(f"❌ Critical error in main loop: {e}")
-        import traceback
-        traceback.print_exc()
-        time.sleep(30)  # Wait before potential restart
-    for tier_name, tier_config in tiered_system.tier_config.items():
-        all_brands.extend(tier_config['brands'])
-    # Remove duplicates while preserving order
-    unique_brands = list(dict.fromkeys(all_brands))
-    print(f"🔄 Round-robin mode: {len(unique_brands)} brands every cycle")
-    return unique_brands
-
-def generate_brand_keywords_simple(brand, brand_info, max_keywords=3):
-    """Simplified keyword generation for round-robin approach"""
-    keywords = []
-    # Primary variant
-    primary_variant = brand_info['variants'][0] if brand_info['variants'] else brand
-    keywords.append(primary_variant)
-    
-    # Add season variants if max_keywords > 1
-    if max_keywords > 1:
-        keywords.extend([
-            f"{primary_variant} fw",
-            f"{primary_variant} ss"
-        ])
-    
-    # Add clothing type variants if space
-    if max_keywords > 3:
-        keywords.extend([
-            f"{primary_variant} jacket",
-            f"{primary_variant} pants"
-        ])
-    
-    return keywords[:max_keywords]
-
-def main_loop():
-    """Enhanced main loop with better error handling"""
-    global start_time
-    start_time = time.time()
-    
-    print("🎯 Starting Enhanced Yahoo Japan Sniper...")
-    
-    # Start health server for Railway health checks
-    try:
-        health_thread = threading.Thread(target=run_health_server, daemon=True)
-        health_thread.start()
-        port = os.environ.get('PORT', 8000)
-        print(f"✅ Health server started on port {port}")
-        
-        # Give health server time to start
-        time.sleep(2)
-        
-    except Exception as e:
-        print(f"❌ Failed to start health server: {e}")
-    
-    # Test Discord bot connection before starting main scraping
-    if USE_DISCORD_BOT:
-        print("🤖 Testing Discord bot connection...")
-        connection_ok = test_discord_connection()
-        if not connection_ok:
-            print("⚠️ Discord bot connection failed, but continuing scraping...")
-            print("⚠️ Check Discord bot service is running on Railway")
-        else:
-            print("✅ Discord bot connection successful")
-    
-    # Initialize scraping components
-    try:
-        print("🔧 Initializing scraping systems...")
-        
-        # Initialize systems
-        tiered_system = OptimizedTieredSystem()
-        print("✅ Tiered system initialized")
-        
-        # Check if AdaptiveKeywordManager exists
-        try:
-            keyword_manager = AdaptiveKeywordManager()
-            print("✅ Keyword manager initialized")
-        except NameError:
-            print("⚠️ AdaptiveKeywordManager not found, continuing without it")
-            keyword_manager = None
-        
-        # Check if EmergencyModeManager exists  
-        try:
-            emergency_manager = EmergencyModeManager()
-            print("✅ Emergency manager initialized")
-        except NameError:
-            print("⚠️ EmergencyModeManager not found, continuing without it")
-            emergency_manager = None
-        
-        # Load seen IDs
-        seen_ids = load_seen_ids()
-        print(f"✅ Loaded {len(seen_ids)} seen auction IDs")
-        
-        print(f"\n🏆 ENHANCED TIER-BASED SYSTEM:")
-        print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
-        print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
-        print(f"🔄 Starting from cycle {tiered_system.iteration_counter}")
-        
-        # Initial setup
-        get_usd_jpy_rate()
-        print("✅ Initialization complete")
-    except Exception as e:
-        print(f"❌ Initialization failed: {e}")
-        import traceback
-        print(f"❌ Full traceback: {traceback.format_exc()}")
-        
-        # Try to continue with minimal setup
-        print("🔄 Attempting minimal initialization...")
-        try:
-            seen_ids = set()
-            tiered_system = None
-            keyword_manager = None
-            emergency_manager = None
-            print("⚠️ Running in minimal mode")
-        except Exception as e2:
-            print(f"❌ Even minimal initialization failed: {e2}")
-            return
-    
-    print("🔄 Starting main scraping loop...")
-    
-    try:
-        while True:
-            cycle_start_time = datetime.now()
-            tiered_system.next_iteration()
-            
-            print(f"\n🔄 CYCLE {tiered_system.iteration_counter} - {cycle_start_time.strftime('%H:%M:%S')}")
-            
-            total_found = 0
-            quality_filtered = 0
-            sent_to_discord = 0
-            total_errors = 0
-            total_searches = 0
-            
-            # Emergency mode check
-            if emergency_manager and emergency_manager.emergency_active:
-                print("🚨 EMERGENCY MODE ACTIVE")
-                try:
-                    emergency_keywords = emergency_manager.get_emergency_keywords(keyword_manager)
-                except:
-                    emergency_keywords = ["raf simons", "rick owens", "maison margiela"]  # Fallback keywords
-                
-                for keyword in emergency_keywords[:12]:
-                    print(f"🚨 Emergency search: {keyword}")
+                    brand_listings = []
                     
-                    listings, errors = search_yahoo_multi_page_optimized(keyword, 2, "emergency", keyword_manager)
-                    total_found += len(listings)
-                    total_errors += errors
-                    total_searches += 1
-                    
-                    # FIXED: Use proper function instead of inline code
-                    for listing_data in listings[:3]:
-                        quality_filtered += 1
+                    for keyword in keywords:
+                        # DISABLED: Dead keyword check - was blocking too many searches
+                        # if (keyword_manager and keyword_manager.keyword_performance and 
+                        #     keyword in keyword_manager.dead_keywords):
+                        #     print(f"⏭️ Skipping dead keyword: {keyword}")
+                        #     continue
                         
-                        success = send_to_discord_bot_enhanced(listing_data)
+                        print(f"🔍 Searching: {keyword} (up to {tier_config['max_pages']} pages)")
+                        
+                        listings, errors = search_yahoo_multi_page_optimized(keyword, tier_config['max_pages'], brand, keyword_manager)
+                        total_found += len(listings)
+                        total_errors += errors
+                        total_searches += 1
+                        tier_searches += 1
+                        
+                        brand_listings.extend(listings)
+                        
+                        if len(listings) > 0:
+                            tier_finds += len(listings)
+                            print(f"✅ {brand} rare: {len(listings)} quality items found")
+                        
+                        time.sleep(tier_config['delay'])
+                        time.sleep(2)  # Extra 2 seconds between keywords to avoid rate limiting
+                    
+                    # Sort by priority and send ALL listings
+                    brand_listings.sort(key=lambda x: x["priority"], reverse=True)
+                    
+                    for i, listing_data in enumerate(brand_listings, 1):
+                        quality_filtered += 1
+                        print(f"   [{i}/{len(brand_listings)}] Processing: {listing_data['title'][:50]}...")
+                        
+                        # Send to Discord bot (or fallback)
+                        success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
+                            listing_data["title"], 
+                            listing_data["price_jpy"], 
+                            listing_data["zenmarket_url"], 
+                            listing_data["image_url"], 
+                            listing_data["auction_id"]
+                        )
                         
                         if success:
                             seen_ids.add(listing_data["auction_id"])
                             sent_to_discord += 1
-                            print(f"🚨 EMERGENCY FIND: {listing_data['brand']} - ${listing_data['price_usd']:.2f}")
-                        
-                        time.sleep(0.3)
-                    
-                    time.sleep(1.5)
-                
-                if emergency_manager:
-                    emergency_manager.deactivate_emergency_mode(sent_to_discord)
-            
-            else:
-                # Normal tier processing
-                if tiered_system and hasattr(tiered_system, 'tier_config'):
-                    for tier_name, tier_config in tiered_system.tier_config.items():
-                        if not tiered_system.should_search_tier(tier_name):
-                            continue
-                        
-                        print(f"\n🎯 Processing {tier_name}...")
-                        
-                        for brand in tier_config['brands']:
-                            if keyword_manager:
-                                try:
-                                    keyword_variations = keyword_manager.get_brand_keywords(brand)
-                                except:
-                                    keyword_variations = [brand, f"{brand} fw", f"{brand} ss"]  # Fallback keywords
-                            else:
-                                keyword_variations = [brand, f"{brand} fw", f"{brand} ss"]  # Fallback keywords
                             
-                            for keyword_combo in keyword_variations[:tier_config['max_keywords']]:
-                                try:
-                                    listings, errors = search_yahoo_multi_page_optimized(
-                                        keyword_combo, 
-                                        tier_config['max_pages'], 
-                                        tier_name, 
-                                        keyword_manager
-                                    )
-                                    
-                                    total_found += len(listings)
-                                    total_errors += errors
-                                    total_searches += 1
-                                    
-                                    # FIXED: Use proper function for each listing
-                                    for listing_data in listings[:tier_config['max_listings']]:
-                                        try:
-                                            quality_filtered += 1
-                                            
-                                            # Use the enhanced Discord sending function
-                                            success = send_to_discord_bot_enhanced(listing_data)
-                                            
-                                            if success:
-                                                seen_ids.add(listing_data["auction_id"])
-                                                sent_to_discord += 1
-                                                
-                                                priority_emoji = "🔥" if listing_data.get("priority", 0) >= 100 else "🌟" if listing_data.get("priority", 0) >= 70 else "✨"
-                                                print(f"{priority_emoji} SENT: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
-                                            else:
-                                                print(f"❌ FAILED to send: {listing_data['title'][:40]}...")
-                                            
-                                            time.sleep(0.5)  # Rate limiting
-                                            
-                                        except Exception as e:
-                                            print(f"❌ Error processing listing: {e}")
-                                            total_errors += 1
-                                    
-                                    time.sleep(tier_config['delay'])
-                                    
-                                except Exception as e:
-                                    print(f"❌ Error searching {keyword_combo}: {e}")
-                                    total_errors += 1
-                                    continue
-            
-            # Save seen IDs
-            save_seen_ids()
-            
-            # Log cycle statistics
-            cycle_duration = (datetime.now() - cycle_start_time).total_seconds()
-            
-            print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
-            print(f"⏱️ Duration: {cycle_duration:.1f}s")
-            print(f"🔍 Total searches: {total_searches}")
-            print(f"📊 Raw items found: {total_found}")
-            print(f"✅ Quality filtered: {quality_filtered}")
-            print(f"📤 Sent to Discord: {sent_to_discord}")
-            print(f"❌ Errors: {total_errors}")
-            
-            success_rate = (sent_to_discord / quality_filtered * 100) if quality_filtered > 0 else 0
-            print(f"📈 Success rate: {success_rate:.1f}%")
-            
-            if success_rate < 10 and quality_filtered > 5:
-                print("⚠️ Low success rate - checking Discord bot connection...")
-                connection_ok = test_discord_connection()
-                if not connection_ok:
-                    print("❌ Discord bot connection lost!")
-            
-            # Log stats to Discord bot if available
-            try:
-                if USE_DISCORD_BOT:
-                    stats_data = {
-                        "total_found": total_found,
-                        "quality_filtered": quality_filtered,
-                        "sent_to_discord": sent_to_discord,
-                        "errors_count": total_errors,
-                        "keywords_searched": total_searches
+                            priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
+                            print(f"{priority_emoji} {tier_name.upper()}: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f}) - {listing_data['deal_quality']:.1%} deal")
+                        else:
+                            print(f"❌ Failed to send: {listing_data['title'][:30]}... (ID: {listing_data['auction_id']})")
+                        
+                        time.sleep(0.5)
+                
+                # BEFORE calling tiered_system.update_performance, add this check:
+                if not hasattr(tiered_system, 'performance_tracker'):
+                    tiered_system.performance_tracker = {}
+                
+                # Ensure tier exists in tracker before updating
+                if tier_name not in tiered_system.performance_tracker:
+                    tiered_system.performance_tracker[tier_name] = {
+                        'total_searches': 0,
+                        'total_finds': 0,
+                        'successful_finds': 0,
+                        'avg_efficiency': 0.0,
+                        'efficiency': 0.0,
+                        'last_find': None,
+                        'last_updated': datetime.now().isoformat()
                     }
-                    
-                    stats_response = requests.post(
-                        f"{DISCORD_BOT_URL}/webhook/stats",
-                        json=stats_data,
-                        timeout=5
-                    )
-                    
-                    if stats_response.status_code == 200:
-                        print("📊 Stats logged to Discord bot")
-                    else:
-                        print(f"⚠️ Failed to log stats: {stats_response.status_code}")
-            except Exception as e:
-                print(f"⚠️ Error logging stats: {e}")
+                
+                # NOW it's safe to call:
+                tiered_system.update_performance(tier_name, tier_searches, tier_finds)
+                
+                if tier_finds > 0:
+                    efficiency = tier_finds / max(1, tier_searches)
+                    print(f"📊 {tier_name.upper()}: {tier_finds} finds from {tier_searches} searches (efficiency: {efficiency:.2f})")
             
-            # Sleep between cycles
-            sleep_duration = 120 if sent_to_discord > 0 else 60  # Shorter sleep if we found items
-            print(f"😴 Cycle complete. Sleeping for {sleep_duration} seconds...")
-            time.sleep(sleep_duration)
+            # Clear seen items every 35 cycles to prevent blocking new finds
+            if tiered_system.iteration_counter % 35 == 0:
+                items_before = len(seen_ids)
+                print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Force clearing {items_before} seen items to refresh search results...")
+                seen_ids.clear()
+                save_seen_ids()
+                
+                try:
+                    conn = sqlite3.connect(SCRAPER_DB)
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM scraped_items')
+                    conn.commit()
+                    conn.close()
+                    print(f"✅ Cleared seen items cache and database - fresh searches incoming!")
+                except Exception as e:
+                    print(f"⚠️ Could not clear database: {e}")
+            
+            # Save data
+            save_seen_ids()
+            if keyword_manager:
+                keyword_manager.save_keyword_data()
+            tiered_system.save_performance_data()
+            
+            try:
+                # Cycle statistics
+                cycle_end_time = datetime.now()
+                cycle_duration = (cycle_end_time - cycle_start_time).total_seconds()
+                
+                cycle_efficiency = sent_to_discord / max(1, total_searches)
+                conversion_rate = (quality_filtered / max(1, total_found)) * 100 if total_found > 0 else 0
+                
+                print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
+                print(f"⏱️  Duration: {cycle_duration:.1f}s")
+                print(f"🔍 Total searches: {total_searches}")
+                print(f"📊 Raw items found: {total_found}")
+                print(f"✅ Quality filtered: {quality_filtered}")
+                print(f"📤 Sent to Discord: {sent_to_discord}")
+                print(f"❌ HTTP errors: {total_errors}")
+                print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
+                print(f"🎯 Conversion rate: {conversion_rate:.1f}%")
+            except Exception as e:
+                print(f"❌ Error in cycle summary: {e}")
+            
+            # Check Discord bot health periodically
+            if USE_DISCORD_BOT and tiered_system.iteration_counter % 5 == 0:
+                bot_healthy, status = check_discord_bot_health()
+                if not bot_healthy:
+                    print(f"⚠️ Discord bot health check failed: {status}")
+                else:
+                    bot_stats = get_discord_bot_stats()
+                    if bot_stats:
+                        print(f"🤖 Discord Bot: {bot_stats.get('total_listings', 0)} total listings")
+            
+            # Performance insights every 10 cycles
+            if tiered_system.iteration_counter % 10 == 0:
+                print(f"\n🧠 PERFORMANCE INSIGHTS (Cycle {tiered_system.iteration_counter}):")
+                
+                if keyword_manager and keyword_manager.keyword_performance:
+                    active_keywords = len([k for k, v in keyword_manager.keyword_performance.items() if v.get('consecutive_fails', 0) < 5])
+                    dead_keywords = len(keyword_manager.dead_keywords)
+                    hot_keywords = len(keyword_manager.hot_keywords)
+                    
+                    print(f"📈 Keywords: {active_keywords} active, {hot_keywords} hot, {dead_keywords} dead")
+                
+                for tier_name, tracker in tiered_system.performance_tracker.items():
+                    if tracker['total_searches'] > 0:
+                        print(f"📊 {tier_name.upper()}: {tracker['avg_efficiency']:.2f} avg efficiency")
+            
+            # Dynamic sleep timing based on performance
+            base_sleep_time = 300  # 5 minutes base
+            if cycle_efficiency > 0.2:
+                sleep_time = base_sleep_time - 60
+                print(f"🚀 High efficiency detected, reducing sleep to {sleep_time}s")
+            elif cycle_efficiency < 0.05:
+                sleep_time = base_sleep_time + 60
+                print(f"⚠️ Low efficiency, extending sleep to {sleep_time}s")
+            else:
+                sleep_time = base_sleep_time
+            
+            # Log scraper statistics to database
+            log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches)
+            
+            actual_sleep = max(180, sleep_time - cycle_duration)  # 3 minutes minimum
+            print(f"⏳ Cycle complete. Sleeping for {actual_sleep:.0f} seconds...")
+            time.sleep(actual_sleep)
             
     except KeyboardInterrupt:
-        print("\n🛑 Scraping stopped by user")
+        print("\n🛑 Graceful shutdown initiated...")
         save_seen_ids()
+        if keyword_manager:
+            keyword_manager.save_keyword_data()
+        tiered_system.save_performance_data()
+        print("✅ Exiting gracefully with all data saved.")
     except Exception as e:
-        print(f"❌ Critical error in main loop: {e}")
+        print(f"❌ Fatal error in main loop: {e}")
         import traceback
         traceback.print_exc()
-        save_seen_ids()
-        time.sleep(30)  # Wait before potential restart
         
+        # Save data before crashing
+        try:
+            save_seen_ids()
+            if keyword_manager:
+                keyword_manager.save_keyword_data()
+            tiered_system.save_performance_data()
+            print("✅ Emergency data save completed")
+        except:
+            print("❌ Emergency data save failed")
+        
+        raise
+
 load_exchange_rate()
 
 def log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches):
