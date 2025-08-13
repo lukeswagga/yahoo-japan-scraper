@@ -966,6 +966,20 @@ def update_exchange_rate():
         print(f"❌ Exchange rate update failed: {e}")
         return False
 
+def load_seen_ids():
+    """Load seen auction IDs from file"""
+    try:
+        if os.path.exists(SEEN_FILE):
+            with open(SEEN_FILE, "r") as f:
+                seen_data = json.load(f)
+                return set(seen_data)
+        else:
+            print(f"📄 Creating new {SEEN_FILE}")
+            return set()
+    except Exception as e:
+        print(f"❌ Error loading seen IDs: {e}")
+        return set()
+
 def extract_auction_end_time(soup, item):
     try:
         time_element = item.select_one(".Product__time, .Product__remaining")
@@ -2197,11 +2211,31 @@ def main_loop():
     
     # Initialize scraping components
     try:
+        print("🔧 Initializing scraping systems...")
+        
         # Initialize systems
         tiered_system = OptimizedTieredSystem()
-        keyword_manager = AdaptiveKeywordManager()
-        emergency_manager = EmergencyModeManager()
+        print("✅ Tiered system initialized")
+        
+        # Check if AdaptiveKeywordManager exists
+        try:
+            keyword_manager = AdaptiveKeywordManager()
+            print("✅ Keyword manager initialized")
+        except NameError:
+            print("⚠️ AdaptiveKeywordManager not found, continuing without it")
+            keyword_manager = None
+        
+        # Check if EmergencyModeManager exists  
+        try:
+            emergency_manager = EmergencyModeManager()
+            print("✅ Emergency manager initialized")
+        except NameError:
+            print("⚠️ EmergencyModeManager not found, continuing without it")
+            emergency_manager = None
+        
+        # Load seen IDs
         seen_ids = load_seen_ids()
+        print(f"✅ Loaded {len(seen_ids)} seen auction IDs")
         
         print(f"\n🏆 ENHANCED TIER-BASED SYSTEM:")
         print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
@@ -2213,7 +2247,20 @@ def main_loop():
         print("✅ Initialization complete")
     except Exception as e:
         print(f"❌ Initialization failed: {e}")
-        return
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
+        
+        # Try to continue with minimal setup
+        print("🔄 Attempting minimal initialization...")
+        try:
+            seen_ids = set()
+            tiered_system = None
+            keyword_manager = None
+            emergency_manager = None
+            print("⚠️ Running in minimal mode")
+        except Exception as e2:
+            print(f"❌ Even minimal initialization failed: {e2}")
+            return
     
     print("🔄 Starting main scraping loop...")
     
@@ -2231,9 +2278,12 @@ def main_loop():
             total_searches = 0
             
             # Emergency mode check
-            if emergency_manager.emergency_active:
+            if emergency_manager and emergency_manager.emergency_active:
                 print("🚨 EMERGENCY MODE ACTIVE")
-                emergency_keywords = emergency_manager.get_emergency_keywords(keyword_manager)
+                try:
+                    emergency_keywords = emergency_manager.get_emergency_keywords(keyword_manager)
+                except:
+                    emergency_keywords = ["raf simons", "rick owens", "maison margiela"]  # Fallback keywords
                 
                 for keyword in emergency_keywords[:12]:
                     print(f"🚨 Emergency search: {keyword}")
@@ -2258,61 +2308,69 @@ def main_loop():
                     
                     time.sleep(1.5)
                 
-                emergency_manager.deactivate_emergency_mode(sent_to_discord)
+                if emergency_manager:
+                    emergency_manager.deactivate_emergency_mode(sent_to_discord)
             
             else:
                 # Normal tier processing
-                for tier_name, tier_config in tiered_system.tier_config.items():
-                    if not tiered_system.should_search_tier(tier_name):
-                        continue
-                    
-                    print(f"\n🎯 Processing {tier_name}...")
-                    
-                    for brand in tier_config['brands']:
-                        keyword_variations = keyword_manager.get_brand_keywords(brand)
+                if tiered_system and hasattr(tiered_system, 'tier_config'):
+                    for tier_name, tier_config in tiered_system.tier_config.items():
+                        if not tiered_system.should_search_tier(tier_name):
+                            continue
                         
-                        for keyword_combo in keyword_variations[:tier_config['max_keywords']]:
-                            try:
-                                listings, errors = search_yahoo_multi_page_optimized(
-                                    keyword_combo, 
-                                    tier_config['max_pages'], 
-                                    tier_name, 
-                                    keyword_manager
-                                )
-                                
-                                total_found += len(listings)
-                                total_errors += errors
-                                total_searches += 1
-                                
-                                # FIXED: Use proper function for each listing
-                                for listing_data in listings[:tier_config['max_listings']]:
-                                    try:
-                                        quality_filtered += 1
-                                        
-                                        # Use the enhanced Discord sending function
-                                        success = send_to_discord_bot_enhanced(listing_data)
-                                        
-                                        if success:
-                                            seen_ids.add(listing_data["auction_id"])
-                                            sent_to_discord += 1
+                        print(f"\n🎯 Processing {tier_name}...")
+                        
+                        for brand in tier_config['brands']:
+                            if keyword_manager:
+                                try:
+                                    keyword_variations = keyword_manager.get_brand_keywords(brand)
+                                except:
+                                    keyword_variations = [brand, f"{brand} fw", f"{brand} ss"]  # Fallback keywords
+                            else:
+                                keyword_variations = [brand, f"{brand} fw", f"{brand} ss"]  # Fallback keywords
+                            
+                            for keyword_combo in keyword_variations[:tier_config['max_keywords']]:
+                                try:
+                                    listings, errors = search_yahoo_multi_page_optimized(
+                                        keyword_combo, 
+                                        tier_config['max_pages'], 
+                                        tier_name, 
+                                        keyword_manager
+                                    )
+                                    
+                                    total_found += len(listings)
+                                    total_errors += errors
+                                    total_searches += 1
+                                    
+                                    # FIXED: Use proper function for each listing
+                                    for listing_data in listings[:tier_config['max_listings']]:
+                                        try:
+                                            quality_filtered += 1
                                             
-                                            priority_emoji = "🔥" if listing_data.get("priority", 0) >= 100 else "🌟" if listing_data.get("priority", 0) >= 70 else "✨"
-                                            print(f"{priority_emoji} SENT: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
-                                        else:
-                                            print(f"❌ FAILED to send: {listing_data['title'][:40]}...")
-                                        
-                                        time.sleep(0.5)  # Rate limiting
-                                        
-                                    except Exception as e:
-                                        print(f"❌ Error processing listing: {e}")
-                                        total_errors += 1
-                                
-                                time.sleep(tier_config['delay'])
-                                
-                            except Exception as e:
-                                print(f"❌ Error searching {keyword_combo}: {e}")
-                                total_errors += 1
-                                continue
+                                            # Use the enhanced Discord sending function
+                                            success = send_to_discord_bot_enhanced(listing_data)
+                                            
+                                            if success:
+                                                seen_ids.add(listing_data["auction_id"])
+                                                sent_to_discord += 1
+                                                
+                                                priority_emoji = "🔥" if listing_data.get("priority", 0) >= 100 else "🌟" if listing_data.get("priority", 0) >= 70 else "✨"
+                                                print(f"{priority_emoji} SENT: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
+                                            else:
+                                                print(f"❌ FAILED to send: {listing_data['title'][:40]}...")
+                                            
+                                            time.sleep(0.5)  # Rate limiting
+                                            
+                                        except Exception as e:
+                                            print(f"❌ Error processing listing: {e}")
+                                            total_errors += 1
+                                    
+                                    time.sleep(tier_config['delay'])
+                                    
+                                except Exception as e:
+                                    print(f"❌ Error searching {keyword_combo}: {e}")
+                                    total_errors += 1
+                                    continue
             
             # Save seen IDs
             save_seen_ids()
