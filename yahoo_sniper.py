@@ -1831,7 +1831,7 @@ def main_loop():
                         print(f"🏷️ Searching {brand}...")
                         
                         # Generate keywords for this brand
-                        keywords = generate_brand_keywords_enhanced(brand, brand_info, tier_config)
+                        keywords = generate_brand_keywords_simple(brand, brand_info, max_keywords=3)
                         
                         for keyword in keywords:
                             if keyword in keyword_manager.dead_keywords:
