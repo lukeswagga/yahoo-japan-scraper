@@ -46,6 +46,195 @@ if DISCORD_BOT_URL and not DISCORD_BOT_URL.startswith(('http://', 'https://')):
 print(f"🌐 Discord Bot URL: {DISCORD_BOT_URL}")
 print(f"🤖 Use Discord Bot: {USE_DISCORD_BOT}")
 
+# Add debugging functions for Discord bot configuration
+def debug_discord_bot_config():
+    """Debug Discord bot configuration"""
+    print("\n🔧 DISCORD BOT DEBUG CONFIGURATION:")
+    print(f"USE_DISCORD_BOT: {USE_DISCORD_BOT}")
+    print(f"DISCORD_BOT_URL: {DISCORD_BOT_URL}")
+    
+    # Test environment variables
+    env_url = os.getenv('DISCORD_BOT_URL')
+    env_use_bot = os.getenv('USE_DISCORD_BOT')
+    
+    print(f"\n🌍 ENVIRONMENT VARIABLES:")
+    print(f"DISCORD_BOT_URL env: {env_url}")
+    print(f"USE_DISCORD_BOT env: {env_use_bot}")
+    
+    return {
+        'config_url': DISCORD_BOT_URL,
+        'env_url': env_url,
+        'use_bot': USE_DISCORD_BOT
+    }
+
+def send_to_discord_bot_enhanced(listing_data):
+    """Enhanced Discord bot sender with extensive debugging"""
+    print(f"\n📤 SENDING TO DISCORD BOT:")
+    print(f"Title: {listing_data.get('title', 'NO TITLE')[:50]}...")
+    print(f"Auction ID: {listing_data.get('auction_id', 'NO ID')}")
+    print(f"Brand: {listing_data.get('brand', 'NO BRAND')}")
+    print(f"Price: ¥{listing_data.get('price_jpy', 0):,} (${listing_data.get('price_usd', 0):.2f})")
+    
+    try:
+        if not USE_DISCORD_BOT:
+            print("❌ USE_DISCORD_BOT is False - Discord sending disabled")
+            return False
+        
+        # Validate required fields
+        required_fields = ['auction_id', 'title', 'brand', 'price_jpy', 'price_usd', 'zenmarket_url']
+        missing_fields = [field for field in required_fields if field not in listing_data or listing_data[field] is None]
+        
+        if missing_fields:
+            print(f"❌ Missing required fields: {missing_fields}")
+            print(f"📋 Full listing data: {json.dumps(listing_data, indent=2)}")
+            return False
+        
+        # Add default fields if missing
+        if 'auction_end_time' not in listing_data:
+            listing_data['auction_end_time'] = None
+        if 'seller_id' not in listing_data:
+            listing_data['seller_id'] = 'unknown'
+        if 'image_url' not in listing_data:
+            listing_data['image_url'] = None
+        if 'yahoo_url' not in listing_data:
+            listing_data['yahoo_url'] = None
+        if 'deal_quality' not in listing_data:
+            listing_data['deal_quality'] = 0.0
+        if 'priority' not in listing_data:
+            listing_data['priority'] = 50
+        
+        # Construct webhook URL
+        webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
+        
+        print(f"🔗 Webhook URL: {webhook_url}")
+        print(f"📦 Payload size: {len(json.dumps(listing_data))} characters")
+        
+        # Send request with detailed logging
+        print("📡 Sending HTTP request...")
+        
+        response = requests.post(
+            webhook_url,
+            json=listing_data,
+            timeout=15,
+            headers={
+                'Content-Type': 'application/json',
+                'User-Agent': 'Yahoo-Auction-Scraper/1.0'
+            }
+        )
+        
+        print(f"📊 Response status: {response.status_code}")
+        print(f"📊 Response headers: {dict(response.headers)}")
+        
+        # Try to parse response
+        try:
+            response_data = response.json()
+            print(f"📊 Response JSON: {json.dumps(response_data, indent=2)}")
+        except:
+            print(f"📊 Response text: {response.text}")
+        
+        if response.status_code == 200:
+            print(f"✅ SUCCESS: Sent {listing_data['auction_id']} to Discord")
+            return True
+        else:
+            print(f"❌ FAILED: Status {response.status_code}")
+            print(f"❌ URL: {webhook_url}")
+            print(f"❌ Payload: {json.dumps(listing_data, indent=2)}")
+            return False
+            
+    except requests.exceptions.Timeout:
+        print(f"❌ TIMEOUT: Request took longer than 15 seconds")
+        return False
+    except requests.exceptions.ConnectionError as e:
+        print(f"❌ CONNECTION ERROR: {e}")
+        print(f"❌ Check if Discord bot service is running at: {DISCORD_BOT_URL}")
+        return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ REQUEST ERROR: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ UNEXPECTED ERROR: {e}")
+        import traceback
+        print(f"❌ TRACEBACK: {traceback.format_exc()}")
+        return False
+
+def test_discord_connection():
+    """Test Discord bot connection before starting main loop"""
+    print("\n🔍 TESTING DISCORD BOT CONNECTION...")
+    
+    debug_config = debug_discord_bot_config()
+    
+    # Test health endpoint
+    try:
+        health_url = f"{DISCORD_BOT_URL}/health"
+        print(f"🏥 Testing health endpoint: {health_url}")
+        
+        response = requests.get(health_url, timeout=10)
+        print(f"Health status: {response.status_code}")
+        
+        if response.status_code == 200:
+            health_data = response.json()
+            print(f"Health response: {health_data}")
+        else:
+            print(f"Health error: {response.text}")
+            
+    except Exception as e:
+        print(f"❌ Health check failed: {e}")
+    
+    # Test webhook health
+    try:
+        webhook_health_url = f"{DISCORD_BOT_URL}/webhook/health"
+        print(f"🔗 Testing webhook health: {webhook_health_url}")
+        
+        response = requests.get(webhook_health_url, timeout=10)
+        print(f"Webhook health status: {response.status_code}")
+        
+        if response.status_code == 200:
+            webhook_data = response.json()
+            print(f"Webhook health response: {webhook_data}")
+            
+            if webhook_data.get("bot_ready") and webhook_data.get("guild_connected"):
+                print("✅ Discord bot is ready to receive listings")
+                return True
+            else:
+                print("❌ Discord bot is not ready")
+                return False
+        else:
+            print(f"Webhook health error: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Webhook health check failed: {e}")
+        return False
+
+def send_test_listing():
+    """Send a test listing to verify everything works"""
+    print("\n🧪 SENDING TEST LISTING...")
+    
+    test_listing = {
+        "auction_id": f"test_{int(datetime.now().timestamp())}",
+        "title": "TEST LISTING - Comme Des Garcons SHIRT Supreme Collaboration Tee",
+        "brand": "Comme Des Garcons",
+        "price_jpy": 8000,
+        "price_usd": 53.33,
+        "zenmarket_url": "https://zenmarket.jp/en/auction.aspx?itemCode=test123",
+        "yahoo_url": "https://page.auctions.yahoo.co.jp/jp/auction/test123",
+        "image_url": None,
+        "seller_id": "test_seller",
+        "auction_end_time": None,
+        "deal_quality": 0.35,
+        "priority": 75
+    }
+    
+    success = send_to_discord_bot_enhanced(test_listing)
+    
+    if success:
+        print("✅ Test listing sent successfully!")
+        print("📱 Check your Discord channel for the test listing")
+        return True
+    else:
+        print("❌ Test listing failed!")
+        return False
+
 MAX_PRICE_YEN = 100000
 SEEN_FILE = "seen_yahoo.json"
 BRANDS_FILE = "brands.json"
@@ -1959,254 +2148,208 @@ def generate_brand_keywords_simple(brand, brand_info, max_keywords=3):
     return keywords[:max_keywords]
 
 def main_loop():
-    """REVERTED: Working tier-based main search loop"""
-    print("🎯 Starting WORKING Yahoo Japan Sniper - TIER BASED SYSTEM...")
+    """FIXED: Main loop with proper Discord bot integration"""
+    print("🎯 Starting FIXED Yahoo Japan Sniper...")
     
     # Start health server for Railway
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
     print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
     
-    # Initialize with persistence (keep the fixes)
+    # Debug configuration
+    debug_discord_bot_config()
+    
+    # Test Discord connection before starting
+    if USE_DISCORD_BOT:
+        print("\n🔍 Testing Discord bot connection...")
+        connection_ok = test_discord_connection()
+        
+        if connection_ok:
+            print("✅ Discord bot connection verified")
+            
+            # Send test listing
+            test_ok = send_test_listing()
+            if test_ok:
+                print("✅ Test listing successful - Ready to start scraping!")
+            else:
+                print("❌ Test listing failed - Check Discord bot configuration")
+                return
+        else:
+            print("❌ Discord bot connection failed - Check configuration")
+            print("⚠️ Will continue scraping but items won't be sent to Discord")
+    
+    # Initialize systems
     tiered_system = OptimizedTieredSystem()
     keyword_manager = AdaptiveKeywordManager()
     emergency_manager = EmergencyModeManager()
+    seen_ids = load_seen_ids()
     
-    print(f"🔄 Resuming from CYCLE {tiered_system.iteration_counter}")
-    
-    print("\n🏆 TIER-BASED SYSTEM RESTORED:")
-    print("✅ Proven working system")
-    print("✅ All critical fixes maintained")
+    print(f"\n🏆 FIXED TIER-BASED SYSTEM:")
     print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
     print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
+    print(f"🔄 Starting from cycle {tiered_system.iteration_counter}")
     
     # Initial setup
     get_usd_jpy_rate()
     
-    # DEBUG: Print Discord bot configuration
-    print(f"🌐 DISCORD_BOT_URL: {DISCORD_BOT_URL}")
-    print(f"🤖 USE_DISCORD_BOT: {USE_DISCORD_BOT}")
-    
-    if USE_DISCORD_BOT:
-        bot_healthy, status = check_discord_bot_health()
-        if bot_healthy:
-            print("✅ Discord bot is healthy and ready")
-        else:
-            print(f"⚠️ Discord bot status: {status}")
-    
     try:
         while True:
             cycle_start_time = datetime.now()
+            tiered_system.next_iteration()
             
-            try:
-                tiered_system.next_iteration()  # Keep persistence fix
+            print(f"\n🔄 CYCLE {tiered_system.iteration_counter} - {cycle_start_time.strftime('%H:%M:%S')}")
+            
+            total_found = 0
+            quality_filtered = 0
+            sent_to_discord = 0
+            total_errors = 0
+            total_searches = 0
+            
+            # Emergency mode check
+            if emergency_manager.emergency_active:
+                print("🚨 EMERGENCY MODE ACTIVE")
+                emergency_keywords = emergency_manager.get_emergency_keywords(keyword_manager)
                 
-                print(f"\n🔄 CYCLE {tiered_system.iteration_counter} - {cycle_start_time.strftime('%H:%M:%S')}")
+                for keyword in emergency_keywords[:12]:
+                    print(f"🚨 Emergency search: {keyword}")
+                    
+                    listings, errors = search_yahoo_multi_page_optimized(keyword, 2, "emergency", keyword_manager)
+                    total_found += len(listings)
+                    total_errors += errors
+                    total_searches += 1
+                    
+                    # FIXED: Use proper function instead of inline code
+                    for listing_data in listings[:3]:
+                        quality_filtered += 1
+                        
+                        success = send_to_discord_bot_enhanced(listing_data)
+                        
+                        if success:
+                            seen_ids.add(listing_data["auction_id"])
+                            sent_to_discord += 1
+                            print(f"🚨 EMERGENCY FIND: {listing_data['brand']} - ${listing_data['price_usd']:.2f}")
+                        
+                        time.sleep(0.3)
+                    
+                    time.sleep(1.5)
                 
-                total_found = 0
-                quality_filtered = 0
-                sent_to_discord = 0
-                total_errors = 0
-                total_searches = 0
-                
-                # REVERTED: Use the WORKING tier-based approach
+                emergency_manager.deactivate_emergency_mode(sent_to_discord)
+            
+            else:
+                # Normal tier processing
                 for tier_name, tier_config in tiered_system.tier_config.items():
                     if not tiered_system.should_search_tier(tier_name):
-                        print(f"⏭️ Skipping {tier_name} (frequency check)")
                         continue
                     
-                    print(f"\n🎯 Processing {tier_name.upper()} tier...")
-                    tier_searches = 0
-                    tier_finds = 0
+                    print(f"\n🎯 Processing {tier_name}...")
                     
                     for brand in tier_config['brands']:
-                        if brand not in BRAND_DATA:
-                            continue
+                        keyword_variations = keyword_manager.get_brand_keywords(brand)
                         
-                        brand_info = BRAND_DATA[brand]
-                        print(f"🏷️ Searching {brand}...")
-                        
-                        # Generate keywords for this brand
-                        keywords = generate_brand_keywords_simple(brand, brand_info, max_keywords=3)
-                        
-                        for keyword in keywords:
-                            if keyword in keyword_manager.dead_keywords:
-                                continue
-                            
+                        for keyword_combo in keyword_variations[:tier_config['max_keywords']]:
                             try:
-                                # Search using the WORKING method
                                 listings, errors = search_yahoo_multi_page_optimized(
-                                    keyword, 
-                                    tier_config.get('max_pages', 2), 
-                                    brand, 
+                                    keyword_combo, 
+                                    tier_config['max_pages'], 
+                                    tier_name, 
                                     keyword_manager
                                 )
                                 
                                 total_found += len(listings)
                                 total_errors += errors
                                 total_searches += 1
-                                tier_searches += 1
                                 
-                                # IMMEDIATE SENDING: Process each listing as it's found
-                                for listing_data in listings:
-                                    if listing_data["auction_id"] in seen_ids:
-                                        continue
-                                    
-                                    quality_filtered += 1
-                                    tier_finds += 1
-                                    
-                                    # DEBUG: Print what we're about to send
-                                    print(f"🔄 ATTEMPTING TO SEND: {listing_data['auction_id']} - {listing_data['title'][:40]}...")
-                                    
-                                    # SEND IMMEDIATELY - NO TRY/EXCEPT TO HIDE ERRORS
-                                    if USE_DISCORD_BOT:
-                                        print(f"🌐 Sending to: {DISCORD_BOT_URL}/webhook/listing")
+                                # FIXED: Use proper function for each listing
+                                for listing_data in listings[:tier_config['max_listings']]:
+                                    try:
+                                        quality_filtered += 1
                                         
-                                        response = requests.post(
-                                            f"{DISCORD_BOT_URL}/webhook/listing",
-                                            json=listing_data,
-                                            timeout=10,
-                                            headers={'Content-Type': 'application/json'}
-                                        )
+                                        # Use the enhanced Discord sending function
+                                        success = send_to_discord_bot_enhanced(listing_data)
                                         
-                                        print(f"📡 Response status: {response.status_code}")
-                                        print(f"📡 Response text: {response.text}")
-                                        
-                                        if response.status_code == 200:
+                                        if success:
                                             seen_ids.add(listing_data["auction_id"])
                                             sent_to_discord += 1
                                             
-                                            priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
-                                            print(f"{priority_emoji} ✅ SENT: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
+                                            priority_emoji = "🔥" if listing_data.get("priority", 0) >= 100 else "🌟" if listing_data.get("priority", 0) >= 70 else "✨"
+                                            print(f"{priority_emoji} SENT: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
                                         else:
-                                            print(f"❌ SEND FAILED: Status {response.status_code} - {response.text}")
-                                    else:
-                                        print("❌ USE_DISCORD_BOT is False!")
-                                    
-                                    # Small delay between sends
-                                    time.sleep(0.5)
+                                            print(f"❌ FAILED to send: {listing_data['title'][:40]}...")
+                                        
+                                        time.sleep(0.5)  # Rate limiting
+                                        
+                                    except Exception as e:
+                                        print(f"❌ Error processing listing: {e}")
+                                        total_errors += 1
                                 
-                                # Delay between keywords
-                                time.sleep(tier_config.get('delay', 2.0))
+                                time.sleep(tier_config['delay'])
                                 
                             except Exception as e:
-                                print(f"❌ Error searching {keyword} for {brand}: {e}")
+                                print(f"❌ Error searching {keyword_combo}: {e}")
                                 total_errors += 1
+                                continue
+            
+            # Save seen IDs
+            save_seen_ids()
+            
+            # Log cycle statistics
+            cycle_duration = (datetime.now() - cycle_start_time).total_seconds()
+            
+            print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
+            print(f"⏱️ Duration: {cycle_duration:.1f}s")
+            print(f"🔍 Total searches: {total_searches}")
+            print(f"📊 Raw items found: {total_found}")
+            print(f"✅ Quality filtered: {quality_filtered}")
+            print(f"📤 Sent to Discord: {sent_to_discord}")
+            print(f"❌ Errors: {total_errors}")
+            
+            success_rate = (sent_to_discord / quality_filtered * 100) if quality_filtered > 0 else 0
+            print(f"📈 Success rate: {success_rate:.1f}%")
+            
+            if success_rate < 10 and quality_filtered > 5:
+                print("⚠️ Low success rate - checking Discord bot connection...")
+                connection_ok = test_discord_connection()
+                if not connection_ok:
+                    print("❌ Discord bot connection lost!")
+            
+            # Log stats to Discord bot if available
+            try:
+                if USE_DISCORD_BOT:
+                    stats_data = {
+                        "total_found": total_found,
+                        "quality_filtered": quality_filtered,
+                        "sent_to_discord": sent_to_discord,
+                        "errors_count": total_errors,
+                        "keywords_searched": total_searches
+                    }
                     
-                    # BEFORE calling tiered_system.update_performance, add this check:
-                    if not hasattr(tiered_system, 'performance_tracker'):
-                        tiered_system.performance_tracker = {}
+                    stats_response = requests.post(
+                        f"{DISCORD_BOT_URL}/webhook/stats",
+                        json=stats_data,
+                        timeout=5
+                    )
                     
-                    # Ensure tier exists in tracker before updating
-                    if tier_name not in tiered_system.performance_tracker:
-                        tiered_system.performance_tracker[tier_name] = {
-                            'total_searches': 0,
-                            'total_finds': 0,
-                            'successful_finds': 0,
-                            'avg_efficiency': 0.0,
-                            'efficiency': 0.0,
-                            'last_find': None,
-                            'last_updated': datetime.now().isoformat()
-                        }
-                    
-                    # NOW it's safe to call:
-                    tiered_system.update_performance(tier_name, tier_searches, tier_finds)
-                    
-                    if tier_finds > 0:
-                        efficiency = tier_finds / max(1, tier_searches)
-                        print(f"📊 {tier_name.upper()}: {tier_finds} finds from {tier_searches} searches (efficiency: {efficiency:.2f})")
-                
-                # Keep the cycle clearing fix but reduce frequency
-                if tiered_system.iteration_counter % 25 == 0:  # Reduced from 35
-                    items_before = len(seen_ids)
-                    print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Force clearing {items_before} seen items...")
-                    seen_ids.clear()
-                    save_seen_ids()
-                    print(f"✅ Cleared {items_before} seen items - fresh searches incoming!")
-                
-                # Save data more frequently (keep this improvement)
-                save_seen_ids()
-                keyword_manager.save_keyword_data()
-                tiered_system.save_performance_data()
-                
-                # Cycle statistics
-                cycle_end_time = datetime.now()
-                cycle_duration = (cycle_end_time - cycle_start_time).total_seconds()
-                
-                cycle_efficiency = sent_to_discord / max(1, total_searches)
-                conversion_rate = (quality_filtered / max(1, total_found)) * 100 if total_found > 0 else 0
-                
-                print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
-                print(f"⏱️  Duration: {cycle_duration:.1f}s")
-                print(f"🔍 Total searches: {total_searches}")
-                print(f"📊 Raw items found: {total_found}")
-                print(f"✅ Quality filtered: {quality_filtered}")
-                print(f"📤 Sent to Discord: {sent_to_discord}")
-                print(f"❌ HTTP errors: {total_errors}")
-                print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
-                print(f"🎯 Conversion rate: {conversion_rate:.1f}%")
-                
-                # Check Discord bot health periodically
-                if USE_DISCORD_BOT and tiered_system.iteration_counter % 5 == 0:
-                    bot_healthy, status = check_discord_bot_health()
-                    if not bot_healthy:
-                        print(f"⚠️ Discord bot health check failed: {status}")
+                    if stats_response.status_code == 200:
+                        print("📊 Stats logged to Discord bot")
                     else:
-                        bot_stats = get_discord_bot_stats()
-                        if bot_stats:
-                            print(f"🤖 Discord Bot: {bot_stats.get('total_listings', 0)} total listings")
-                
-                # Log stats
-                log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches)
-                
-                # Sleep calculation
-                base_sleep_time = 300
-                if cycle_efficiency > 0.2:
-                    sleep_time = base_sleep_time - 60
-                    print(f"🚀 High efficiency detected, reducing sleep to {sleep_time}s")
-                elif cycle_efficiency < 0.05:
-                    sleep_time = base_sleep_time + 60
-                    print(f"⚠️ Low efficiency, extending sleep to {sleep_time}s")
-                else:
-                    sleep_time = base_sleep_time
-                
-                actual_sleep = max(120, sleep_time - cycle_duration)
-                print(f"⏳ Cycle complete. Sleeping for {actual_sleep:.0f} seconds...")
-                time.sleep(actual_sleep)
-                
-            except Exception as cycle_error:
-                print(f"❌ ERROR IN CYCLE {tiered_system.iteration_counter}: {cycle_error}")
-                import traceback
-                traceback.print_exc()
-                
-                # Save state before continuing (keep this improvement)
-                save_cycle_counter(tiered_system.iteration_counter)
-                save_seen_ids()
-                keyword_manager.save_keyword_data()
-                tiered_system.save_performance_data()
-                
-                print("💾 State saved after error - continuing...")
-                time.sleep(30)  # Brief pause before retry
-                continue
-                
+                        print(f"⚠️ Failed to log stats: {stats_response.status_code}")
+            except Exception as e:
+                print(f"⚠️ Error logging stats: {e}")
+            
+            # Sleep between cycles
+            sleep_duration = 120 if sent_to_discord > 0 else 60  # Shorter sleep if we found items
+            print(f"😴 Cycle complete. Sleeping for {sleep_duration} seconds...")
+            time.sleep(sleep_duration)
+            
     except KeyboardInterrupt:
-        print("👋 Graceful shutdown...")
-        save_cycle_counter(tiered_system.iteration_counter)
+        print("\n🛑 Scraping stopped by user")
         save_seen_ids()
-        keyword_manager.save_keyword_data()
-        tiered_system.save_performance_data()
-        
-    except Exception as fatal_error:
-        print(f"💀 FATAL ERROR: {fatal_error}")
+    except Exception as e:
+        print(f"❌ Critical error in main loop: {e}")
         import traceback
         traceback.print_exc()
-        
-        # Emergency save
-        save_cycle_counter(tiered_system.iteration_counter)
         save_seen_ids()
-        keyword_manager.save_keyword_data()
-        tiered_system.save_performance_data()
-        print("💾 Emergency state save completed")
+        time.sleep(30)  # Wait before potential restart
         
 load_exchange_rate()
 
