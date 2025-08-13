@@ -20,7 +20,12 @@ scraper_app = Flask(__name__)
 
 @scraper_app.route('/health', methods=['GET'])
 def health():
-    return {"status": "healthy", "service": "auction-scraper"}, 200
+    return {
+        "status": "healthy", 
+        "service": "auction-scraper",
+        "cycle": getattr(tiered_system, 'iteration_counter', 0) if 'tiered_system' in globals() else 0,
+        "uptime": time.time() - start_time if 'start_time' in globals() else 0
+    }, 200
 
 @scraper_app.route('/', methods=['GET'])
 def root():
@@ -65,6 +70,29 @@ BASE_URL = "https://auctions.yahoo.co.jp/search/search?p={}&n=50&b={}&{}&minPric
 
 exchange_rate_cache = {"rate": 150.0, "timestamp": 0}
 current_usd_jpy_rate = 147.0
+
+# PERSIST CYCLE COUNTER TO FILE
+def load_cycle_counter():
+    """Load cycle counter from file to survive restarts"""
+    try:
+        if os.path.exists('cycle_counter.json'):
+            with open('cycle_counter.json', 'r') as f:
+                data = json.load(f)
+                return data.get('iteration_counter', 0)
+    except Exception as e:
+        print(f"⚠️ Could not load cycle counter: {e}")
+    return 0
+
+def save_cycle_counter(counter):
+    """Save cycle counter to file"""
+    try:
+        with open('cycle_counter.json', 'w') as f:
+            json.dump({
+                'iteration_counter': counter,
+                'last_updated': datetime.now().isoformat()
+            }, f)
+    except Exception as e:
+        print(f"⚠️ Could not save cycle counter: {e}")
 
 # Enhanced spam detector class
 class EnhancedSpamDetector:
@@ -533,7 +561,10 @@ class EmergencyModeManager:
 
 class OptimizedTieredSystem:
     def __init__(self):
-        self.iteration_counter = 0
+        # Load previous cycle counter instead of starting at 0
+        self.iteration_counter = load_cycle_counter()
+        print(f"🔄 Resumed from cycle {self.iteration_counter}")
+        
         self.performance_tracker = {}
         self.tier_config = {
             'tier_1': {
@@ -581,6 +612,8 @@ class OptimizedTieredSystem:
     
     def next_iteration(self):
         self.iteration_counter += 1
+        # Save after every increment to persist through crashes
+        save_cycle_counter(self.iteration_counter)
     
     def should_search_tier(self, tier_name):
         if tier_name not in self.performance_tracker:
@@ -1734,18 +1767,24 @@ def generate_brand_keywords_simple(brand, brand_info, max_keywords=3):
     return keywords[:max_keywords]
 
 def main_loop():
-    """Main search loop with round-robin brand processing"""
-    print("🎯 Starting ROUND-ROBIN Yahoo Japan Sniper...")
+    """Main search loop with crash recovery"""
+    print("🎯 Starting Yahoo Japan Sniper with CRASH RECOVERY...")
+    
+    # Add crash recovery logging
+    start_time = time.time()
     
     # Start health server for Railway
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
     print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
     
-    # Initialize components
+    # Initialize with persistence
     tiered_system = OptimizedTieredSystem()
     keyword_manager = AdaptiveKeywordManager()
     emergency_manager = EmergencyModeManager()
+    
+    # Add crash recovery logging
+    print(f"🔄 Resuming from CYCLE {tiered_system.iteration_counter}")
     
     print("\n🏆 ROUND-ROBIN SYSTEM INITIALIZED:")
     print("✅ ALL BRANDS EVERY CYCLE - Equal priority")
@@ -1769,214 +1808,232 @@ def main_loop():
     try:
         while True:
             cycle_start_time = datetime.now()
-            tiered_system.next_iteration()
-            
-            print(f"\n🔄 CYCLE {tiered_system.iteration_counter} - {cycle_start_time.strftime('%H:%M:%S')}")
-            
-            total_found = 0
-            quality_filtered = 0
-            sent_to_discord = 0
-            total_errors = 0
-            total_searches = 0
-            
-            # GET ALL BRANDS FOR ROUND-ROBIN PROCESSING
-            all_brands = get_all_brands_round_robin(tiered_system)
-            
-            # PROCESS EACH BRAND EQUALLY (no tier skipping)
-            for brand in all_brands:
-                if brand not in BRAND_DATA:
-                    continue
-                
-                brand_info = BRAND_DATA[brand]
-                brand_start_time = datetime.now()
-                print(f"🎯 Processing: {brand}")
-                
-                # Generate keywords for this brand (simplified approach)
-                keywords = generate_brand_keywords_simple(brand, brand_info, max_keywords=3)
-                brand_finds = 0
-                brand_searches = 0
-                
-                # Search each keyword for this brand
-                for keyword in keywords:
-                    if keyword in keyword_manager.dead_keywords:
-                        continue
-                    
-                    try:
-                        # Search with 2 pages max per keyword
-                        listings, errors = search_yahoo_multi_page_optimized(
-                            keyword, max_pages=2, brand=brand, keyword_manager=keyword_manager
-                        )
-                        total_found += len(listings)
-                        total_errors += errors
-                        total_searches += 1
-                        brand_searches += 1
-                        
-                        # Process quality listings
-                        for listing_data in listings:
-                            if listing_data["auction_id"] in seen_ids:
-                                continue
-                            
-                            quality_filtered += 1
-                            brand_finds += 1
-                            
-                            # Send to Discord
-                            success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
-                                listing_data["title"], 
-                                listing_data["price_jpy"], 
-                                listing_data["zenmarket_url"], 
-                                listing_data["image_url"], 
-                                listing_data["auction_id"]
-                            )
-                            
-                            if success:
-                                seen_ids.add(listing_data["auction_id"])
-                                sent_to_discord += 1
-                                print(f"🎯 {brand}: {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
-                            
-                            time.sleep(0.3)  # Rate limiting
-                        
-                        # Delay between keyword searches
-                        time.sleep(1.0)
-                        
-                    except Exception as e:
-                        print(f"❌ Error searching {keyword} for {brand}: {e}")
-                        total_errors += 1
-                
-                # Report brand performance
-                if brand_finds > 0:
-                    brand_duration = (datetime.now() - brand_start_time).total_seconds()
-                    efficiency = brand_finds / max(1, brand_searches)
-                    print(f"✅ {brand}: {brand_finds} finds from {brand_searches} searches ({efficiency:.2f} efficiency) in {brand_duration:.1f}s")
-                
-                # Update performance tracking (get tier for compatibility)
-                tier_name, _ = tiered_system.get_tier_for_brand(brand)
-                
-                # Ensure tracker exists before updating
-                if tier_name not in tiered_system.performance_tracker:
-                    tiered_system.performance_tracker[tier_name] = {
-                        'total_searches': 0,
-                        'total_finds': 0,
-                        'successful_finds': 0,
-                        'avg_efficiency': 0.0,
-                        'efficiency': 0.0,
-                        'last_find': None,
-                        'last_updated': datetime.now().isoformat()
-                    }
-                
-                tiered_system.update_performance(tier_name, brand_searches, brand_finds)
-                
-                # Delay between brands to prevent overwhelming Yahoo
-                time.sleep(2.0)
-            
-            # Clear seen items every 35 cycles to prevent blocking new finds
-            if tiered_system.iteration_counter % 35 == 0:
-                items_before = len(seen_ids)
-                print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Force clearing {items_before} seen items to refresh search results...")
-                seen_ids.clear()
-                save_seen_ids()
-                
-                try:
-                    conn = sqlite3.connect(SCRAPER_DB)
-                    cursor = conn.cursor()
-                    cursor.execute('DELETE FROM scraped_items')
-                    conn.commit()
-                    conn.close()
-                    print(f"✅ Cleared seen items cache and database - fresh searches incoming!")
-                except Exception as e:
-                    print(f"⚠️ Could not clear database: {e}")
-            
-            # Save data
-            save_seen_ids()
-            if keyword_manager:
-                keyword_manager.save_keyword_data()
-            tiered_system.save_performance_data()
             
             try:
-                # Cycle statistics
-                cycle_end_time = datetime.now()
-                cycle_duration = (cycle_end_time - cycle_start_time).total_seconds()
+                tiered_system.next_iteration()  # This now saves the counter
                 
-                cycle_efficiency = sent_to_discord / max(1, total_searches)
-                conversion_rate = (quality_filtered / max(1, total_found)) * 100 if total_found > 0 else 0
+                print(f"\n🔄 CYCLE {tiered_system.iteration_counter} - {cycle_start_time.strftime('%H:%M:%S')}")
                 
-                print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
-                print(f"⏱️  Duration: {cycle_duration:.1f}s")
-                print(f"🔍 Total searches: {total_searches}")
-                print(f"📊 Raw items found: {total_found}")
-                print(f"✅ Quality filtered: {quality_filtered}")
-                print(f"📤 Sent to Discord: {sent_to_discord}")
-                print(f"❌ HTTP errors: {total_errors}")
-                print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
-                print(f"🎯 Conversion rate: {conversion_rate:.1f}%")
-            except Exception as e:
-                print(f"❌ Error in cycle summary: {e}")
-            
-            # Check Discord bot health periodically
-            if USE_DISCORD_BOT and tiered_system.iteration_counter % 5 == 0:
-                bot_healthy, status = check_discord_bot_health()
-                if not bot_healthy:
-                    print(f"⚠️ Discord bot health check failed: {status}")
-                else:
-                    bot_stats = get_discord_bot_stats()
-                    if bot_stats:
-                        print(f"🤖 Discord Bot: {bot_stats.get('total_listings', 0)} total listings")
-            
-            # Performance insights every 10 cycles
-            if tiered_system.iteration_counter % 10 == 0:
-                print(f"\n🧠 PERFORMANCE INSIGHTS (Cycle {tiered_system.iteration_counter}):")
+                total_found = 0
+                quality_filtered = 0
+                sent_to_discord = 0
+                total_errors = 0
+                total_searches = 0
                 
-                if keyword_manager and keyword_manager.keyword_performance:
-                    active_keywords = len([k for k, v in keyword_manager.keyword_performance.items() if v.get('consecutive_fails', 0) < 5])
-                    dead_keywords = len(keyword_manager.dead_keywords)
-                    hot_keywords = len(keyword_manager.hot_keywords)
+                # GET ALL BRANDS FOR ROUND-ROBIN PROCESSING
+                all_brands = get_all_brands_round_robin(tiered_system)
+                
+                # PROCESS EACH BRAND EQUALLY (no tier skipping)
+                for brand in all_brands:
+                    if brand not in BRAND_DATA:
+                        continue
                     
-                    print(f"📈 Keywords: {active_keywords} active, {hot_keywords} hot, {dead_keywords} dead")
+                    brand_info = BRAND_DATA[brand]
+                    brand_start_time = datetime.now()
+                    print(f"🎯 Processing: {brand}")
+                    
+                    # Generate keywords for this brand (simplified approach)
+                    keywords = generate_brand_keywords_simple(brand, brand_info, max_keywords=3)
+                    brand_finds = 0
+                    brand_searches = 0
+                    
+                    # Search each keyword for this brand
+                    for keyword in keywords:
+                        if keyword in keyword_manager.dead_keywords:
+                            continue
+                        
+                        try:
+                            # Search with 2 pages max per keyword
+                            listings, errors = search_yahoo_multi_page_optimized(
+                                keyword, max_pages=2, brand=brand, keyword_manager=keyword_manager
+                            )
+                            total_found += len(listings)
+                            total_errors += errors
+                            total_searches += 1
+                            brand_searches += 1
+                            
+                            # Process quality listings
+                            for listing_data in listings:
+                                if listing_data["auction_id"] in seen_ids:
+                                    continue
+                                
+                                quality_filtered += 1
+                                brand_finds += 1
+                                
+                                # Send to Discord
+                                success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
+                                    listing_data["title"], 
+                                    listing_data["price_jpy"], 
+                                    listing_data["zenmarket_url"], 
+                                    listing_data["image_url"], 
+                                    listing_data["auction_id"]
+                                )
+                                
+                                if success:
+                                    seen_ids.add(listing_data["auction_id"])
+                                    sent_to_discord += 1
+                                    print(f"🎯 {brand}: {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
+                                
+                                time.sleep(0.3)  # Rate limiting
+                            
+                            # Delay between keyword searches
+                            time.sleep(1.0)
+                            
+                        except Exception as e:
+                            print(f"❌ Error searching {keyword} for {brand}: {e}")
+                            total_errors += 1
+                    
+                    # Report brand performance
+                    if brand_finds > 0:
+                        brand_duration = (datetime.now() - brand_start_time).total_seconds()
+                        efficiency = brand_finds / max(1, brand_searches)
+                        print(f"✅ {brand}: {brand_finds} finds from {brand_searches} searches ({efficiency:.2f} efficiency) in {brand_duration:.1f}s")
+                    
+                    # Update performance tracking (get tier for compatibility)
+                    tier_name, _ = tiered_system.get_tier_for_brand(brand)
+                    
+                    # Ensure tracker exists before updating
+                    if tier_name not in tiered_system.performance_tracker:
+                        tiered_system.performance_tracker[tier_name] = {
+                            'total_searches': 0,
+                            'total_finds': 0,
+                            'successful_finds': 0,
+                            'avg_efficiency': 0.0,
+                            'efficiency': 0.0,
+                            'last_find': None,
+                            'last_updated': datetime.now().isoformat()
+                        }
+                    
+                    tiered_system.update_performance(tier_name, brand_searches, brand_finds)
+                    
+                    # Delay between brands to prevent overwhelming Yahoo
+                    time.sleep(2.0)
                 
-                for tier_name, tracker in tiered_system.performance_tracker.items():
-                    if tracker['total_searches'] > 0:
-                        print(f"📊 {tier_name.upper()}: {tracker['avg_efficiency']:.2f} avg efficiency")
-            
-            # Dynamic sleep timing based on performance
-            base_sleep_time = 300  # 5 minutes base
-            if cycle_efficiency > 0.2:
-                sleep_time = base_sleep_time - 60
-                print(f"🚀 High efficiency detected, reducing sleep to {sleep_time}s")
-            elif cycle_efficiency < 0.05:
-                sleep_time = base_sleep_time + 60
-                print(f"⚠️ Low efficiency, extending sleep to {sleep_time}s")
-            else:
-                sleep_time = base_sleep_time
-            
-            # Log scraper statistics to database
-            log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches)
-            
-            actual_sleep = max(180, sleep_time - cycle_duration)  # 3 minutes minimum
-            print(f"⏳ Cycle complete. Sleeping for {actual_sleep:.0f} seconds...")
-            time.sleep(actual_sleep)
+                # IMPORTANT: Add memory cleanup every 10 cycles
+                if tiered_system.iteration_counter % 10 == 0:
+                    import gc
+                    gc.collect()  # Force garbage collection
+                    print(f"🧹 Memory cleanup completed at cycle {tiered_system.iteration_counter}")
+                
+                # Reduce clear frequency and add logging
+                if tiered_system.iteration_counter % 25 == 0:  # Changed from 35
+                    items_before = len(seen_ids)
+                    print(f"🗑️ CYCLE {tiered_system.iteration_counter}: Force clearing {items_before} seen items...")
+                    seen_ids.clear()
+                    save_seen_ids()
+                    print(f"✅ Cleared {items_before} seen items - fresh searches incoming!")
+                    
+                    try:
+                        conn = sqlite3.connect(SCRAPER_DB)
+                        cursor = conn.cursor()
+                        cursor.execute('DELETE FROM scraped_items')
+                        conn.commit()
+                        conn.close()
+                        print(f"✅ Cleared seen items cache and database - fresh searches incoming!")
+                    except Exception as e:
+                        print(f"⚠️ Could not clear database: {e}")
+                
+                # Save all data more frequently
+                save_seen_ids()
+                keyword_manager.save_keyword_data()
+                tiered_system.save_performance_data()
+                
+                try:
+                    # Cycle statistics
+                    cycle_end_time = datetime.now()
+                    cycle_duration = (cycle_end_time - cycle_start_time).total_seconds()
+                    
+                    cycle_efficiency = sent_to_discord / max(1, total_searches)
+                    conversion_rate = (quality_filtered / max(1, total_found)) * 100 if total_found > 0 else 0
+                    
+                    print(f"\n📊 CYCLE {tiered_system.iteration_counter} SUMMARY:")
+                    print(f"⏱️  Duration: {cycle_duration:.1f}s")
+                    print(f"🔍 Total searches: {total_searches}")
+                    print(f"📊 Raw items found: {total_found}")
+                    print(f"✅ Quality filtered: {quality_filtered}")
+                    print(f"📤 Sent to Discord: {sent_to_discord}")
+                    print(f"❌ HTTP errors: {total_errors}")
+                    print(f"⚡ Cycle efficiency: {cycle_efficiency:.3f} finds per search")
+                    print(f"🎯 Conversion rate: {conversion_rate:.1f}%")
+                except Exception as e:
+                    print(f"❌ Error in cycle summary: {e}")
+                
+                # Check Discord bot health periodically
+                if USE_DISCORD_BOT and tiered_system.iteration_counter % 5 == 0:
+                    bot_healthy, status = check_discord_bot_health()
+                    if not bot_healthy:
+                        print(f"⚠️ Discord bot health check failed: {status}")
+                    else:
+                        bot_stats = get_discord_bot_stats()
+                        if bot_stats:
+                            print(f"🤖 Discord Bot: {bot_stats.get('total_listings', 0)} total listings")
+                
+                # Performance insights every 10 cycles
+                if tiered_system.iteration_counter % 10 == 0:
+                    print(f"\n🧠 PERFORMANCE INSIGHTS (Cycle {tiered_system.iteration_counter}):")
+                    
+                    if keyword_manager and keyword_manager.keyword_performance:
+                        active_keywords = len([k for k, v in keyword_manager.keyword_performance.items() if v.get('consecutive_fails', 0) < 5])
+                        dead_keywords = len(keyword_manager.dead_keywords)
+                        hot_keywords = len(keyword_manager.hot_keywords)
+                        
+                        print(f"📈 Keywords: {active_keywords} active, {hot_keywords} hot, {dead_keywords} dead")
+                    
+                    for tier_name, tracker in tiered_system.performance_tracker.items():
+                        if tracker['total_searches'] > 0:
+                            print(f"📊 {tier_name.upper()}: {tracker['avg_efficiency']:.2f} avg efficiency")
+                
+                # Dynamic sleep timing based on performance
+                base_sleep_time = 300  # 5 minutes base
+                if cycle_efficiency > 0.2:
+                    sleep_time = base_sleep_time - 60
+                    print(f"🚀 High efficiency detected, reducing sleep to {sleep_time}s")
+                elif cycle_efficiency < 0.05:
+                    sleep_time = base_sleep_time + 60
+                    print(f"⚠️ Low efficiency, extending sleep to {sleep_time}s")
+                else:
+                    sleep_time = base_sleep_time
+                
+                # Log scraper statistics to database
+                log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_errors, total_searches)
+                
+                actual_sleep = max(180, sleep_time - cycle_duration)  # 3 minutes minimum
+                print(f"⏳ Cycle complete. Sleeping for {actual_sleep:.0f} seconds...")
+                time.sleep(actual_sleep)
+                
+            except Exception as cycle_error:
+                print(f"❌ ERROR IN CYCLE {tiered_system.iteration_counter}: {cycle_error}")
+                import traceback
+                traceback.print_exc()
+                
+                # Save state before continuing
+                save_cycle_counter(tiered_system.iteration_counter)
+                save_seen_ids()
+                keyword_manager.save_keyword_data()
+                tiered_system.save_performance_data()
+                
+                print("💾 State saved after error - continuing...")
+                time.sleep(30)  # Brief pause before retry
+                continue
             
     except KeyboardInterrupt:
-        print("\n🛑 Graceful shutdown initiated...")
+        print("👋 Graceful shutdown...")
+        save_cycle_counter(tiered_system.iteration_counter)
         save_seen_ids()
-        if keyword_manager:
-            keyword_manager.save_keyword_data()
+        keyword_manager.save_keyword_data()
         tiered_system.save_performance_data()
-        print("✅ Exiting gracefully with all data saved.")
-    except Exception as e:
-        print(f"❌ Fatal error in main loop: {e}")
+        
+    except Exception as fatal_error:
+        print(f"💀 FATAL ERROR: {fatal_error}")
         import traceback
         traceback.print_exc()
         
-        # Save data before crashing
-        try:
-            save_seen_ids()
-            if keyword_manager:
-                keyword_manager.save_keyword_data()
-            tiered_system.save_performance_data()
-            print("✅ Emergency data save completed")
-        except:
-            print("❌ Emergency data save failed")
-        
-        raise
+        # Emergency save
+        save_cycle_counter(tiered_system.iteration_counter)
+        save_seen_ids()
+        keyword_manager.save_keyword_data()
+        tiered_system.save_performance_data()
+        print("💾 Emergency state save completed")
 
 load_exchange_rate()
 
