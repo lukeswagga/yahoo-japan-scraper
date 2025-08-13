@@ -2184,11 +2184,19 @@ def webhook():
 @app.route('/check_duplicate/<auction_id>', methods=['GET'])
 def check_duplicate(auction_id):
     try:
-        existing = db_manager.execute_query(
-            'SELECT auction_id FROM listings WHERE auction_id = ?',
-            (auction_id,),
-            fetch_one=True
-        )
+        # FIXED: Use proper placeholder for PostgreSQL
+        if db_manager.use_postgres:
+            existing = db_manager.execute_query(
+                'SELECT auction_id FROM listings WHERE auction_id = %s',
+                (auction_id,),
+                fetch_one=True
+            )
+        else:
+            existing = db_manager.execute_query(
+                'SELECT auction_id FROM listings WHERE auction_id = ?',
+                (auction_id,),
+                fetch_one=True
+            )
         
         return jsonify({
             'exists': existing is not None,
