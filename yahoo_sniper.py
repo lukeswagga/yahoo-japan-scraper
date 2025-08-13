@@ -1851,7 +1851,7 @@ def main_loop():
                                 total_searches += 1
                                 tier_searches += 1
                                 
-                                # CRITICAL: Process each listing (THIS WAS MISSING)
+                                # IMMEDIATE SENDING: Process each listing as it's found
                                 for listing_data in listings:
                                     if listing_data["auction_id"] in seen_ids:
                                         continue
@@ -1859,23 +1859,43 @@ def main_loop():
                                     quality_filtered += 1
                                     tier_finds += 1
                                     
-                                    # Send to Discord using WORKING method
-                                    success = send_to_discord_bot(listing_data) if USE_DISCORD_BOT else send_discord_alert_fallback(
-                                        listing_data["title"], 
-                                        listing_data["price_jpy"], 
-                                        listing_data["zenmarket_url"], 
-                                        listing_data["image_url"], 
-                                        listing_data["auction_id"]
-                                    )
+                                    try:
+                                        # IMMEDIATE SEND: Send directly to Discord bot webhook
+                                        if USE_DISCORD_BOT:
+                                            response = requests.post(
+                                                f"{DISCORD_BOT_URL}/webhook/listing",
+                                                json=listing_data,
+                                                timeout=10
+                                            )
+                                            
+                                            if response.status_code == 200:
+                                                seen_ids.add(listing_data["auction_id"])
+                                                sent_to_discord += 1
+                                                
+                                                priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
+                                                print(f"{priority_emoji} SENT: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f}) - {listing_data['deal_quality']:.1%} deal")
+                                            else:
+                                                print(f"❌ Discord bot failed: {response.status_code} - {response.text}")
+                                        else:
+                                            # Fallback method
+                                            success = send_discord_alert_fallback(
+                                                listing_data["title"], 
+                                                listing_data["price_jpy"], 
+                                                listing_data["zenmarket_url"], 
+                                                listing_data["image_url"], 
+                                                listing_data["auction_id"]
+                                            )
+                                            
+                                            if success:
+                                                seen_ids.add(listing_data["auction_id"])
+                                                sent_to_discord += 1
+                                                print(f"✅ SENT: {listing_data['title'][:40]}...")
                                     
-                                    if success:
-                                        seen_ids.add(listing_data["auction_id"])
-                                        sent_to_discord += 1
-                                        
-                                        priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
-                                        print(f"{priority_emoji} {tier_name.upper()}: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f}) - {listing_data['deal_quality']:.1%} deal")
+                                    except Exception as e:
+                                        print(f"❌ Error sending listing {listing_data['auction_id']}: {e}")
                                     
-                                    time.sleep(0.5)
+                                    # Small delay between individual sends
+                                    time.sleep(0.3)
                                 
                                 # Delay between keywords
                                 time.sleep(tier_config.get('delay', 2.0))
