@@ -882,7 +882,7 @@ async def process_batch_buffer():
         # The old batch logic is commented out since we're sending immediately
 
 async def send_single_listing_enhanced(auction_data):
-    """Enhanced single listing sender with FIXED PostgreSQL queries"""
+    """Enhanced single listing sender with proper database handling"""
     try:
         auction_id = auction_data.get('auction_id')
         title = auction_data.get('title', 'Unknown Title')
@@ -890,7 +890,7 @@ async def send_single_listing_enhanced(auction_data):
         
         print(f"🔍 Processing: {auction_id} - {title[:50]}...")
         
-        # FIXED: Use proper PostgreSQL placeholder syntax
+        # Use proper database syntax
         if db_manager.use_postgres:
             existing = db_manager.execute_query(
                 'SELECT auction_id FROM listings WHERE auction_id = %s',
@@ -931,7 +931,7 @@ async def send_single_listing_enhanced(auction_data):
                 return False
             
         except discord.HTTPException as e:
-            print(f"❌ Discord HTTP error sending to main channel: {e}")
+            print(f"❌ Discord HTTP error: {e}")
             return False
         except Exception as e:
             print(f"❌ Error sending to main channel: {e}")
@@ -947,7 +947,6 @@ async def send_single_listing_enhanced(auction_data):
                     print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
             except Exception as e:
                 print(f"⚠️ Error sending to brand channel: {e}")
-                # Don't fail the whole operation if brand channel fails
         
         return True
         
@@ -3497,7 +3496,6 @@ async def preferences_command(ctx):
         
         embed.add_field(
             name="🛒 Proxy Service",
-            value=f"{proxy_info['emoji']} {proxy_info['name']}",
             value=f"{proxy_info['emoji']} {proxy_info['name']}",
             inline=True
         )

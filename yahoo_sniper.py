@@ -2373,5 +2373,192 @@ def log_scraper_stats(total_found, quality_filtered, sent_to_discord, total_erro
     except Exception as e:
         print(f"⚠️ Could not log stats: {e}")
 
+# Add these missing functions to your yahoo_sniper.py
+
+def load_seen_ids():
+    """Load seen auction IDs from file"""
+    try:
+        if os.path.exists(SEEN_FILE):
+            with open(SEEN_FILE, 'r') as f:
+                data = json.load(f)
+                return set(data)
+        return set()
+    except Exception as e:
+        print(f"❌ Error loading seen IDs: {e}")
+        return set()
+
+def save_seen_ids():
+    """Save seen auction IDs to file"""
+    try:
+        with open(SEEN_FILE, 'w') as f:
+            json.dump(list(seen_ids), f)
+        print(f"💾 Saved {len(seen_ids)} seen IDs")
+    except Exception as e:
+        print(f"❌ Error saving seen IDs: {e}")
+
+def get_usd_jpy_rate():
+    """Get USD to JPY exchange rate"""
+    global exchange_rate_cache
+    
+    current_time = time.time()
+    
+    # Use cached rate if less than 1 hour old
+    if exchange_rate_cache.get("timestamp", 0) > current_time - 3600:
+        return exchange_rate_cache["rate"]
+    
+    try:
+        response = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            rate = data["rates"]["JPY"]
+            if rate and 100 < rate < 200:
+                exchange_rate_cache = {"rate": float(rate), "timestamp": current_time}
+                print(f"✅ Updated exchange rate: 1 USD = {rate:.2f} JPY")
+                return rate
+    except Exception as e:
+        print(f"❌ Failed to get exchange rate: {e}")
+    
+    # Use fallback rate
+    fallback_rate = exchange_rate_cache.get("rate", 150.0)
+    print(f"⚠️ Using fallback exchange rate: 1 USD = {fallback_rate:.2f} JPY")
+    return fallback_rate
+
+def convert_jpy_to_usd(jpy_amount):
+    """Convert JPY to USD"""
+    rate = get_usd_jpy_rate()
+    return jpy_amount / rate
+
+def load_exchange_rate():
+    """Load exchange rate from file"""
+    global exchange_rate_cache
+    try:
+        if os.path.exists(EXCHANGE_RATE_FILE):
+            with open(EXCHANGE_RATE_FILE, 'r') as f:
+                exchange_rate_cache = json.load(f)
+                print(f"📈 Loaded exchange rate: {exchange_rate_cache.get('rate', 150.0)}")
+    except Exception as e:
+        print(f"❌ Error loading exchange rate: {e}")
+        exchange_rate_cache = {"rate": 150.0, "timestamp": 0}
+
+def save_exchange_rate():
+    """Save exchange rate to file"""
+    try:
+        with open(EXCHANGE_RATE_FILE, 'w') as f:
+            json.dump(exchange_rate_cache, f)
+    except Exception as e:
+        print(f"❌ Error saving exchange rate: {e}")
+
+# Initialize global variables
+seen_ids = set()
+start_time = time.time()
+
+# Add this simple main_loop function to replace the broken one:
+def main_loop():
+    """Simple working main loop"""
+    print("🎯 Starting Yahoo Japan Sniper...")
+    
+    # Start health server for Railway
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
+    print(f"🌐 Health server started on port {os.environ.get('PORT', 8000)}")
+    
+    # Load initial data
+    global seen_ids
+    seen_ids = load_seen_ids()
+    get_usd_jpy_rate()
+    
+    # Test Discord bot connection
+    if USE_DISCORD_BOT:
+        bot_healthy, status = check_discord_bot_health()
+        if bot_healthy:
+            print("✅ Discord bot is healthy and ready")
+        else:
+            print(f"⚠️ Discord bot status: {status}")
+    
+    print(f"💰 Price range: ${MIN_PRICE_USD} - ${MAX_PRICE_USD}")
+    print(f"⭐ Quality threshold: {PRICE_QUALITY_THRESHOLD:.1%}")
+    
+    iteration = 0
+    
+    try:
+        while True:
+            iteration += 1
+            start_time = datetime.now()
+            
+            print(f"\n🔄 ITERATION {iteration} - {start_time.strftime('%H:%M:%S')}")
+            
+            total_found = 0
+            quality_filtered = 0
+            sent_to_discord = 0
+            total_errors = 0
+            
+            # Simple search with basic brands
+            basic_brands = ['Comme Des Garcons', 'Rick Owens', 'Raf Simons', 'Undercover', 'Maison Margiela']
+            
+            for brand in basic_brands:
+                try:
+                    print(f"🔍 Searching: {brand}")
+                    
+                    # Search for the brand
+                    listings, errors = search_yahoo_multi_page_optimized(brand, 2, "basic", None)
+                    total_found += len(listings)
+                    total_errors += errors
+                    
+                    # Process up to 5 listings per brand
+                    for listing_data in listings[:5]:
+                        try:
+                            quality_filtered += 1
+                            
+                            # Send to Discord bot
+                            success = send_to_discord_bot(listing_data)
+                            
+                            if success:
+                                seen_ids.add(listing_data["auction_id"])
+                                sent_to_discord += 1
+                                print(f"✅ SENT: {listing_data['brand']} - ${listing_data['price_usd']:.2f}")
+                            
+                            time.sleep(0.5)
+                            
+                        except Exception as e:
+                            print(f"❌ Error processing listing: {e}")
+                            total_errors += 1
+                    
+                    time.sleep(2)  # Delay between brands
+                    
+                except Exception as e:
+                    print(f"❌ Error searching {brand}: {e}")
+                    total_errors += 1
+                    continue
+            
+            # Save seen IDs
+            save_seen_ids()
+            
+            # Log summary
+            duration = (datetime.now() - start_time).total_seconds()
+            
+            print(f"\n📊 ITERATION {iteration} SUMMARY:")
+            print(f"⏱️ Duration: {duration:.1f}s")
+            print(f"🔍 Brands searched: {len(basic_brands)}")
+            print(f"📊 Raw items found: {total_found}")
+            print(f"✅ Quality filtered: {quality_filtered}")
+            print(f"📤 Sent to Discord: {sent_to_discord}")
+            print(f"❌ Errors: {total_errors}")
+            
+            success_rate = (sent_to_discord / quality_filtered * 100) if quality_filtered > 0 else 0
+            print(f"📈 Success rate: {success_rate:.1f}%")
+            
+            print(f"😴 Sleeping for 120 seconds...")
+            time.sleep(120)
+            
+    except KeyboardInterrupt:
+        print("\n🛑 Scraping stopped by user")
+        save_seen_ids()
+    except Exception as e:
+        print(f"❌ Critical error: {e}")
+        import traceback
+        traceback.print_exc()
+        save_seen_ids()
+        time.sleep(30)
+
 if __name__ == "__main__":
     main_loop()
