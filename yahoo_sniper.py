@@ -35,14 +35,16 @@ def run_health_server():
     port = int(os.environ.get('PORT', 8000))
     scraper_app.run(host='0.0.0.0', port=port, debug=False)
 
-DISCORD_BOT_WEBHOOK = os.getenv('DISCORD_BOT_WEBHOOK', "http://localhost:8000/webhook")
-DISCORD_BOT_HEALTH = os.getenv('DISCORD_BOT_HEALTH', "http://localhost:8000/health") 
-DISCORD_BOT_STATS = os.getenv('DISCORD_BOT_STATS', "http://localhost:8000/stats")
-DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'http://localhost:8000')
-# Add this validation
+# Discord Bot Configuration for Railway
+DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'https://motivated-stillness-production.up.railway.app')
+USE_DISCORD_BOT = os.getenv('USE_DISCORD_BOT', 'true').lower() == 'true'
+
+# Validate Discord Bot URL
 if DISCORD_BOT_URL and not DISCORD_BOT_URL.startswith(('http://', 'https://')):
     DISCORD_BOT_URL = f"https://{DISCORD_BOT_URL}"
-USE_DISCORD_BOT = True
+
+print(f"🌐 Discord Bot URL: {DISCORD_BOT_URL}")
+print(f"🤖 Use Discord Bot: {USE_DISCORD_BOT}")
 
 MAX_PRICE_YEN = 100000
 SEEN_FILE = "seen_yahoo.json"
