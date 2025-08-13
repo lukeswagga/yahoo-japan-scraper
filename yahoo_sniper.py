@@ -1791,6 +1791,10 @@ def main_loop():
     # Initial setup
     get_usd_jpy_rate()
     
+    # DEBUG: Print Discord bot configuration
+    print(f"🌐 DISCORD_BOT_URL: {DISCORD_BOT_URL}")
+    print(f"🤖 USE_DISCORD_BOT: {USE_DISCORD_BOT}")
+    
     if USE_DISCORD_BOT:
         bot_healthy, status = check_discord_bot_health()
         if bot_healthy:
@@ -1859,43 +1863,36 @@ def main_loop():
                                     quality_filtered += 1
                                     tier_finds += 1
                                     
-                                    try:
-                                        # IMMEDIATE SEND: Send directly to Discord bot webhook
-                                        if USE_DISCORD_BOT:
-                                            response = requests.post(
-                                                f"{DISCORD_BOT_URL}/webhook/listing",
-                                                json=listing_data,
-                                                timeout=10
-                                            )
+                                    # DEBUG: Print what we're about to send
+                                    print(f"🔄 ATTEMPTING TO SEND: {listing_data['auction_id']} - {listing_data['title'][:40]}...")
+                                    
+                                    # SEND IMMEDIATELY - NO TRY/EXCEPT TO HIDE ERRORS
+                                    if USE_DISCORD_BOT:
+                                        print(f"🌐 Sending to: {DISCORD_BOT_URL}/webhook/listing")
+                                        
+                                        response = requests.post(
+                                            f"{DISCORD_BOT_URL}/webhook/listing",
+                                            json=listing_data,
+                                            timeout=10,
+                                            headers={'Content-Type': 'application/json'}
+                                        )
+                                        
+                                        print(f"📡 Response status: {response.status_code}")
+                                        print(f"📡 Response text: {response.text}")
+                                        
+                                        if response.status_code == 200:
+                                            seen_ids.add(listing_data["auction_id"])
+                                            sent_to_discord += 1
                                             
-                                            if response.status_code == 200:
-                                                seen_ids.add(listing_data["auction_id"])
-                                                sent_to_discord += 1
-                                                
-                                                priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
-                                                print(f"{priority_emoji} SENT: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f}) - {listing_data['deal_quality']:.1%} deal")
-                                            else:
-                                                print(f"❌ Discord bot failed: {response.status_code} - {response.text}")
+                                            priority_emoji = "🔥" if listing_data["priority"] >= 100 else "🌟" if listing_data["priority"] >= 70 else "✨"
+                                            print(f"{priority_emoji} ✅ SENT: {listing_data['brand']} - {listing_data['title'][:40]}... - ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
                                         else:
-                                            # Fallback method
-                                            success = send_discord_alert_fallback(
-                                                listing_data["title"], 
-                                                listing_data["price_jpy"], 
-                                                listing_data["zenmarket_url"], 
-                                                listing_data["image_url"], 
-                                                listing_data["auction_id"]
-                                            )
-                                            
-                                            if success:
-                                                seen_ids.add(listing_data["auction_id"])
-                                                sent_to_discord += 1
-                                                print(f"✅ SENT: {listing_data['title'][:40]}...")
+                                            print(f"❌ SEND FAILED: Status {response.status_code} - {response.text}")
+                                    else:
+                                        print("❌ USE_DISCORD_BOT is False!")
                                     
-                                    except Exception as e:
-                                        print(f"❌ Error sending listing {listing_data['auction_id']}: {e}")
-                                    
-                                    # Small delay between individual sends
-                                    time.sleep(0.3)
+                                    # Small delay between sends
+                                    time.sleep(0.5)
                                 
                                 # Delay between keywords
                                 time.sleep(tier_config.get('delay', 2.0))
