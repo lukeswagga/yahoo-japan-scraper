@@ -341,23 +341,48 @@ class AdaptiveTieredSystem:
         return config
     
     def update_performance(self, tier_name, searches_made, finds_count):
+        """Update performance tracking with full defensive initialization"""
         if tier_name not in self.performance_tracker:
             self.performance_tracker[tier_name] = {
                 'total_searches': 0,
+                'total_finds': 0,           # KEY FIX: Add this missing field
                 'successful_finds': 0,
                 'last_find': None,
-                'avg_efficiency': 0.0
+                'avg_efficiency': 0.0,
+                'efficiency': 0.0,
+                'last_updated': datetime.now().isoformat()
             }
         
         tracker = self.performance_tracker[tier_name]
+        
+        # Additional defensive checks for existing entries
+        if 'total_searches' not in tracker:
+            tracker['total_searches'] = 0
+        if 'total_finds' not in tracker:
+            tracker['total_finds'] = 0
+        if 'successful_finds' not in tracker:
+            tracker['successful_finds'] = 0
+        if 'avg_efficiency' not in tracker:
+            tracker['avg_efficiency'] = 0.0
+        if 'efficiency' not in tracker:
+            tracker['efficiency'] = 0.0
+        if 'last_updated' not in tracker:
+            tracker['last_updated'] = datetime.now().isoformat()
+        
+        # Update all relevant fields
         tracker['total_searches'] += searches_made
+        tracker['total_finds'] += finds_count      # This was missing before
         tracker['successful_finds'] += finds_count
         
         if finds_count > 0:
             tracker['last_find'] = datetime.now().isoformat()
         
+        # Calculate efficiency using total_finds
         if tracker['total_searches'] > 0:
-            tracker['avg_efficiency'] = tracker['successful_finds'] / tracker['total_searches']
+            tracker['avg_efficiency'] = tracker['total_finds'] / tracker['total_searches']
+            tracker['efficiency'] = tracker['avg_efficiency']  # Keep both for compatibility
+        
+        tracker['last_updated'] = datetime.now().isoformat()
     
     def detect_low_volume(self, total_sent):
         if total_sent <= 5:
@@ -1788,6 +1813,23 @@ def main_loop():
                         
                         time.sleep(0.5)
                 
+                # BEFORE calling tiered_system.update_performance, add this check:
+                if not hasattr(tiered_system, 'performance_tracker'):
+                    tiered_system.performance_tracker = {}
+                
+                # Ensure tier exists in tracker before updating
+                if tier_name not in tiered_system.performance_tracker:
+                    tiered_system.performance_tracker[tier_name] = {
+                        'total_searches': 0,
+                        'total_finds': 0,
+                        'successful_finds': 0,
+                        'avg_efficiency': 0.0,
+                        'efficiency': 0.0,
+                        'last_find': None,
+                        'last_updated': datetime.now().isoformat()
+                    }
+                
+                # NOW it's safe to call:
                 tiered_system.update_performance(tier_name, tier_searches, tier_finds)
                 
                 if tier_finds > 0:
