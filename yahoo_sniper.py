@@ -69,51 +69,97 @@ current_usd_jpy_rate = 147.0
 # Enhanced spam detector class
 class EnhancedSpamDetector:
     def __init__(self):
-        self.spam_patterns = [
+        # Enhanced exclusion terms - more comprehensive
+        self.excluded_terms = [
+            # Vehicles & Parts
+            'automobile', 'motorcycle', 'motorbike', 'scooter', 'バイク', 'モーターサイクル',
+            'car', 'truck', 'vehicle', '自動車', 'カー', 'トラック',
+            'engine', 'エンジン', 'parts', 'パーツ', 'wheels', 'タイヤ',
+            'cb400', 'vtr250', 'cbx', 'jade', 'hornet', 'undercowl',
+            'cb', 'vtr', 'honda', 'yamaha', 'suzuki', 'kawasaki',
+            
+            # Toys & Games
+            'toy', 'おもちゃ', 'game', 'ゲーム', 'figure', 'フィギュア', 
+            'doll', 'ドール', 'puzzle', 'パズル', 'pokemon', 'ポケモン',
+            'trading card', 'トレーディングカード', 'anime', 'アニメ',
+            'manga', 'マンガ', 'model kit', 'プラモデル',
+            
+            # Electronics (general)
+            'computer', 'pc', 'smartphone', 'iphone', 'android', 'tablet',
+            'スマートフォン', 'コンピューター', 'タブレット', 'laptop',
+            'server', 'motherboard', 'graphics card', 'ram', 'ssd',
+            
+            # Food & Consumables
+            'food', '食品', 'drink', '飲料', 'supplement', 'perfume', '香水',
+            'cosmetics', '化粧品', 'medicine', '薬', 'snack', 'お菓子',
+            
+            # Sports Equipment
+            'bicycle', '自転車', 'golf', 'ゴルフ', 'fishing', '釣り',
+            'tennis', 'テニス', 'baseball', '野球', 'football', 'サッカー',
+            
+            # Home Goods
+            'furniture', '家具', 'appliance', '家電', 'kitchen', 'キッチン',
+            'bedding', '寝具', 'curtain', 'カーテン',
+            
             # Obvious replicas/fakes
-            r'(?i)(replica|fake|copy|knock.?off|bootleg|unauthorized)',
-            r'(?i)(スーパーコピー|レプリカ|偽物|コピー品)',
+            'replica', 'fake', 'copy', 'knock off', 'bootleg', 'unauthorized',
+            'スーパーコピー', 'レプリカ', '偽物', 'コピー品',
             
             # Non-clothing items that often appear
-            r'(?i)(book|magazine|catalogue|catalog|cd|dvd|poster|sticker)',
-            r'(?i)(本|雑誌|カタログ|ポスター|ステッカー|写真)',
+            'book', 'magazine', 'catalogue', 'catalog', 'cd', 'dvd', 'poster', 'sticker',
+            '本', '雑誌', 'カタログ', 'ポスター', 'ステッカー', '写真',
             
             # Damaged/parts only
-            r'(?i)(damaged|broken|parts?.only|repair|restoration)',
-            r'(?i)(破損|破れ|汚れ|ダメージ|部品のみ)',
+            'damaged', 'broken', 'parts only', 'repair', 'restoration',
+            '破損', '破れ', '汚れ', 'ダメージ', '部品のみ',
             
             # Obvious non-fashion
-            r'(?i)(phone.?case|iphone|android|computer|laptop)',
-            r'(?i)(ケース|スマホ|携帯|パソコン)'
+            'phone case', 'iphone', 'android', 'computer', 'laptop',
+            'ケース', 'スマホ', '携帯', 'パソコン'
         ]
         
         self.brand_specific_spam = {
             'Stone Island': [
-                r'(?i)(badge.only|patch.only|logo.only)',
-                r'(?i)(バッジのみ|ワッペンのみ)'
+                'badge only', 'patch only', 'logo only',
+                'バッジのみ', 'ワッペンのみ'
             ],
             'Rick Owens': [
-                r'(?i)(inspired|style|similar)',
-                r'(?i)(風|っぽい|系)'
+                'inspired', 'style', 'similar',
+                '風', 'っぽい', '系'
             ]
         }
     
-    def is_spam(self, title, brand=None):
-        """Enhanced spam detection with brand-specific rules"""
+    def is_spam(self, title, brand=None, item=None):
+        """Enhanced spam detection with category checking"""
         if not title:
             return True, "empty_title"
         
         title_lower = title.lower()
         
-        # Check general spam patterns
-        for pattern in self.spam_patterns:
-            if re.search(pattern, title):
-                return True, f"spam_pattern: {pattern}"
+        # Check for excluded terms in title
+        for excluded in self.excluded_terms:
+            if excluded in title_lower:
+                print(f"🚫 Excluded term detected: {excluded} in title")
+                return True, f"excluded_term: {excluded}"
+        
+        # Check category if item is provided
+        if item:
+            # Check URL category
+            if not check_url_category(item):
+                return True, "blocked_url_category"
+            
+            # Check extracted category
+            category_text = extract_category_from_item(item)
+            if category_text:
+                is_blocked, blocked_category = is_blocked_category(category_text)
+                if is_blocked:
+                    print(f"🚫 Blocked category detected: {blocked_category}")
+                    return True, f"blocked_category: {blocked_category}"
         
         # Check brand-specific spam patterns
         if brand and brand in self.brand_specific_spam:
             for pattern in self.brand_specific_spam[brand]:
-                if re.search(pattern, title):
+                if pattern in title_lower:
                     return True, f"brand_spam: {brand}"
         
         # Length checks
@@ -131,6 +177,112 @@ class EnhancedSpamDetector:
             return True, "low_alpha_ratio"
         
         return False, "passed_all_checks"
+
+def extract_category_from_item(item):
+    """Extract Yahoo Auctions category from item"""
+    try:
+        # Look for category breadcrumb or category indicators
+        category_selectors = [
+            '.Product__path',
+            '.Product__category', 
+            '.category-path',
+            '[data-category]',
+            '.breadcrumb',
+            '.CategoryPath',
+            '.category'
+        ]
+        
+        for selector in category_selectors:
+            category_elem = item.select_one(selector)
+            if category_elem:
+                category_text = category_elem.get_text(strip=True).lower()
+                return category_text
+        
+        # Also check the item URL for category hints
+        links = item.find_all('a', href=True)
+        for link in links:
+            href = link['href']
+            if 'category' in href:
+                # Extract category from URL
+                if 'auto' in href or 'motorcycle' in href or 'toy' in href:
+                    return href
+        
+        return None
+    except:
+        return None
+
+def is_blocked_category(category_text):
+    """Check if item is in a blocked category"""
+    if not category_text:
+        return False, None
+    
+    category_lower = category_text.lower()
+    
+    blocked_categories = [
+        # Automobile/Vehicle related
+        'automobile', 'auto', 'car', 'vehicle', '自動車', 'カー',
+        'automotive', 'バイク', 'motorcycle', 'motorbike', 'scooter',
+        'truck', 'トラック', 'parts', 'パーツ', 'engine', 'エンジン',
+        
+        # Toys and Games
+        'toy', 'おもちゃ', 'game', 'ゲーム', 'figure', 'フィギュア',
+        'doll', 'ドール', 'model', 'モデル', 'puzzle', 'パズル',
+        'trading card', 'トレーディング', 'pokemon', 'ポケモン',
+        'anime', 'アニメ', 'manga', 'マンガ',
+        
+        # Electronics (unless brand-specific)
+        'computer', 'コンピューター', 'smartphone', 'スマートフォン',
+        'tablet', 'タブレット', 'electronics', '電子機器',
+        
+        # Food and consumables
+        'food', '食品', 'drink', '飲料', 'snack', 'お菓子',
+        'supplement', 'サプリメント', 'cosmetics', '化粧品',
+        
+        # Sports equipment (unless fashion brands)
+        'sports equipment', 'スポーツ用品', 'bicycle', '自転車',
+        'fishing', '釣り', 'golf', 'ゴルフ',
+        
+        # Home goods
+        'furniture', '家具', 'appliance', '家電', 'kitchen', 'キッチン'
+    ]
+    
+    for blocked in blocked_categories:
+        if blocked in category_lower:
+            return True, blocked
+    
+    return False, None
+
+def check_url_category(item):
+    """Check item category from URL patterns"""
+    try:
+        # Find the main item link
+        link = item.select_one('a[href*="yahoo.co.jp"]')
+        if not link:
+            return True  # Allow if no URL found
+        
+        url = link.get('href', '')
+        url_lower = url.lower()
+        
+        # Check for category indicators in URL
+        blocked_url_patterns = [
+            'category=2084',  # Yahoo category for automobiles
+            'category=1060',  # Motorcycles
+            'category=2068',  # Toys
+            'category=2080',  # Games
+            'auto/',          # Auto section
+            'motorcycle/',    # Motorcycle section
+            'toy/',          # Toy section
+            'game/',         # Game section
+        ]
+        
+        for pattern in blocked_url_patterns:
+            if pattern in url_lower:
+                print(f"🚫 Blocked URL category: {pattern}")
+                return False
+        
+        return True
+    except:
+        return True  # Allow if error checking URL
 
 def detect_brand_in_title(title):
     """Detect brand in title with fallback"""
@@ -1418,10 +1570,10 @@ def parse_yahoo_page_optimized(soup, keyword, brand, keyword_manager=None):
             spam_detector = EnhancedSpamDetector()
             matched_brand = detect_brand_in_title(title)
             
-            is_spam, spam_category = spam_detector.is_spam(title, matched_brand)
+            is_spam, spam_category = spam_detector.is_spam(title, matched_brand, item)
             if is_spam:
                 skipped_spam += 1
-                print(f"🚫 Enhanced spam filter blocked: {title[:30]}...")
+                print(f"🚫 Enhanced spam filter blocked: {title[:30]}... ({spam_category})")
                 continue
             
             # Quality check
