@@ -18,5 +18,10 @@ ENV PORT=8000
 
 EXPOSE 8000
 
-CMD ["python", "yahoo_sniper.py"]
+# Copy Discord bot files
+COPY secure_discordbot.py .
+COPY database_manager.py .
+
+# Run both services - Discord bot in background, scraper in foreground
+CMD ["sh", "-c", "python secure_discordbot.py & sleep 10 && python yahoo_sniper.py"]
 

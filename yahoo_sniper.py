@@ -33,11 +33,11 @@ def run_health_server():
 DISCORD_BOT_WEBHOOK = os.getenv('DISCORD_BOT_WEBHOOK', "http://localhost:8000/webhook")
 DISCORD_BOT_HEALTH = os.getenv('DISCORD_BOT_HEALTH', "http://localhost:8000/health") 
 DISCORD_BOT_STATS = os.getenv('DISCORD_BOT_STATS', "http://localhost:8000/stats")
-DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'https://motivated-stillness-production.up.railway.app')
+DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'http://localhost:8000')
 # Add this validation
 if DISCORD_BOT_URL and not DISCORD_BOT_URL.startswith(('http://', 'https://')):
     DISCORD_BOT_URL = f"https://{DISCORD_BOT_URL}"
-USE_DISCORD_BOT = False  # Temporarily disabled until Discord bot is set up
+USE_DISCORD_BOT = True  # Re-enabled now that Discord bot will run on same service
 
 MAX_PRICE_YEN = 100000
 SEEN_FILE = "seen_yahoo.json"
