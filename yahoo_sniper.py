@@ -37,7 +37,7 @@ DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'https://motivated-stillness-prod
 # Add this validation
 if DISCORD_BOT_URL and not DISCORD_BOT_URL.startswith(('http://', 'https://')):
     DISCORD_BOT_URL = f"https://{DISCORD_BOT_URL}"
-USE_DISCORD_BOT = True
+USE_DISCORD_BOT = False  # Temporarily disabled until Discord bot is set up
 
 MAX_PRICE_YEN = 100000
 SEEN_FILE = "seen_yahoo.json"
@@ -1754,18 +1754,32 @@ def main_loop():
                     print(f"❌ Error searching {keyword}: {e}")
                     continue
             
-            # Send best listings to Discord
+            # Send best listings to Discord and save locally
             sent_count = 0
             if brand_listings:
                 # Sort by priority and limit
                 brand_listings.sort(key=lambda x: x["priority"], reverse=True)
                 limited_listings = brand_listings[:round_robin_system.config['max_listings_per_brand']]
                 
-                print(f"📊 Found {len(brand_listings)} total listings, sending top {len(limited_listings)} to Discord...")
+                print(f"📊 Found {len(brand_listings)} total listings, processing top {len(limited_listings)}...")
+                
+                # Save listings to local file for debugging
+                import json
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"found_listings_{brand}_{timestamp}.json"
+                try:
+                    with open(filename, 'w') as f:
+                        json.dump(limited_listings, f, indent=2, default=str)
+                    print(f"💾 Saved {len(limited_listings)} listings to {filename}")
+                except Exception as e:
+                    print(f"❌ Error saving listings: {e}")
                 
                 for i, listing_data in enumerate(limited_listings, 1):
                     try:
-                        print(f"📤 [{i}/{len(limited_listings)}] Attempting to send: {listing_data['title'][:50]}...")
+                        print(f"📤 [{i}/{len(limited_listings)}] Processing: {listing_data['title'][:50]}...")
+                        print(f"   💰 Price: ¥{listing_data['price_jpy']:,} (${listing_data['price_usd']:.2f})")
+                        print(f"   🎯 Priority: {listing_data['priority']}")
+                        
                         if USE_DISCORD_BOT:
                             success = send_to_discord_bot(listing_data)
                             if success:
@@ -1777,7 +1791,7 @@ def main_loop():
                             print(f"⚠️ Discord bot disabled, skipping: {listing_data['title'][:30]}...")
                         time.sleep(0.5)
                     except Exception as e:
-                        print(f"❌ Error sending to Discord: {e}")
+                        print(f"❌ Error processing listing: {e}")
                         continue
             
             brands_processed_total += 1
