@@ -1745,6 +1745,44 @@ async def debug_setup_command(ctx):
     except Exception as e:
         await ctx.send(f"❌ **Debug Error:** {e}")
 
+@bot.command(name='debug_tiers')
+async def debug_tiers_command(ctx):
+    """Debug tier system status"""
+    try:
+        # Check if PremiumTierManager class exists
+        try:
+            test_manager = PremiumTierManager(bot)
+            await ctx.send("✅ **PremiumTierManager class found**")
+        except NameError:
+            await ctx.send("❌ **PremiumTierManager class not found** - Missing import or definition")
+            return
+        
+        # Check if tier_manager is initialized
+        if 'tier_manager' in globals() and tier_manager:
+            await ctx.send("✅ **tier_manager is initialized**")
+            
+            # Check roles exist
+            guild_roles = [role.name for role in ctx.guild.roles]
+            tier_roles = ['Free User', 'Pro User', 'Elite User']
+            
+            missing_roles = [role for role in tier_roles if role not in guild_roles]
+            existing_roles = [role for role in tier_roles if role in guild_roles]
+            
+            if existing_roles:
+                await ctx.send(f"✅ **Existing tier roles:** {', '.join(existing_roles)}")
+            if missing_roles:
+                await ctx.send(f"❌ **Missing tier roles:** {', '.join(missing_roles)}")
+        else:
+            await ctx.send("❌ **tier_manager not initialized** - Run `!setup_tiers` first")
+        
+        # Check bot role position
+        bot_member = ctx.guild.get_member(bot.user.id)
+        bot_highest_role = bot_member.top_role
+        await ctx.send(f"🤖 **Bot's highest role:** {bot_highest_role.name} (position: {bot_highest_role.position})")
+        
+    except Exception as e:
+        await ctx.send(f"❌ **Debug error:** {str(e)}")
+
 @bot.command(name='clear_recent_listings')
 @commands.has_permissions(administrator=True)
 async def clear_recent_listings_command(ctx):
@@ -2689,17 +2727,37 @@ def create_listing_embed(listing_data):
 @bot.command(name='setup_tiers')
 @commands.has_permissions(administrator=True)
 async def setup_tiers_command(ctx):
-    global tier_manager
-    tier_manager = PremiumTierManager(bot)
+    print(f"🔧 setup_tiers called by {ctx.author.name}")
     
-    await tier_manager.setup_tier_roles(ctx.guild)
-    await tier_manager.setup_channel_permissions(ctx.guild)
-    
-    await ctx.send("✅ Tier system setup complete!")
+    try:
+        global tier_manager
+        print(f"🔧 Creating PremiumTierManager")
+        tier_manager = PremiumTierManager(bot)
+        print(f"🔧 PremiumTierManager created successfully")
+        
+        print(f"🔧 Setting up tier roles...")
+        await tier_manager.setup_tier_roles(ctx.guild)
+        print(f"🔧 Tier roles setup complete")
+        
+        print(f"🔧 Setting up channel permissions...")
+        await tier_manager.setup_channel_permissions(ctx.guild)
+        print(f"🔧 Channel permissions setup complete")
+        
+        print(f"🔧 Sending success message...")
+        await ctx.send("✅ Tier system setup complete!")
+        print(f"🔧 Success message sent!")
+        
+    except Exception as e:
+        print(f"🔧 Error in setup_tiers: {e}")
+        import traceback
+        traceback.print_exc()
+        await ctx.send(f"❌ Error setting up tiers: {str(e)}")
 
 @bot.command(name='upgrade_user')
 @commands.has_permissions(administrator=True)
 async def upgrade_user_command(ctx, member: discord.Member, tier: str):
+    print(f"🔧 upgrade_user called: {member.name} to {tier}")
+    
     if tier not in ['free', 'pro', 'elite']:
         await ctx.send("❌ Invalid tier. Use: free, pro, or elite")
         return
@@ -2708,16 +2766,25 @@ async def upgrade_user_command(ctx, member: discord.Member, tier: str):
         await ctx.send("❌ Tier system not initialized. Run `!setup_tiers` first")
         return
     
-    success = await tier_manager.upgrade_user(member, tier)
-    if success:
-        embed = discord.Embed(
-            title="🎯 User Upgraded",
-            description=f"{member.mention} has been upgraded to **{tier.title()} Tier**",
-            color=0x00ff00
-        )
-        await ctx.send(embed=embed)
-    else:
-        await ctx.send("❌ Failed to upgrade user")
+    try:
+        print(f"🔧 Calling tier_manager.upgrade_user")
+        success = await tier_manager.upgrade_user(member, tier)
+        print(f"🔧 upgrade_user returned: {success}")
+        
+        if success:
+            embed = discord.Embed(
+                title="🎯 User Upgraded",
+                description=f"{member.mention} has been upgraded to **{tier.title()} Tier**",
+                color=0x00ff00
+            )
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("❌ Failed to upgrade user - check bot role permissions")
+    except discord.Forbidden:
+        await ctx.send("❌ **Permission Error**: Bot role must be higher than tier roles in server settings")
+    except Exception as e:
+        print(f"🔧 Error in upgrade_user: {e}")
+        await ctx.send(f"❌ Error upgrading user: {str(e)}")
 
 @bot.command(name='my_tier')
 async def my_tier_command(ctx):
