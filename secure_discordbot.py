@@ -1153,65 +1153,102 @@ async def get_or_create_bookmark_channel(user):
 @bot.command(name='setup')
 async def setup_command(ctx):
     user_id = ctx.author.id
+    print(f"🔧 Setup command called by user {user_id}")
     
-    proxy_service, setup_complete = get_user_proxy_preference(user_id)
-    
-    if setup_complete:
-        current_proxy = SUPPORTED_PROXIES[proxy_service]
+    try:
+        proxy_service, setup_complete = get_user_proxy_preference(user_id)
+        print(f"🔧 get_user_proxy_preference returned: proxy={proxy_service}, complete={setup_complete}")
+        
+        if setup_complete:
+            print(f"🔧 User {user_id} is already setup, showing current config")
+            
+            try:
+                current_proxy = SUPPORTED_PROXIES[proxy_service]
+                print(f"🔧 Found proxy info: {current_proxy}")
+                
+                embed = discord.Embed(
+                    title="⚙️ Your Current Setup",
+                    description=f"You're already set up! Your current proxy service is **{current_proxy['name']}** {current_proxy['emoji']}",
+                    color=0x00ff00
+                )
+                print(f"🔧 Created embed successfully")
+                
+                try:
+                    bookmark_count = db_manager.execute_query(
+                        'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = %s' if db_manager.use_postgres else 'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
+                        (user_id,),
+                        fetch_one=True
+                    )
+                    print(f"🔧 Bookmark count query result: {bookmark_count}")
+                    
+                    if bookmark_count:
+                        embed.add_field(
+                            name="📚 Your Bookmarks",
+                            value=f"You have **{bookmark_count[0]}** bookmarked items",
+                            inline=False
+                        )
+                        print(f"🔧 Added bookmark field to embed")
+                except Exception as e:
+                    print(f"🔧 Error getting bookmark count: {e}")
+                    # Continue without bookmark count
+                
+                print(f"🔧 About to send embed to channel {ctx.channel.id}")
+                await ctx.send(embed=embed)
+                print(f"🔧 Successfully sent setup message to user {user_id}")
+                return
+                
+            except KeyError as e:
+                print(f"🔧 KeyError with proxy service '{proxy_service}': {e}")
+                await ctx.send(f"❌ Error: Unknown proxy service '{proxy_service}'. Please run setup again.")
+                return
+            except Exception as e:
+                print(f"🔧 Error creating/sending embed: {e}")
+                await ctx.send(f"❌ Error showing your current setup: {str(e)}")
+                return
+        
+        print(f"🔧 User {user_id} needs to complete setup, showing setup flow")
+        
+        # Original setup flow for new users
         embed = discord.Embed(
-            title="⚙️ Your Current Setup",
-            description=f"You're already set up! Your current proxy service is **{current_proxy['name']}** {current_proxy['emoji']}",
-            color=0x00ff00
+            title="🎯 Welcome to Auction Sniper Setup!",
+            description="Let's get you set up to receive auction listings. First, I need to know which proxy service you use to buy from Yahoo Auctions Japan.",
+            color=0x0099ff
         )
         
-        bookmark_count = db_manager.execute_query(
-            'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = %s' if db_manager.use_postgres else 'SELECT COUNT(*) FROM user_bookmarks WHERE user_id = ?',
-            (user_id,),
-            fetch_one=True
+        proxy_options = ""
+        for key, proxy in SUPPORTED_PROXIES.items():
+            proxy_options += f"{proxy['emoji']} **{proxy['name']}**\n{proxy['description']}\n\n"
+        
+        embed.add_field(
+            name="📋 Available Proxy Services",
+            value=proxy_options,
+            inline=False
         )
         
-        if bookmark_count:
-            embed.add_field(
-                name="📚 Your Bookmarks",
-                value=f"You have **{bookmark_count[0]}** bookmarked items",
-                inline=False
-            )
+        embed.add_field(
+            name="🎮 How to choose:",
+            value="React with the emoji below that matches your proxy service!",
+            inline=False
+        )
         
-        await ctx.send(embed=embed)
-        return
-    
-    embed = discord.Embed(
-        title="🎯 Welcome to Auction Sniper Setup!",
-        description="Let's get you set up to receive auction listings. First, I need to know which proxy service you use to buy from Yahoo Auctions Japan.",
-        color=0x0099ff
-    )
-    
-    proxy_options = ""
-    for key, proxy in SUPPORTED_PROXIES.items():
-        proxy_options += f"{proxy['emoji']} **{proxy['name']}**\n{proxy['description']}\n\n"
-    
-    embed.add_field(
-        name="📋 Available Proxy Services",
-        value=proxy_options,
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🎮 How to choose:",
-        value="React with the emoji below that matches your proxy service!",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📚 Auto-Bookmarking",
-        value="After setup, any listing you react 👍 to will be automatically bookmarked in your own private channel!",
-        inline=False
-    )
-    
-    message = await ctx.send(embed=embed)
-    
-    for proxy in SUPPORTED_PROXIES.values():
-        await message.add_reaction(proxy['emoji'])
+        embed.add_field(
+            name="📚 Auto-Bookmarking",
+            value="After setup, any listing you react 👍 to will be automatically bookmarked in your own private channel!",
+            inline=False
+        )
+        
+        message = await ctx.send(embed=embed)
+        
+        for proxy in SUPPORTED_PROXIES.values():
+            await message.add_reaction(proxy['emoji'])
+            
+        print(f"🔧 Sent setup flow to user {user_id}")
+        
+    except Exception as e:
+        print(f"🔧 Fatal error in setup command: {e}")
+        import traceback
+        traceback.print_exc()
+        await ctx.send(f"❌ Setup command error: {str(e)}")
 
 async def handle_setup_reaction(reaction, user):
     print(f"🔧 handle_setup_reaction called: user={user.name}, emoji={reaction.emoji}")
@@ -1685,6 +1722,28 @@ async def db_debug_command(ctx):
         
     except Exception as e:
         await ctx.send(f"❌ Database debug error: {str(e)}")
+
+@bot.command(name='debug_setup')
+async def debug_setup_command(ctx):
+    user_id = ctx.author.id
+    
+    try:
+        result = db_manager.execute_query(
+            'SELECT user_id, proxy_service, setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT user_id, proxy_service, setup_complete FROM user_preferences WHERE user_id = ?',
+            (user_id,),
+            fetch_one=True
+        )
+        
+        if result:
+            await ctx.send(f"**Database Record:**\n```User ID: {result[0]}\nProxy: {result[1]}\nSetup Complete: {result[2]}```")
+        else:
+            await ctx.send("❌ **No database record found**")
+        
+        proxy_service, setup_complete = get_user_proxy_preference(user_id)
+        await ctx.send(f"**Function Result:**\n```Proxy: {proxy_service}\nSetup Complete: {setup_complete}```")
+        
+    except Exception as e:
+        await ctx.send(f"❌ **Debug Error:** {e}")
 
 @bot.command(name='clear_recent_listings')
 @commands.has_permissions(administrator=True)
