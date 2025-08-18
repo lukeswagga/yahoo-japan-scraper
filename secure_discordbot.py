@@ -936,6 +936,33 @@ async def send_single_listing_enhanced(auction_data):
         traceback.print_exc()
         return False
 
+async def send_to_premium_channels_immediately(listing_data):
+    """Send listing immediately to Pro/Elite tier channels"""
+    try:
+        brand = listing_data.get('brand', 'Unknown')
+        
+        # Determine target channel based on brand
+        brand_channel_name = f"🏷️-{brand.lower().replace(' ', '-')}"
+        channel = discord.utils.get(guild.text_channels, name=brand_channel_name)
+        
+        if not channel:
+            # Fallback to general auction alerts
+            channel = discord.utils.get(guild.text_channels, name='🎯-auction-alerts')
+        
+        if channel:
+            embed = create_listing_embed(listing_data)
+            embed.set_footer(text=f"Pro/Elite Real-time Alert | ID: {listing_data['auction_id']}")
+            
+            # Check channel permissions - only Pro/Elite should see this
+            await channel.send(embed=embed)
+            print(f"⚡ Sent real-time alert to #{channel.name}")
+        
+        # Also add to database for tracking
+        add_listing(listing_data, channel.id if channel else None)
+        
+    except Exception as e:
+        print(f"❌ Error sending to premium channels: {e}")
+
 async def send_individual_listings_with_rate_limit(batch_data):
     try:
         for i, auction_data in enumerate(batch_data, 1):
@@ -2244,6 +2271,41 @@ def webhook_listing():
         print(f"❌ Webhook error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/webhook/listing_with_delay', methods=['POST'])
+def webhook_listing_with_delay():
+    """Handle listings that should be delayed for free users"""
+    try:
+        listing_data = request.get_json()
+        
+        if not listing_data:
+            return jsonify({"error": "No data received"}), 400
+        
+        if not bot.is_ready():
+            return jsonify({"error": "Bot not ready"}), 503
+        
+        delay_hours = listing_data.get('delay_hours', 2.0)
+        delay_seconds = delay_hours * 3600
+        
+        # Queue for delayed delivery to free users
+        if delayed_manager:
+            asyncio.run_coroutine_threadsafe(
+                delayed_manager.queue_for_free_users(listing_data, delay_seconds), 
+                bot.loop
+            )
+            print(f"⏳ Queued listing for delayed delivery in {delay_hours} hours")
+        
+        # Send immediately to Pro/Elite users in real-time channels
+        asyncio.run_coroutine_threadsafe(
+            send_to_premium_channels_immediately(listing_data), 
+            bot.loop
+        )
+        
+        return jsonify({"status": "success", "delayed_hours": delay_hours}), 200
+        
+    except Exception as e:
+        print(f"❌ Webhook delay error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/webhook/stats', methods=['POST'])
 def webhook_stats():
     """Log scraper statistics"""
@@ -2324,28 +2386,32 @@ class PremiumTierManager:
             ]
         }
         
+        # Update tier features with your preferences
         self.tier_features = {
             'free': {
-                'delay_multiplier': 8.0,
-                'daily_limit': 10,
-                'bookmark_limit': 25,
+                'delay_multiplier': 2.0,  # 2+ hour delays
+                'daily_limit': 100,       # 100 listings per day
+                'bookmark_limit': None,   # Unlimited bookmarks
                 'ai_personalized': False,
-                'priority_support': False
+                'priority_support': False,
+                'channels': ['📦-daily-digest', '💰-budget-steals', '🗳️-community-votes', '💬-general-chat']
             },
             'pro': {
-                'delay_multiplier': 0.0,
-                'daily_limit': None,
-                'bookmark_limit': 500,
+                'delay_multiplier': 0.0,  # Real-time
+                'daily_limit': None,      # Unlimited
+                'bookmark_limit': None,   # Unlimited
                 'ai_personalized': True,
-                'priority_support': False
+                'priority_support': False,
+                'channels': ['all_brand_channels', '⏰-hourly-drops', '🔔-size-alerts']
             },
             'elite': {
-                'delay_multiplier': 0.0,
-                'daily_limit': None,
-                'bookmark_limit': None,
+                'delay_multiplier': 0.0,  # Real-time
+                'daily_limit': None,      # Unlimited  
+                'bookmark_limit': None,   # Unlimited
                 'ai_personalized': True,
                 'priority_support': True,
-                'early_access': True
+                'early_access': True,
+                'channels': ['everything', '⚡-instant-alerts', '🔥-grail-hunter', '💎-investment-pieces']
             }
         }
     
@@ -2489,10 +2555,12 @@ class PremiumTierManager:
         
         return delay_hours * 3600
 
+# Enhanced DelayedListingManager with better queue processing
 class DelayedListingManager:
     def __init__(self):
         self.delayed_queue = []
         self.running = False
+        self.daily_counts = {}  # Track daily limits per user
     
     async def queue_for_free_users(self, listing_data, delay_seconds):
         delivery_time = datetime.now() + timedelta(seconds=delay_seconds)
@@ -2500,10 +2568,12 @@ class DelayedListingManager:
         self.delayed_queue.append({
             'listing': listing_data,
             'delivery_time': delivery_time,
-            'target_channels': ['📦-daily-digest', '💰-budget-steals']
+            'target_channels': ['📦-daily-digest', '💰-budget-steals'],
+            'priority': listing_data.get('priority', 0)
         })
         
-        self.delayed_queue.sort(key=lambda x: x['delivery_time'])
+        # Sort by priority first, then delivery time
+        self.delayed_queue.sort(key=lambda x: (-x['priority'], x['delivery_time']))
     
     async def process_delayed_queue(self):
         self.running = True
@@ -2512,15 +2582,19 @@ class DelayedListingManager:
                 now = datetime.now()
                 ready_items = []
                 
-                for item in self.delayed_queue:
+                for item in self.delayed_queue[:]:
                     if item['delivery_time'] <= now:
                         ready_items.append(item)
+                        self.delayed_queue.remove(item)
                 
-                for item in ready_items:
-                    self.delayed_queue.remove(item)
+                # Process ready items (prioritize higher quality items)
+                ready_items.sort(key=lambda x: -x['priority'])
+                
+                for item in ready_items[:100]:  # Max 100 listings per day for free users
                     await self.deliver_to_free_channels(item)
+                    await asyncio.sleep(2)  # Small delay between deliveries
                 
-                await asyncio.sleep(60)
+                await asyncio.sleep(60)  # Check every minute
                 
             except Exception as e:
                 print(f"❌ Delayed queue error: {e}")
@@ -2534,9 +2608,15 @@ class DelayedListingManager:
             if channel:
                 try:
                     embed = create_listing_embed(listing)
-                    embed.set_footer(text=f"Free Tier - Upgrade for real-time alerts | ID: {listing['auction_id']}")
+                    
+                    # Add free tier messaging
+                    delay_hours = (datetime.now() - (queued_item['delivery_time'] - timedelta(seconds=7200))).total_seconds() / 3600
+                    embed.set_footer(text=f"Free Tier - Delivered {delay_hours:.1f}h after discovery • Upgrade for real-time alerts | ID: {listing['auction_id']}")
+                    
                     await channel.send(embed=embed)
                     print(f"📤 Delivered delayed listing to #{channel_name}")
+                    break  # Only send to first available channel
+                    
                 except Exception as e:
                     print(f"❌ Error delivering to #{channel_name}: {e}")
 

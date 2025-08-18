@@ -1526,7 +1526,7 @@ def debug_item_structure(item, index):
 
 
 def send_to_discord_bot(listing_data):
-    """Send listing to Discord bot with correct URL"""
+    """Enhanced version with free tier delay support"""
     try:
         if not USE_DISCORD_BOT:
             print("⚠️ Discord bot integration disabled")
@@ -1539,11 +1539,22 @@ def send_to_discord_bot(listing_data):
         if 'seller_id' not in listing_data:
             listing_data['seller_id'] = 'unknown'
         
-        # FIXED: Use correct webhook endpoint
-        webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
+        # NEW: Check if we should delay this listing for free users
+        should_delay_for_free = should_delay_listing_for_free_tier(listing_data)
         
-        print(f"📤 Attempting to send to Discord: {listing_data['title'][:50]}...")
-        print(f"🔗 URL: {webhook_url}")
+        if should_delay_for_free:
+            # Send to Discord bot with delay flag
+            webhook_url = f"{DISCORD_BOT_URL}/webhook/listing_with_delay"
+            listing_data['delay_for_free_users'] = True
+            listing_data['delay_hours'] = calculate_delay_hours(listing_data)
+        else:
+            # Normal immediate delivery
+            webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
+            listing_data['delay_for_free_users'] = False
+        
+        print(f"📤 Sending to Discord: {listing_data['title'][:50]}...")
+        if should_delay_for_free:
+            print(f"⏳ Will be delayed {listing_data['delay_hours']} hours for free users")
         
         response = requests.post(
             webhook_url,
@@ -1553,18 +1564,55 @@ def send_to_discord_bot(listing_data):
         )
         
         if response.status_code == 200:
-            print(f"✅ Successfully sent to Discord: {listing_data['title'][:30]}...")
+            delay_text = f" (delayed for free)" if should_delay_for_free else ""
+            print(f"✅ Successfully sent to Discord{delay_text}: {listing_data['title'][:30]}...")
             return True
         else:
             print(f"❌ Discord bot responded with status {response.status_code}")
-            print(f"❌ Response: {response.text}")
-            print(f"❌ URL used: {webhook_url}")
             return False
             
     except Exception as e:
-        print(f"❌ Error sending to Discord bot: {e}")
-        print(f"🔗 Attempted URL: {DISCORD_BOT_URL}/webhook/listing")
+        print(f"❌ Error sending to Discord: {e}")
         return False
+
+def should_delay_listing_for_free_tier(listing_data):
+    """Determine if listing should be delayed for free users"""
+    # Don't delay ultra-high priority items (let free users see some premium content)
+    if listing_data.get('priority', 0) >= 95:
+        return False
+    
+    # Don't delay budget items under $30 USD 
+    if listing_data.get('price_usd', 0) <= 30:
+        return False
+    
+    # Delay everything else for free users
+    return True
+
+def calculate_delay_hours(listing_data):
+    """Calculate delay hours based on item characteristics"""
+    base_delay = 2.0  # Base 2 hour delay
+    
+    priority = listing_data.get('priority', 0)
+    price_usd = listing_data.get('price_usd', 0)
+    
+    # Higher priority = less delay
+    if priority >= 85:
+        multiplier = 0.5  # 1 hour delay
+    elif priority >= 70:
+        multiplier = 0.75  # 1.5 hour delay  
+    else:
+        multiplier = 1.0  # Full 2 hour delay
+    
+    # Higher price = more delay (premium items)
+    if price_usd >= 200:
+        multiplier *= 1.5  # Extra delay for expensive items
+    elif price_usd >= 100:
+        multiplier *= 1.25
+    
+    final_delay = base_delay * multiplier
+    
+    # Cap between 1-6 hours
+    return max(1.0, min(6.0, final_delay))
 
 def check_discord_bot_health():
     """Check if Discord bot is responding"""
