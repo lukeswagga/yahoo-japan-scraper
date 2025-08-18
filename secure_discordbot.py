@@ -1786,6 +1786,168 @@ async def force_clear_all_command(ctx):
         traceback.print_exc()
         await ctx.send(f"❌ Error: {str(e)}")
 
+@bot.command(name='send_guide')
+@commands.has_permissions(administrator=True)
+async def send_guide_command(ctx):
+    """Send the comprehensive user guide (admin only)"""
+    try:
+        # Find or create the guide channel
+        channel = discord.utils.get(ctx.guild.text_channels, name="📋-start-here")
+        if not channel:
+            try:
+                channel = await ctx.guild.create_text_channel("📋-start-here")
+                print(f"✅ Created guide channel: #{channel.name}")
+            except Exception as e:
+                await ctx.send(f"❌ Could not create guide channel: {e}")
+                return
+        
+        await ctx.send(f"📤 Sending comprehensive guide to #{channel.name}...")
+        
+        # Main guide embed
+        main_embed = discord.Embed(
+            title="🎯 Discord Auction Bot - Complete User Guide",
+            description="Welcome to the ultimate fashion auction discovery platform! This bot automatically finds rare designer pieces from Yahoo Auctions Japan and learns your personal style preferences.",
+            color=0x000000
+        )
+        
+        # Getting Started section
+        setup_embed = discord.Embed(
+            title="🚀 Getting Started",
+            color=0x00ff00
+        )
+        setup_embed.add_field(
+            name="Step 1: Initial Setup (Required)",
+            value="```!setup```\nThis command will:\n• Show you available proxy services\n• Let you choose your preferred service\n• Create your personal bookmark system\n• Enable AI preference learning\n\n⚠️ **Important**: You cannot use reactions or bookmarks until setup is complete!",
+            inline=False
+        )
+        setup_embed.add_field(
+            name="Step 2: Start Exploring",
+            value="Once setup is complete, you can:\n• Browse auction listings in brand channels\n• React to listings to train the AI\n• Use commands to manage preferences",
+            inline=False
+        )
+        
+        # Commands section
+        commands_embed = discord.Embed(
+            title="📋 Available Commands",
+            color=0x0099ff
+        )
+        commands_embed.add_field(
+            name="⚙️ Configuration",
+            value="**`!setup`** - Complete initial setup or view current configuration\n**`!preferences`** - View your current settings",
+            inline=False
+        )
+        commands_embed.add_field(
+            name="📊 Statistics & Data",
+            value="**`!stats`** - View your personal statistics\n**`!export`** - Download complete reaction history\n**`!my_tier`** - Check your membership tier",
+            inline=False
+        )
+        commands_embed.add_field(
+            name="📖 Help",
+            value="**`!commands`** - Display the help menu anytime",
+            inline=False
+        )
+        
+        # Reactions section
+        reactions_embed = discord.Embed(
+            title="🎯 How to Use Reactions",
+            color=0xff9900
+        )
+        reactions_embed.add_field(
+            name="👍 Like (Thumbs Up)",
+            value="When you react with 👍 to any auction listing:\n• **Automatically bookmarks** the item to your private channel\n• **Trains the AI** to show you more similar items\n• **Learns your preferences** for brands, sellers, and price ranges",
+            inline=False
+        )
+        reactions_embed.add_field(
+            name="👎 Dislike (Thumbs Down)",
+            value="When you react with 👎 to any auction listing:\n• **Trains the AI** to avoid similar items\n• **Learns what you don't like** (sellers, styles, price points)\n• Helps improve future recommendations",
+            inline=False
+        )
+        
+        # Proxy services section
+        proxy_embed = discord.Embed(
+            title="🛒 Proxy Services Explained",
+            description="During setup, you'll choose one of these services to buy items from Japan:",
+            color=0x9932cc
+        )
+        proxy_embed.add_field(
+            name="🛒 ZenMarket",
+            value="**Best for**: Beginners and English speakers\n**Features**: Full English support, detailed guides\n**Fees**: Competitive rates with transparent pricing",
+            inline=True
+        )
+        proxy_embed.add_field(
+            name="📦 Buyee",
+            value="**Best for**: Frequent buyers\n**Features**: Official Yahoo Auctions partner\n**Fees**: Often lower for multiple items",
+            inline=True
+        )
+        proxy_embed.add_field(
+            name="🇯🇵 Yahoo Japan Direct",
+            value="**Best for**: Advanced users in Japan\n**Features**: No proxy fees, direct access\n**Requirements**: Japanese address and language",
+            inline=True
+        )
+        
+        # Tips section
+        tips_embed = discord.Embed(
+            title="💡 Pro Tips",
+            color=0x00ced1
+        )
+        tips_embed.add_field(
+            name="Getting the Most Out of the Bot",
+            value="1. **React frequently** - The more you react, the better your recommendations\n2. **Use both 👍 and 👎** - Negative feedback is just as valuable\n3. **Check your bookmark channel** - Items you like get saved automatically\n4. **Explore all brand channels** - Don't miss finds in other designers\n5. **Run `!setup` properly** - Choose the right proxy service for your needs",
+            inline=False
+        )
+        
+        # FAQ section
+        faq_embed = discord.Embed(
+            title="❓ Frequently Asked Questions",
+            color=0x8b0000
+        )
+        faq_embed.add_field(
+            name="Common Questions",
+            value="**Q: Can I change my proxy service later?**\nA: Yes, run `!setup` again to reconfigure\n\n**Q: Are my bookmarks private?**\nA: Yes, only you can see your bookmark channel\n\n**Q: How do I get better recommendations?**\nA: Keep reacting! The more you use 👍/👎, the smarter the bot becomes\n\n**Q: What brands are covered?**\nA: 19+ major designers including Raf Simons, Rick Owens, CDG, Margiela, and more",
+            inline=False
+        )
+        
+        # Final section
+        final_embed = discord.Embed(
+            title="🆘 Need Help?",
+            description="If you encounter any issues or have questions:\n1. First try `!commands` to see all available options\n2. Ask in the general chat for community help\n3. Contact an admin for technical issues\n\n**Ready to start hunting for grails? Run `!setup` to begin your journey!** 🎯",
+            color=0x8b0000
+        )
+        
+        # Send all embeds with delays
+        embeds = [
+            main_embed, setup_embed, commands_embed, reactions_embed, 
+            proxy_embed, tips_embed, faq_embed, final_embed
+        ]
+        
+        messages = []
+        for i, embed in enumerate(embeds):
+            try:
+                print(f"📤 Sending guide embed {i+1}/{len(embeds)}")
+                message = await channel.send(embed=embed)
+                messages.append(message)
+                if i < len(embeds) - 1:  # Don't sleep after last message
+                    await asyncio.sleep(2)  # Delay to avoid rate limits
+            except Exception as e:
+                print(f"❌ Error sending embed {i+1}: {e}")
+                continue
+        
+        # Pin the first message
+        if messages:
+            try:
+                await messages[0].pin()
+                print("📌 Pinned the main guide message")
+            except discord.errors.Forbidden:
+                print("⚠️ Could not pin message - bot needs 'Manage Messages' permission")
+            except discord.errors.HTTPException:
+                print("⚠️ Could not pin message - channel may have too many pinned messages")
+        
+        await ctx.send(f"✅ Successfully sent {len(messages)} guide messages to #{channel.name}")
+        
+    except Exception as e:
+        print(f"❌ Error in send_guide_command: {e}")
+        await ctx.send(f"❌ Error sending guide: {e}")
+
 
 
 @bot.command(name='stats')
@@ -2162,7 +2324,7 @@ async def commands_command(ctx):
     
     embed.add_field(
         name="🔧 Admin Commands",
-        value="**!commands** - Show this help menu\n**!db_debug** - Database diagnostics (admin only)",
+        value="**!commands** - Show this help menu\n**!send_guide** - Send comprehensive user guide (admin only)\n**!db_debug** - Database diagnostics (admin only)",
         inline=False
     )
     
