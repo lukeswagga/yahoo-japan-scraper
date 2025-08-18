@@ -2545,16 +2545,32 @@ class PremiumTierManager:
         if new_role:
             await member.add_roles(new_role)
             
-            db_manager.execute_query('''
-                INSERT OR REPLACE INTO user_subscriptions 
-                (user_id, tier, upgraded_at, expires_at)
-                VALUES (?, ?, ?, ?)
-            ''', (
-                member.id, 
-                new_tier, 
-                datetime.now().isoformat(),
-                (datetime.now() + timedelta(days=30)).isoformat()
-            ))
+            if db_manager.use_postgres:
+                db_manager.execute_query('''
+                    INSERT INTO user_subscriptions 
+                    (user_id, tier, upgraded_at, expires_at)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        tier = EXCLUDED.tier,
+                        upgraded_at = EXCLUDED.upgraded_at,
+                        expires_at = EXCLUDED.expires_at
+                ''', (
+                    member.id, 
+                    new_tier, 
+                    datetime.now().isoformat(),
+                    (datetime.now() + timedelta(days=30)).isoformat()
+                ))
+            else:
+                db_manager.execute_query('''
+                    INSERT OR REPLACE INTO user_subscriptions 
+                    (user_id, tier, upgraded_at, expires_at)
+                    VALUES (?, ?, ?, ?)
+                ''', (
+                    member.id, 
+                    new_tier, 
+                    datetime.now().isoformat(),
+                    (datetime.now() + timedelta(days=30)).isoformat()
+                ))
             
             return True
         return False
