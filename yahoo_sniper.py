@@ -1761,13 +1761,20 @@ def main_loop():
                 brand_listings.sort(key=lambda x: x["priority"], reverse=True)
                 limited_listings = brand_listings[:round_robin_system.config['max_listings_per_brand']]
                 
-                for listing_data in limited_listings:
+                print(f"📊 Found {len(brand_listings)} total listings, sending top {len(limited_listings)} to Discord...")
+                
+                for i, listing_data in enumerate(limited_listings, 1):
                     try:
+                        print(f"📤 [{i}/{len(limited_listings)}] Attempting to send: {listing_data['title'][:50]}...")
                         if USE_DISCORD_BOT:
                             success = send_to_discord_bot(listing_data)
                             if success:
                                 sent_count += 1
-                                print(f"📤 Sent to Discord: {listing_data['title'][:50]}...")
+                                print(f"✅ Successfully sent to Discord: {listing_data['title'][:30]}...")
+                            else:
+                                print(f"❌ Failed to send to Discord: {listing_data['title'][:30]}...")
+                        else:
+                            print(f"⚠️ Discord bot disabled, skipping: {listing_data['title'][:30]}...")
                         time.sleep(0.5)
                     except Exception as e:
                         print(f"❌ Error sending to Discord: {e}")
@@ -1775,6 +1782,10 @@ def main_loop():
             
             brands_processed_total += 1
             print(f"✅ Brand complete: {brand} | Searches: {brand_searches} | Finds: {brand_finds} | Sent: {sent_count}")
+            if brand_finds > 0 and sent_count == 0:
+                print(f"⚠️ WARNING: Found {brand_finds} items but sent 0 to Discord - Discord bot may be unreachable")
+            elif brand_finds > 0 and sent_count > 0:
+                print(f"🎉 SUCCESS: Found {brand_finds} items and sent {sent_count} to Discord")
             
             # Log stats (use existing function if available)
             try:
