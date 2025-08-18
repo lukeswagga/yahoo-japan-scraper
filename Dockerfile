@@ -18,5 +18,5 @@ ENV PORT=8000
 
 EXPOSE 8000
 
-CMD ["python", "secure_discordbot.py"]
+CMD ["python", "yahoo_sniper.py"]
 
