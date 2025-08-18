@@ -33,7 +33,7 @@ def run_health_server():
 DISCORD_BOT_WEBHOOK = os.getenv('DISCORD_BOT_WEBHOOK', "http://localhost:8000/webhook")
 DISCORD_BOT_HEALTH = os.getenv('DISCORD_BOT_HEALTH', "http://localhost:8000/health") 
 DISCORD_BOT_STATS = os.getenv('DISCORD_BOT_STATS', "http://localhost:8000/stats")
-DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'http://localhost:8000')
+DISCORD_BOT_URL = os.getenv('DISCORD_BOT_URL', 'https://motivated-stillness-production.up.railway.app')
 # Add this validation
 if DISCORD_BOT_URL and not DISCORD_BOT_URL.startswith(('http://', 'https://')):
     DISCORD_BOT_URL = f"https://{DISCORD_BOT_URL}"
@@ -1529,6 +1529,7 @@ def send_to_discord_bot(listing_data):
     """Send listing to Discord bot with correct URL"""
     try:
         if not USE_DISCORD_BOT:
+            print("⚠️ Discord bot integration disabled")
             return False
         
         # Add required fields if missing
@@ -1541,6 +1542,9 @@ def send_to_discord_bot(listing_data):
         # FIXED: Use correct webhook endpoint
         webhook_url = f"{DISCORD_BOT_URL}/webhook/listing"
         
+        print(f"📤 Attempting to send to Discord: {listing_data['title'][:50]}...")
+        print(f"🔗 URL: {webhook_url}")
+        
         response = requests.post(
             webhook_url,
             json=listing_data,
@@ -1549,6 +1553,7 @@ def send_to_discord_bot(listing_data):
         )
         
         if response.status_code == 200:
+            print(f"✅ Successfully sent to Discord: {listing_data['title'][:30]}...")
             return True
         else:
             print(f"❌ Discord bot responded with status {response.status_code}")
@@ -1558,6 +1563,7 @@ def send_to_discord_bot(listing_data):
             
     except Exception as e:
         print(f"❌ Error sending to Discord bot: {e}")
+        print(f"🔗 Attempted URL: {DISCORD_BOT_URL}/webhook/listing")
         return False
 
 def check_discord_bot_health():
@@ -1689,11 +1695,14 @@ def main_loop():
     get_usd_jpy_rate()
     
     if USE_DISCORD_BOT:
+        print(f"🔗 Discord Bot URL: {DISCORD_BOT_URL}")
         bot_healthy, status = check_discord_bot_health()
         if bot_healthy:
             print("✅ Discord bot is healthy and ready")
         else:
             print(f"⚠️ Discord bot status: {status}")
+            print(f"⚠️ Discord bot may not be accessible at {DISCORD_BOT_URL}")
+            print("⚠️ Listings will be found but not sent to Discord")
     
     brands_processed_total = 0
     
