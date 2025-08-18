@@ -1305,49 +1305,7 @@ async def handle_setup_reaction(reaction, user):
 
 
 
-@bot.command(name='test_database')
-async def test_database(ctx):
-    """Test database connection and show raw results"""
-    try:
-        await ctx.send("🔍 Testing database connection...")
-        
-        # Test basic query
-        test_result = db_manager.execute_query('SELECT 1 as test_value', fetch_one=True)
-        await ctx.send(f"✅ Basic query test: {test_result}")
-        
-        # Test listings table structure
-        await ctx.send("🔍 Checking listings table structure...")
-        try:
-            structure_result = db_manager.execute_query('''
-                SELECT column_name, data_type 
-                FROM information_schema.columns 
-                WHERE table_name = 'listings'
-                ORDER BY ordinal_position
-            ''' if db_manager.use_postgres else '''
-                PRAGMA table_info(listings)
-            ''', fetch_all=True)
-            await ctx.send(f"📋 Table structure: {structure_result}")
-        except Exception as e:
-            await ctx.send(f"⚠️ Could not get table structure: {e}")
-        
-        # Test a simple listings query
-        await ctx.send("🔍 Testing listings query...")
-        try:
-            sample_listing = db_manager.execute_query('''
-                SELECT auction_id, title, brand FROM listings LIMIT 1
-            ''', fetch_one=True)
-            await ctx.send(f"📋 Sample listing: {sample_listing}")
-            if sample_listing:
-                await ctx.send(f"📋 Sample listing type: {type(sample_listing)}")
-                if isinstance(sample_listing, dict):
-                    await ctx.send(f"📋 Sample listing keys: {list(sample_listing.keys())}")
-                else:
-                    await ctx.send(f"📋 Sample listing length: {len(sample_listing)}")
-        except Exception as e:
-            await ctx.send(f"⚠️ Could not query listings: {e}")
-            
-    except Exception as e:
-        await ctx.send(f"❌ Database test error: {str(e)} | Type: {type(e)}")
+
 
 @bot.command(name='check_bookmarks_table')
 async def check_bookmarks_table(ctx):
@@ -1723,65 +1681,7 @@ async def db_debug_command(ctx):
     except Exception as e:
         await ctx.send(f"❌ Database debug error: {str(e)}")
 
-@bot.command(name='debug_setup')
-async def debug_setup_command(ctx):
-    user_id = ctx.author.id
-    
-    try:
-        result = db_manager.execute_query(
-            'SELECT user_id, proxy_service, setup_complete FROM user_preferences WHERE user_id = %s' if db_manager.use_postgres else 'SELECT user_id, proxy_service, setup_complete FROM user_preferences WHERE user_id = ?',
-            (user_id,),
-            fetch_one=True
-        )
-        
-        if result:
-            await ctx.send(f"**Database Record:**\n```User ID: {result[0]}\nProxy: {result[1]}\nSetup Complete: {result[2]}```")
-        else:
-            await ctx.send("❌ **No database record found**")
-        
-        proxy_service, setup_complete = get_user_proxy_preference(user_id)
-        await ctx.send(f"**Function Result:**\n```Proxy: {proxy_service}\nSetup Complete: {setup_complete}```")
-        
-    except Exception as e:
-        await ctx.send(f"❌ **Debug Error:** {e}")
 
-@bot.command(name='debug_tiers')
-async def debug_tiers_command(ctx):
-    """Debug tier system status"""
-    try:
-        # Check if PremiumTierManager class exists
-        try:
-            test_manager = PremiumTierManager(bot)
-            await ctx.send("✅ **PremiumTierManager class found**")
-        except NameError:
-            await ctx.send("❌ **PremiumTierManager class not found** - Missing import or definition")
-            return
-        
-        # Check if tier_manager is initialized
-        if 'tier_manager' in globals() and tier_manager:
-            await ctx.send("✅ **tier_manager is initialized**")
-            
-            # Check roles exist
-            guild_roles = [role.name for role in ctx.guild.roles]
-            tier_roles = ['Free User', 'Pro User', 'Elite User']
-            
-            missing_roles = [role for role in tier_roles if role not in guild_roles]
-            existing_roles = [role for role in tier_roles if role in guild_roles]
-            
-            if existing_roles:
-                await ctx.send(f"✅ **Existing tier roles:** {', '.join(existing_roles)}")
-            if missing_roles:
-                await ctx.send(f"❌ **Missing tier roles:** {', '.join(missing_roles)}")
-        else:
-            await ctx.send("❌ **tier_manager not initialized** - Run `!setup_tiers` first")
-        
-        # Check bot role position
-        bot_member = ctx.guild.get_member(bot.user.id)
-        bot_highest_role = bot_member.top_role
-        await ctx.send(f"🤖 **Bot's highest role:** {bot_highest_role.name} (position: {bot_highest_role.position})")
-        
-    except Exception as e:
-        await ctx.send(f"❌ **Debug error:** {str(e)}")
 
 @bot.command(name='clear_recent_listings')
 @commands.has_permissions(administrator=True)
@@ -2217,7 +2117,7 @@ async def commands_command(ctx):
     
     embed.add_field(
         name="⚙️ Setup & Configuration",
-        value="**!setup** - Initial setup for new users\n**!preferences** - View your current preferences\n**!reset_my_setup** - Reset your setup to test the flow",
+        value="**!setup** - Initial setup or view current configuration\n**!preferences** - View your current preferences",
         inline=False
     )
     
@@ -2234,8 +2134,8 @@ async def commands_command(ctx):
     )
     
     embed.add_field(
-        name="🧠 Bot Testing & Maintenance",
-        value="**!test** - Test if bot is working\n**!commands** - Show this help\n**!db_debug** - Database diagnostics\n**!debug_full_setup** - Debug entire setup process\n**!clear_recent_listings** - Clear recent duplicates\n**!force_clear_all** - Emergency: clear all listings",
+        name="🔧 Admin Commands",
+        value="**!commands** - Show this help menu\n**!db_debug** - Database diagnostics (admin only)",
         inline=False
     )
     
