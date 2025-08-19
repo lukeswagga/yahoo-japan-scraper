@@ -981,19 +981,31 @@ async def process_batch_buffer():
             print(f"📤 Processing {len(items_to_send)} items from buffer (remaining: {len(batch_buffer)})...")
             await send_individual_listings_with_rate_limit(items_to_send)
 
-# Add this function to secure_discordbot.py
+# Trimlist configuration
+TRIMLIST_BRANDS = {
+    "Comme des Garcons",
+    "Rick Owens", 
+    "Junya Watanabe"
+}
+
+TRIMLIST_MAX_PRICE = 60.0  # $60 limit for trimlist
 
 def determine_target_channel(price_usd, brand, deal_quality, title):
-    """Determine which channel(s) to send listing to based on price and quality"""
+    """Enhanced channel routing with trimlist support"""
     channels = []
     
     # Always send to main auction alerts
     channels.append("🎯-auction-alerts")
     
-    # Budget steals - STRICT $100 limit
-    if price_usd <= 100.0:
+    # TRIMLIST - Specific brands under $60
+    if brand in TRIMLIST_BRANDS and price_usd <= TRIMLIST_MAX_PRICE:
+        channels.append("🏆-trimlist")
+        print(f"🏆 TRIMLIST HIT: {brand} at ${price_usd:.2f} -> trimlist")
+    
+    # Budget steals - STRICT $100 limit (but not if already in trimlist)
+    elif price_usd <= 100.0:
         channels.append("💰-budget-steals")
-        print(f"📦 Budget steal detected: ${price_usd:.2f} -> budget-steals")
+        print(f"💰 Budget steal: ${price_usd:.2f} -> budget-steals")
     
     # High-value pieces
     if price_usd >= 500.0 and deal_quality >= 0.3:
@@ -1003,12 +1015,76 @@ def determine_target_channel(price_usd, brand, deal_quality, title):
     if deal_quality >= 0.4:
         channels.append("🎯-trending-pieces")
     
-    # Brand channel if applicable
+    # Brand channel if applicable (ALWAYS send to brand channel too)
     if brand and brand in BRAND_CHANNEL_MAP:
         brand_channel = f"🏷️-{BRAND_CHANNEL_MAP[brand]}"
         channels.append(brand_channel)
     
     return channels
+
+def is_trimlist_eligible(brand, price_usd):
+    """Check if item qualifies for trimlist channel"""
+    return (
+        brand in TRIMLIST_BRANDS and 
+        price_usd <= TRIMLIST_MAX_PRICE and
+        price_usd > 0  # Sanity check
+    )
+
+# Enhanced brand detection for trimlist
+def detect_trimlist_brand(title):
+    """Enhanced brand detection specifically for trimlist brands"""
+    title_lower = title.lower()
+    
+    # Comme des Garcons variants
+    cdg_variants = [
+        "comme des garcons", "cdg", "comme des garçons", 
+        "コムデギャルソン", "rei kawakubo"
+    ]
+    
+    # Rick Owens variants  
+    rick_variants = [
+        "rick owens", "rick", "drkshdw", "dark shadow",
+        "リックオウエンス"
+    ]
+    
+    # Junya Watanabe variants
+    junya_variants = [
+        "junya watanabe", "junya", "ジュンヤワタナベ",
+        "watanabe junya"
+    ]
+    
+    for variant in cdg_variants:
+        if variant in title_lower:
+            return "Comme des Garcons"
+    
+    for variant in rick_variants:
+        if variant in title_lower:
+            return "Rick Owens"
+            
+    for variant in junya_variants:
+        if variant in title_lower:
+            return "Junya Watanabe"
+    
+    return None
+
+# Update the main brand detection to include trimlist brands
+def detect_brand_in_title_enhanced(title):
+    """Enhanced brand detection including trimlist priority"""
+    
+    # First check trimlist brands with enhanced detection
+    trimlist_brand = detect_trimlist_brand(title)
+    if trimlist_brand:
+        return trimlist_brand
+    
+    # Then fall back to regular brand detection
+    title_lower = title.lower()
+    
+    for brand, details in BRAND_DATA.items():
+        for variant in details["variants"]:
+            if variant.lower() in title_lower:
+                return brand
+    
+    return "Unknown"
 
 async def send_single_listing_enhanced(auction_data):
     """Enhanced listing sender with intelligent channel routing"""
@@ -3630,6 +3706,216 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 
+
+# Test command for trimlist
+@bot.command(name='test_trimlist')
+@commands.has_permissions(administrator=True)
+async def test_trimlist(ctx, brand: str, price: float):
+    """Test trimlist filtering with specific brand and price"""
+    
+    # Normalize brand name
+    brand_map = {
+        "cdg": "Comme des Garcons",
+        "comme": "Comme des Garcons", 
+        "rick": "Rick Owens",
+        "junya": "Junya Watanabe"
+    }
+    
+    full_brand = brand_map.get(brand.lower(), brand.title())
+    
+    test_data = {
+        'auction_id': 'trimlist_test_123',
+        'title': f'Test {full_brand} Item',
+        'brand': full_brand,
+        'price_usd': price,
+        'deal_quality': 0.2
+    }
+    
+    channels = determine_target_channel(price, full_brand, 0.2, f'Test {full_brand} Item')
+    is_eligible = is_trimlist_eligible(full_brand, price)
+    
+    embed = discord.Embed(
+        title="🏆 Trimlist Filter Test",
+        color=0x00ff00 if is_eligible else 0xff9900
+    )
+    
+    embed.add_field(
+        name="Test Brand",
+        value=full_brand,
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Test Price", 
+        value=f"${price:.2f}",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Trimlist Eligible",
+        value="🏆 YES" if is_eligible else "❌ NO",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Reason",
+        value=(
+            "✅ Brand + Price match!" if is_eligible else
+            f"❌ {'Wrong brand' if full_brand not in TRIMLIST_BRANDS else 'Over $60 limit'}"
+        ),
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Target Channels",
+        value="\n".join(channels) if channels else "None",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
+
+# Monitor trimlist channel
+@bot.command(name='check_trimlist')
+@commands.has_permissions(administrator=True) 
+async def check_trimlist(ctx):
+    """Check recent items in trimlist channel"""
+    
+    trimlist_channel = discord.utils.get(guild.text_channels, name="🏆-trimlist")
+    
+    if not trimlist_channel:
+        await ctx.send("❌ Trimlist channel #🏆-trimlist not found!")
+        return
+    
+    # Get last 10 messages
+    messages = []
+    async for message in trimlist_channel.history(limit=10):
+        if message.embeds:
+            embed = message.embeds[0]
+            title = embed.title or "Unknown"
+            
+            price = None
+            brand = None
+            
+            for field in embed.fields:
+                if "Price" in field.name:
+                    try:
+                        price_text = field.value.replace('$', '').replace(',', '').split()[0]
+                        price = float(price_text)
+                    except:
+                        pass
+                elif "Brand" in field.name:
+                    brand = field.value
+            
+            if price is not None:
+                messages.append({
+                    'price': price,
+                    'brand': brand or "Unknown",
+                    'title': title[:30],
+                    'timestamp': message.created_at,
+                    'over_limit': price > TRIMLIST_MAX_PRICE,
+                    'wrong_brand': brand not in TRIMLIST_BRANDS if brand else True
+                })
+    
+    if not messages:
+        await ctx.send("📭 No recent messages found in trimlist channel")
+        return
+    
+    violations = [m for m in messages if m['over_limit'] or m['wrong_brand']]
+    
+    embed = discord.Embed(
+        title="🏆 Trimlist Channel Analysis", 
+        color=0xff0000 if violations else 0x00ff00
+    )
+    
+    embed.add_field(
+        name="Recent Items",
+        value=f"{len(messages)} items checked",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Violations",
+        value=f"❌ {len(violations)} items" if violations else "✅ All correct",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Price Limit",
+        value=f"${TRIMLIST_MAX_PRICE}",
+        inline=True
+    )
+    
+    if violations:
+        violation_details = []
+        for v in violations[:5]:
+            reason = []
+            if v['over_limit']:
+                reason.append(f"${v['price']:.2f} > ${TRIMLIST_MAX_PRICE}")
+            if v['wrong_brand']:
+                reason.append(f"Wrong brand: {v['brand']}")
+            
+            violation_details.append(f"• {v['title']}: {', '.join(reason)}")
+        
+        embed.add_field(
+            name="❌ Violations Found",
+            value="\n".join(violation_details),
+            inline=False
+        )
+    
+    brands_found = set(m['brand'] for m in messages if m['brand'] != "Unknown")
+    embed.add_field(
+        name="Brands Found",
+        value=", ".join(brands_found) if brands_found else "None",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
+
+# Quick setup verification
+@bot.command(name='trimlist_setup')
+@commands.has_permissions(administrator=True)
+async def trimlist_setup(ctx):
+    """Verify trimlist channel setup"""
+    
+    trimlist_channel = discord.utils.get(guild.text_channels, name="🏆-trimlist")
+    
+    embed = discord.Embed(
+        title="🏆 Trimlist Setup Verification",
+        color=0x00ff00 if trimlist_channel else 0xff0000
+    )
+    
+    embed.add_field(
+        name="Channel Exists",
+        value="✅ Found #🏆-trimlist" if trimlist_channel else "❌ Channel missing!",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="Target Brands",
+        value="\n".join(f"• {brand}" for brand in TRIMLIST_BRANDS),
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Price Limit", 
+        value=f"${TRIMLIST_MAX_PRICE} or less",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Test Commands",
+        value="`!test_trimlist cdg 45`\n`!test_trimlist rick 70`\n`!check_trimlist`",
+        inline=False
+    )
+    
+    if not trimlist_channel:
+        embed.add_field(
+            name="🔧 Fix Required",
+            value="Create the #🏆-trimlist channel first!",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
 
 # Add debug command to test budget-steals filtering
 @bot.command(name='test_budget_filter')
