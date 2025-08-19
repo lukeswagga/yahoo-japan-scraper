@@ -981,11 +981,42 @@ async def process_batch_buffer():
             print(f"📤 Processing {len(items_to_send)} items from buffer (remaining: {len(batch_buffer)})...")
             await send_individual_listings_with_rate_limit(items_to_send)
 
+# Add this function to secure_discordbot.py
+
+def determine_target_channel(price_usd, brand, deal_quality, title):
+    """Determine which channel(s) to send listing to based on price and quality"""
+    channels = []
+    
+    # Always send to main auction alerts
+    channels.append("🎯-auction-alerts")
+    
+    # Budget steals - STRICT $100 limit
+    if price_usd <= 100.0:
+        channels.append("💰-budget-steals")
+        print(f"📦 Budget steal detected: ${price_usd:.2f} -> budget-steals")
+    
+    # High-value pieces
+    if price_usd >= 500.0 and deal_quality >= 0.3:
+        channels.append("💎-investment-pieces")
+    
+    # Trending pieces (good deals)
+    if deal_quality >= 0.4:
+        channels.append("🎯-trending-pieces")
+    
+    # Brand channel if applicable
+    if brand and brand in BRAND_CHANNEL_MAP:
+        brand_channel = f"🏷️-{BRAND_CHANNEL_MAP[brand]}"
+        channels.append(brand_channel)
+    
+    return channels
+
 async def send_single_listing_enhanced(auction_data):
-    """Send listing with proper database error handling"""
+    """Enhanced listing sender with intelligent channel routing"""
     try:
         title = auction_data.get('title', 'Unknown Item')[:100]
         brand = auction_data.get('brand', 'Unknown')
+        price_usd = auction_data.get('price_usd', 0)
+        deal_quality = auction_data.get('deal_quality', 0.0)
         sizes = extract_sizes_from_title(title) if title else []
         
         # Check for duplicates first
@@ -999,32 +1030,45 @@ async def send_single_listing_enhanced(auction_data):
             print(f"⚠️ Duplicate found, skipping: {auction_data['auction_id']}")
             return False
         
-        # Send to main channel
-        main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
+        # Determine target channels based on price and quality
+        target_channels = determine_target_channel(price_usd, brand, deal_quality, title)
+        
+        embed = create_listing_embed(auction_data)
         main_message = None
-        if main_channel:
-            embed = create_listing_embed(auction_data)
-            main_message = await main_channel.send(embed=embed)
-            print(f"📤 Sent to MAIN channel: {title[:30]}...")
-            
-            # Add to database with end time - fixed function call
+        sent_count = 0
+        
+        # Send to each target channel
+        for channel_name in target_channels:
+            channel = discord.utils.get(guild.text_channels, name=channel_name)
+            if channel:
+                try:
+                    message = await channel.send(embed=embed)
+                    sent_count += 1
+                    
+                    # Track main message for database
+                    if channel_name == "🎯-auction-alerts":
+                        main_message = message
+                    
+                    print(f"📤 Sent to {channel_name}: {title[:30]}...")
+                    
+                    # Rate limiting between channels
+                    await asyncio.sleep(0.5)
+                    
+                except Exception as e:
+                    print(f"❌ Failed to send to {channel_name}: {e}")
+            else:
+                print(f"⚠️ Channel not found: {channel_name}")
+        
+        # Add to database if we sent to main channel
+        if main_message:
             success = add_listing(auction_data, main_message.id)
             if not success:
                 print(f"❌ Failed to add listing to database: {auction_data['auction_id']}")
         
-        # Send to brand channel
-        brand_channel = None
-        if brand and brand in BRAND_CHANNEL_MAP:
-            brand_channel = await get_or_create_brand_channel(brand)
-            if brand_channel:
-                embed = create_listing_embed(auction_data)
-                brand_message = await brand_channel.send(embed=embed)
-                print(f"🏷️ Also sent to brand channel: {brand_channel.name}")
-        
-        return True
+        return sent_count > 0
         
     except Exception as e:
-        print(f"❌ Full traceback: {e}")
+        print(f"❌ Error in send_single_listing_enhanced: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -3586,6 +3630,123 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 
+
+# Add debug command to test budget-steals filtering
+@bot.command(name='test_budget_filter')
+@commands.has_permissions(administrator=True)
+async def test_budget_filter(ctx, price: float):
+    """Test budget-steals filtering with a specific price"""
+    
+    test_data = {
+        'auction_id': 'test_123',
+        'title': 'Test Budget Item',
+        'brand': 'Test Brand',
+        'price_usd': price,
+        'deal_quality': 0.2,
+        'price_jpy': int(price * 147),
+        'seller_id': 'test_seller',
+        'yahoo_url': 'https://yahoo.jp/test',
+        'zenmarket_url': 'https://zenmarket.jp/test',
+        'image_url': None,
+        'sizes': [],
+        'end_time': '2025-08-20 12:00:00'
+    }
+    
+    channels = determine_target_channel(price, 'Test Brand', 0.2, 'Test Budget Item')
+    
+    embed = discord.Embed(
+        title="🧪 Budget Filter Test",
+        color=0x00ff00 if price <= 100 else 0xff0000
+    )
+    
+    embed.add_field(
+        name="Test Price",
+        value=f"${price:.2f}",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Budget Steals Eligible", 
+        value="✅ YES" if price <= 100 else "❌ NO",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Target Channels",
+        value="\n".join(channels) if channels else "None",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
+
+# Add monitoring command to check recent budget-steals
+@bot.command(name='check_budget_steals')
+@commands.has_permissions(administrator=True)
+async def check_budget_steals(ctx):
+    """Check recent items sent to budget-steals channel"""
+    
+    budget_channel = discord.utils.get(guild.text_channels, name="💰-budget-steals")
+    
+    if not budget_channel:
+        await ctx.send("❌ Budget-steals channel not found!")
+        return
+    
+    # Get last 10 messages from budget-steals
+    messages = []
+    async for message in budget_channel.history(limit=10):
+        if message.embeds:
+            embed = message.embeds[0]
+            for field in embed.fields:
+                if "Price" in field.name:
+                    price_text = field.value
+                    try:
+                        price = float(price_text.replace('$', '').replace(',', '').split()[0])
+                        messages.append({
+                            'price': price,
+                            'timestamp': message.created_at,
+                            'over_limit': price > 100
+                        })
+                    except:
+                        pass
+    
+    if not messages:
+        await ctx.send("📭 No recent messages found in budget-steals channel")
+        return
+    
+    over_limit = [m for m in messages if m['over_limit']]
+    
+    embed = discord.Embed(
+        title="💰 Budget-Steals Channel Analysis",
+        color=0xff0000 if over_limit else 0x00ff00
+    )
+    
+    embed.add_field(
+        name="Recent Messages",
+        value=f"{len(messages)} items checked",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Over $100 Limit",
+        value=f"❌ {len(over_limit)} items" if over_limit else "✅ All under $100",
+        inline=True
+    )
+    
+    if over_limit:
+        over_prices = [f"${m['price']:.2f}" for m in over_limit[:5]]
+        embed.add_field(
+            name="Overpriced Items Found",
+            value="\n".join(over_prices),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🔧 Action Required",
+            value="Budget-steals filter is not working correctly!",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
 
 def run_flask():
     try:
