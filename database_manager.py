@@ -191,6 +191,17 @@ class DatabaseManager:
         
         for table_name, column_name, column_type in missing_columns:
             try:
+                # Validate table and column names to prevent SQL injection
+                if table_name not in ['listings', 'user_preferences', 'user_bookmarks', 'reactions', 'scraper_stats']:
+                    print(f"⚠️ Skipping invalid table name: {table_name}")
+                    continue
+                if not column_name.replace('_', '').isalnum():
+                    print(f"⚠️ Skipping invalid column name: {column_name}")
+                    continue
+                if not column_type.replace(' ', '').replace('(', '').replace(')', '').replace('DEFAULT', '').replace('FALSE', '').replace('TRUE', '').replace('NOT', '').replace('NULL', '').isalnum():
+                    print(f"⚠️ Skipping invalid column type: {column_type}")
+                    continue
+                
                 cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} {column_type}")
                 print(f"✅ Added missing column: {table_name}.{column_name}")
             except Exception as e:
@@ -229,6 +240,14 @@ class DatabaseManager:
         ]
         for col_name, col_def in extra_columns:
             try:
+                # Validate column name to prevent SQL injection
+                if not col_name.replace('_', '').isalnum():
+                    print(f"⚠️ Skipping invalid column name: {col_name}")
+                    continue
+                if not col_def.replace(' ', '').replace('(', '').replace(')', '').replace('DEFAULT', '').replace('FALSE', '').replace('TRUE', '').replace('NOT', '').replace('NULL', '').isalnum():
+                    print(f"⚠️ Skipping invalid column definition: {col_def}")
+                    continue
+                
                 cursor.execute(
                     f"ALTER TABLE listings ADD COLUMN {col_name} {col_def}"
                 )

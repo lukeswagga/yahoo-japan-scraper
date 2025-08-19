@@ -19,6 +19,99 @@ from database_manager import (
     get_user_size_preferences, set_user_size_preferences, mark_reminder_sent
 )
 
+# Set up secure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('discord_bot.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Input validation and sanitization
+class InputValidator:
+    @staticmethod
+    def sanitize_username(username: str) -> str:
+        """Sanitize username for safe use in channel names"""
+        if not username:
+            return "user"
+        # Remove dangerous characters, limit length
+        safe_username = re.sub(r'[^a-zA-Z0-9\-_]', '', username)
+        return safe_username[:20] or "user"
+    
+    @staticmethod
+    def validate_auction_id(auction_id: str) -> bool:
+        """Validate auction ID format"""
+        if not auction_id or len(auction_id) > 50:
+            return False
+        # Yahoo auction IDs are typically alphanumeric with specific patterns
+        return bool(re.match(r'^[a-zA-Z0-9_-]+$', auction_id))
+    
+    @staticmethod
+    def validate_sizes(sizes: list) -> bool:
+        """Validate size input"""
+        if not isinstance(sizes, list):
+            return False
+        
+        if len(sizes) > 20:  # Limit number of sizes
+            return False
+        
+        valid_size_patterns = [
+            r'^[XxSsMmLl]+$',  # XS, S, M, L, XL, etc.
+            r'^\d{1,2}(?:\.\d)?$',  # Numeric sizes like 30, 30.5
+            r'^\d{1,2}(?:\.\d)?\s*(?:US|EU|UK)$',  # 30 US, 30.5 EU
+        ]
+        
+        for size in sizes:
+            if not isinstance(size, str) or len(size) > 10:
+                return False
+            
+            size_valid = any(re.match(pattern, size, re.IGNORECASE) for pattern in valid_size_patterns)
+            if not size_valid:
+                return False
+        
+        return True
+    
+    @staticmethod
+    def sanitize_command_input(text: str) -> str:
+        """Sanitize user input for commands"""
+        if not text:
+            return ""
+        
+        # Remove potentially dangerous characters
+        sanitized = re.sub(r'[<>"\']', '', text)
+        return sanitized[:1000]  # Limit length
+    
+    @staticmethod
+    def validate_url(url: str) -> bool:
+        """Validate URL format"""
+        if not url or len(url) > 500:
+            return False
+        
+        # Check for valid URL patterns
+        valid_domains = [
+            'zenmarket.jp', 'buyee.jp', 'page.auctions.yahoo.co.jp',
+            'jp.mercari.com', 'ebay.com', 'grailed.com'
+        ]
+        
+        url_lower = url.lower()
+        return any(domain in url_lower for domain in valid_domains)
+    
+    @staticmethod
+    def sanitize_channel_name(name: str) -> str:
+        """Sanitize channel name for safe creation"""
+        if not name:
+            return "channel"
+        
+        # Remove dangerous characters, limit length
+        safe_name = re.sub(r'[^a-zA-Z0-9\-_#]', '', name)
+        return safe_name[:32] or "channel"  # Discord limit is 32 chars
+
+# Initialize input validator
+input_validator = InputValidator()
+
 def get_user_size_preferences(user_id):
     """Get user's size preferences and alert status"""
     try:
@@ -39,7 +132,7 @@ def get_user_size_preferences(user_id):
         return [], False
         
     except Exception as e:
-        print(f"❌ Error getting size preferences: {e}")
+        logger.error(f"Error getting size preferences for user {user_id}: {str(e)}")
         return [], False
 
 def set_user_size_preferences(user_id, sizes):
@@ -65,7 +158,7 @@ def set_user_size_preferences(user_id, sizes):
         return True
         
     except Exception as e:
-        print(f"❌ Error setting size preferences: {e}")
+        logger.error(f"Error setting size preferences for user {user_id}: {str(e)}")
         return False
 
 def add_user_bookmark(user_id, auction_id, bookmark_message_id, bookmark_channel_id):
@@ -89,7 +182,7 @@ def add_user_bookmark(user_id, auction_id, bookmark_message_id, bookmark_channel
         return True
         
     except Exception as e:
-        print(f"❌ Error adding bookmark: {e}")
+        logger.error(f"Error adding bookmark for user {user_id}, auction {auction_id}: {str(e)}")
         return False
 
 
@@ -230,11 +323,11 @@ def load_secure_config():
         exit(1)
     
     if len(bot_token) < 50 or not bot_token.startswith(('M', 'N', 'O')):
-        print("❌ SECURITY ERROR: Invalid token format detected!")
+        logger.error("SECURITY ERROR: Invalid Discord bot token format detected!")
         exit(1)
     
-    print("✅ SECURITY: Secure configuration loaded from environment variables")
-    print("🔒 Token length:", len(bot_token), "characters (hidden for security)")
+    logger.info("SECURITY: Secure configuration loaded from environment variables")
+    logger.info(f"Bot token validated successfully (length: {len(bot_token)} characters)")
     
     return {
         'bot_token': bot_token,
@@ -1140,7 +1233,9 @@ async def on_reaction_add(reaction, user):
 async def get_or_create_bookmark_channel(user):
     """Get or create bookmark channel for user"""
     try:
-        channel_name = f"bookmarks-{user.name.lower()}"
+        # Sanitize username for safe channel creation
+        safe_username = input_validator.sanitize_username(user.name)
+        channel_name = f"bookmarks-{safe_username}"
         
         # Check if channel exists
         existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
@@ -1272,10 +1367,8 @@ async def setup_command(ctx):
         print(f"🔧 Sent setup flow to user {user_id}")
         
     except Exception as e:
-        print(f"🔧 Fatal error in setup command: {e}")
-        import traceback
-        traceback.print_exc()
-        await ctx.send(f"❌ Setup command error: {str(e)}")
+        logger.error(f"Fatal error in setup command for user {user_id}: {str(e)}")
+        await ctx.send("❌ An error occurred during setup. Please try again later.")
 
 async def handle_setup_reaction(reaction, user):
     print(f"🔧 handle_setup_reaction called: user={user.name}, emoji={reaction.emoji}")
@@ -1359,6 +1452,9 @@ async def check_bookmarks_table(ctx):
 @bot.command(name='set_sizes')
 async def set_sizes_command(ctx, *sizes):
     """Set preferred sizes for alerts"""
+    user_id = ctx.author.id
+    
+    # Validate sizes input
     if not sizes:
         embed = discord.Embed(
             title="📏 Set Your Preferred Sizes",
@@ -1387,6 +1483,12 @@ async def set_sizes_command(ctx, *sizes):
             )
         
         await ctx.send(embed=embed)
+        return
+    
+    # Validate sizes
+    sizes_list = list(sizes)
+    if not input_validator.validate_sizes(sizes_list):
+        await ctx.send("❌ Invalid size format. Please use standard sizes like: S, M, L, XL, 30, 30.5, etc.")
         return
     
     normalized_sizes = []
@@ -2016,7 +2118,9 @@ async def stats_command(ctx):
 async def create_bookmark_channel_for_user(user, auction_data):
     """Create private bookmark channel with proper thumbnails"""
     try:
-        channel_name = f"bookmarks-{user.name.lower()}"
+        # Sanitize username for safe channel creation
+        safe_username = input_validator.sanitize_username(user.name)
+        channel_name = f"bookmarks-{safe_username}"
         
         # Check if channel already exists
         existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
@@ -2995,6 +3099,17 @@ async def my_tier_command(ctx):
 
 @bot.command(name='bookmark')
 async def bookmark_item(ctx, *, auction_url_or_id=None):
+    # Validate input
+    if auction_url_or_id and len(auction_url_or_id) > 500:
+        await ctx.send("❌ Invalid auction URL or ID provided.")
+        return
+    
+    # Sanitize input if provided
+    if auction_url_or_id:
+        sanitized_input = input_validator.sanitize_command_input(auction_url_or_id)
+        if not sanitized_input:
+            await ctx.send("❌ Invalid input provided.")
+            return
     """Bookmark an auction with fixed database handling"""
     try:
         user_id = ctx.author.id
@@ -3013,6 +3128,11 @@ async def bookmark_item(ctx, *, auction_url_or_id=None):
             else:
                 await ctx.send("❌ Could not extract auction ID from URL")
                 return
+        
+        # Validate auction ID
+        if not input_validator.validate_auction_id(auction_id):
+            await ctx.send("❌ Invalid auction ID format. Please provide a valid Yahoo auction URL or ID.")
+            return
         
         # Check if listing exists in database with fixed query
         listing = db_manager.execute_query(
