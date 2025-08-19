@@ -46,7 +46,6 @@ EXCHANGE_RATE_FILE = "exchange_rate.json"
 SCRAPER_DB = "auction_tracking.db"
 
 MAX_PRICE_USD = 1500
-MAX_PRICE_USD_PRIORITY = 100  # Your specific $100 limit for priority brands
 MIN_PRICE_USD = 2
 MAX_LISTINGS_PER_BRAND = 999
 ONLY_BUY_IT_NOW = False
@@ -1112,73 +1111,6 @@ def add_to_scraper_db(auction_id):
         print(f"⚠️ Could not add to scraper DB: {e}")
         return False
 
-def get_priority_brand_keywords():
-    """Generate keywords specifically for priority brands and clothing"""
-    priority_keywords = []
-    
-    # Your priority brands
-    priority_brands = ["Rick Owens", "Junya Watanabe", "Comme Des Garcons"]
-    
-    # Your target clothing types (English and Japanese)
-    clothing_types = [
-        "jacket", "shirt", "pants", "hoodie", "sweater", "blazer",
-        "ジャケット", "シャツ", "パンツ", "パーカー", "セーター", "ブレザー"
-    ]
-    
-    # Generate combinations
-    for brand in priority_brands:
-        brand_data = BRAND_DATA.get(brand, {})
-        variants = brand_data.get("variants", [brand])
-        
-        for variant in variants[:2]:  # Use top 2 variants
-            # Brand alone
-            priority_keywords.append(variant)
-            
-            # Brand + clothing type combinations
-            for clothing_type in clothing_types[:6]:  # Use top 6 clothing types
-                priority_keywords.append(f"{variant} {clothing_type}")
-    
-    return priority_keywords
-
-def run_priority_scrape():
-    """Run priority scrape for your specific brands and clothing first"""
-    print("🎯 Starting PRIORITY SCRAPE for Rick Owens, Junya Watanabe, CDG under $100")
-    
-    priority_keywords = get_priority_brand_keywords()
-    priority_listings = []
-    
-    for keyword in priority_keywords[:15]:  # Limit to 15 priority searches
-        try:
-            print(f"🔍 Priority search: {keyword}")
-            listings, errors = search_yahoo_multi_page_intensive(
-                keyword, 
-                max_pages=3,  # 3 pages for priority brands
-                brand=keyword.split()[0], 
-                keyword_manager=None
-            )
-            
-            # Filter for your $100 limit
-            for listing in listings:
-                if listing['price_usd'] <= MAX_PRICE_USD_PRIORITY:
-                    priority_listings.append(listing)
-            
-            time.sleep(random.uniform(2, 4))  # Rate limiting
-            
-        except Exception as e:
-            print(f"❌ Priority search error for {keyword}: {e}")
-    
-    # Sort by best deals first
-    priority_listings.sort(key=lambda x: x['price_usd'])
-    
-    print(f"🔥 Priority scrape found {len(priority_listings)} items under $100")
-    
-    # Send to Discord immediately
-    for listing in priority_listings[:10]:  # Send top 10 priority finds
-        send_to_discord_bot(listing)
-        time.sleep(2)  # Rate limit Discord
-    
-    return priority_listings
-
 def search_yahoo_multi_page_intensive(keyword_combo, max_pages, brand, keyword_manager, sort_order="new"):
     start_time = time.time()
     all_listings = []
@@ -1961,9 +1893,6 @@ def main_loop():
     
     # Keep existing setup calls
     get_usd_jpy_rate()
-    
-    # PRIORITY SCRAPE FIRST - Your specific brands under $100
-    priority_listings = run_priority_scrape()
     
     if USE_DISCORD_BOT:
         print(f"🔗 Discord Bot URL: {DISCORD_BOT_URL}")
