@@ -873,7 +873,9 @@ def calculate_deal_quality(price_usd, brand, title):
         "alyx": 1.3,
         "kiko_kostadinov": 1.3,
         "prada": 1.2,
-        "hysteric_glamour": 1.0
+        "hysteric_glamour": 1.0,
+        "issey_miyake": 1.7,  # NEW: Added Issey Miyake with high multiplier (known for pleats & innovation)
+        "helmut_lang": 1.4   # Also added this if missing
     }
     
     brand_key = brand.lower().replace(" ", "_") if brand else "unknown"

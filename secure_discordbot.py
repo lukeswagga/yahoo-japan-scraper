@@ -394,7 +394,8 @@ BRAND_CHANNEL_MAP = {
     "Rick Owens": "rick-owens",
     "Undercover": "undercover",
     "Jean Paul Gaultier": "jean-paul-gaultier",
-    "Yohji Yamamoto": "yohji_yamamoto"
+    "Yohji Yamamoto": "yohji_yamamoto",
+    "Issey Miyake": "issey-miyake"  # NEW: Added Issey Miyake
 }
 
 intents = discord.Intents.default()
