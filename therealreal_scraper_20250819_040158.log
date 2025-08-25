@@ -1,0 +1,31 @@
+2025-08-19 04:01:58,912 - INFO - Action: Starting TheRealReal scraper
+2025-08-19 04:01:58,912 - INFO - Scraping brand: Junya Watanabe
+2025-08-19 04:01:58,912 - INFO - Action: Starting scrape for brand: Junya Watanabe
+2025-08-19 04:01:58,912 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_asc
+2025-08-19 04:02:00,714 - WARNING - 403 Forbidden on attempt 1
+2025-08-19 04:02:18,408 - INFO - Cleared session state and reset headers
+2025-08-19 04:02:24,311 - INFO - Rotated User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20...
+2025-08-19 04:02:24,312 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_asc
+2025-08-19 04:02:27,521 - WARNING - 403 Forbidden on attempt 2
+2025-08-19 04:02:42,564 - INFO - Cleared session state and reset headers
+2025-08-19 04:02:49,545 - INFO - Rotated User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWeb...
+2025-08-19 04:02:49,547 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_asc
+2025-08-19 04:02:50,372 - INFO - Found 119 products using selector: .product-card
+2025-08-19 04:02:50,372 - ERROR - Error scraping Junya Watanabe: 'TheRealRealScraper' object has no attribute 'parse_product_card'
+2025-08-19 04:02:50,373 - INFO - Scraping brand: Comme Des Garçons
+2025-08-19 04:02:50,373 - INFO - Action: Starting scrape for brand: Comme Des Garçons
+2025-08-19 04:02:50,373 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_asc
+2025-08-19 04:02:53,805 - INFO - Found 119 products using selector: .product-card
+2025-08-19 04:02:53,805 - ERROR - Error scraping Comme Des Garçons: 'TheRealRealScraper' object has no attribute 'parse_product_card'
+2025-08-19 04:02:53,805 - INFO - Scraping brand: CDG
+2025-08-19 04:02:53,805 - INFO - Action: Starting scrape for brand: CDG
+2025-08-19 04:02:53,805 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=price_asc
+2025-08-19 04:02:54,208 - INFO - Found 46 products using selector: .product-card
+2025-08-19 04:02:54,208 - ERROR - Error scraping CDG: 'TheRealRealScraper' object has no attribute 'parse_product_card'
+2025-08-19 04:02:54,208 - INFO - Scraping brand: Rick Owens
+2025-08-19 04:02:54,208 - INFO - Action: Starting scrape for brand: Rick Owens
+2025-08-19 04:02:54,208 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=price_asc
+2025-08-19 04:02:54,828 - INFO - Found 119 products using selector: .product-card
+2025-08-19 04:02:54,828 - ERROR - Error scraping Rick Owens: 'TheRealRealScraper' object has no attribute 'parse_product_card'
+2025-08-19 04:02:54,828 - INFO - Action: Scraping completed
+2025-08-19 04:02:54,829 - INFO - Results saved to therealreal_results_20250819_040254.json

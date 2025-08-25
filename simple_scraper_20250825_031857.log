@@ -1,0 +1,114 @@
+2025-08-25 03:18:57,336 - INFO - Action: Starting simple scraper
+2025-08-25 03:18:57,336 - INFO - 🔍 Scraping brand: Junya Watanabe
+2025-08-25 03:18:57,336 - INFO - Action: Starting multi-page scrape for brand: Junya Watanabe
+2025-08-25 03:18:57,336 - INFO - Scraping Junya Watanabe - Page 1/3
+2025-08-25 03:18:57,336 - INFO - URL: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_low_to_high&department=men&page=1
+2025-08-25 03:18:57,336 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_low_to_high&department=men&page=1
+2025-08-25 03:18:58,061 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 03:18:58,080 - INFO - Found 119 items with selector: .product-card
+2025-08-25 03:18:58,107 - INFO - Action: Found product #1
+2025-08-25 03:18:58,109 - INFO - Action: Found product #2
+2025-08-25 03:18:58,120 - INFO - Action: Found product #3
+2025-08-25 03:18:58,127 - INFO - Action: Found product #4
+2025-08-25 03:18:58,134 - INFO - Extracted 4 valid products using .product-card
+2025-08-25 03:18:58,134 - INFO - Page 1: Found 4 products (Total: 4)
+2025-08-25 03:19:01,218 - INFO - Scraping Junya Watanabe - Page 2/3
+2025-08-25 03:19:01,218 - INFO - URL: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_low_to_high&department=men&page=2
+2025-08-25 03:19:01,218 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_low_to_high&department=men&page=2
+2025-08-25 03:19:01,764 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 03:19:01,783 - INFO - Found 119 items with selector: .product-card
+2025-08-25 03:19:01,813 - INFO - Action: Found product #1
+2025-08-25 03:19:01,817 - INFO - Action: Found product #2
+2025-08-25 03:19:01,830 - INFO - Action: Found product #3
+2025-08-25 03:19:01,837 - INFO - Action: Found product #4
+2025-08-25 03:19:01,844 - INFO - Extracted 4 valid products using .product-card
+2025-08-25 03:19:01,844 - INFO - Page 2: Found 4 products (Total: 8)
+2025-08-25 03:19:01,844 - INFO - Page 2 has fewer products, likely the last page
+2025-08-25 03:19:01,844 - INFO - Completed Junya Watanabe: 8 total products across 2 pages
+2025-08-25 03:19:12,243 - INFO - 🔍 Scraping brand: Comme Des Garçons
+2025-08-25 03:19:12,244 - INFO - Action: Starting multi-page scrape for brand: Comme Des Garçons
+2025-08-25 03:19:12,244 - INFO - Scraping Comme Des Garçons - Page 1/3
+2025-08-25 03:19:12,244 - INFO - URL: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_low_to_high&department=men&page=1
+2025-08-25 03:19:12,245 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_low_to_high&department=men&page=1
+2025-08-25 03:19:12,843 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 03:19:12,862 - INFO - Found 119 items with selector: .product-card
+2025-08-25 03:19:12,867 - INFO - Action: Found product #1
+2025-08-25 03:19:12,867 - INFO - Action: Found product #2
+2025-08-25 03:19:12,868 - INFO - Action: Found product #3
+2025-08-25 03:19:12,874 - INFO - Action: Found product #4
+2025-08-25 03:19:12,876 - INFO - Action: Found product #5
+2025-08-25 03:19:12,877 - INFO - Action: Found product #6
+2025-08-25 03:19:12,878 - INFO - Action: Found product #7
+2025-08-25 03:19:12,878 - INFO - Action: Found product #8
+2025-08-25 03:19:12,886 - INFO - Action: Found product #9
+2025-08-25 03:19:12,887 - INFO - Action: Found product #10
+2025-08-25 03:19:12,890 - INFO - Action: Found product #11
+2025-08-25 03:19:12,890 - INFO - Action: Found product #12
+2025-08-25 03:19:12,892 - INFO - Action: Found product #13
+2025-08-25 03:19:12,893 - INFO - Action: Found product #14
+2025-08-25 03:19:12,894 - INFO - Action: Found product #15
+2025-08-25 03:19:12,895 - INFO - Action: Found product #16
+2025-08-25 03:19:12,896 - INFO - Action: Found product #17
+2025-08-25 03:19:12,905 - INFO - Action: Found product #18
+2025-08-25 03:19:12,906 - INFO - Action: Found product #19
+2025-08-25 03:19:12,912 - INFO - Action: Found product #20
+2025-08-25 03:19:12,912 - INFO - Reached max products limit (20)
+2025-08-25 03:19:12,912 - INFO - Extracted 20 valid products using .product-card
+2025-08-25 03:19:12,912 - INFO - Page 1: Found 20 products (Total: 20)
+2025-08-25 03:19:16,404 - INFO - Scraping Comme Des Garçons - Page 2/3
+2025-08-25 03:19:16,405 - INFO - URL: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_low_to_high&department=men&page=2
+2025-08-25 03:19:16,405 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_low_to_high&department=men&page=2
+2025-08-25 03:19:17,104 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 03:19:17,123 - INFO - Found 119 items with selector: .product-card
+2025-08-25 03:19:17,128 - INFO - Action: Found product #1
+2025-08-25 03:19:17,128 - INFO - Action: Found product #2
+2025-08-25 03:19:17,128 - INFO - Action: Found product #3
+2025-08-25 03:19:17,134 - INFO - Action: Found product #4
+2025-08-25 03:19:17,137 - INFO - Action: Found product #5
+2025-08-25 03:19:17,138 - INFO - Action: Found product #6
+2025-08-25 03:19:17,139 - INFO - Action: Found product #7
+2025-08-25 03:19:17,139 - INFO - Action: Found product #8
+2025-08-25 03:19:17,146 - INFO - Action: Found product #9
+2025-08-25 03:19:17,147 - INFO - Action: Found product #10
+2025-08-25 03:19:17,150 - INFO - Action: Found product #11
+2025-08-25 03:19:17,151 - INFO - Action: Found product #12
+2025-08-25 03:19:17,153 - INFO - Action: Found product #13
+2025-08-25 03:19:17,154 - INFO - Action: Found product #14
+2025-08-25 03:19:17,155 - INFO - Action: Found product #15
+2025-08-25 03:19:17,155 - INFO - Action: Found product #16
+2025-08-25 03:19:17,157 - INFO - Action: Found product #17
+2025-08-25 03:19:17,166 - INFO - Action: Found product #18
+2025-08-25 03:19:17,166 - INFO - Action: Found product #19
+2025-08-25 03:19:17,173 - INFO - Action: Found product #20
+2025-08-25 03:19:17,173 - INFO - Reached max products limit (20)
+2025-08-25 03:19:17,173 - INFO - Extracted 20 valid products using .product-card
+2025-08-25 03:19:17,173 - INFO - Page 2: Found 20 products (Total: 40)
+2025-08-25 03:19:21,318 - INFO - Scraping Comme Des Garçons - Page 3/3
+2025-08-25 03:19:21,318 - INFO - URL: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_low_to_high&department=men&page=3
+2025-08-25 03:19:21,318 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_low_to_high&department=men&page=3
+2025-08-25 03:19:22,086 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 03:19:22,106 - INFO - Found 120 items with selector: .product-card
+2025-08-25 03:19:22,110 - INFO - Action: Found product #1
+2025-08-25 03:19:22,111 - INFO - Action: Found product #2
+2025-08-25 03:19:22,111 - INFO - Action: Found product #3
+2025-08-25 03:19:22,117 - INFO - Action: Found product #4
+2025-08-25 03:19:22,119 - INFO - Action: Found product #5
+2025-08-25 03:19:22,120 - INFO - Action: Found product #6
+2025-08-25 03:19:22,121 - INFO - Action: Found product #7
+2025-08-25 03:19:22,122 - INFO - Action: Found product #8
+2025-08-25 03:19:22,129 - INFO - Action: Found product #9
+2025-08-25 03:19:22,130 - INFO - Action: Found product #10
+2025-08-25 03:19:22,133 - INFO - Action: Found product #11
+2025-08-25 03:19:22,134 - INFO - Action: Found product #12
+2025-08-25 03:19:22,135 - INFO - Action: Found product #13
+2025-08-25 03:19:22,136 - INFO - Action: Found product #14
+2025-08-25 03:19:22,137 - INFO - Action: Found product #15
+2025-08-25 03:19:22,138 - INFO - Action: Found product #16
+2025-08-25 03:19:22,140 - INFO - Action: Found product #17
+2025-08-25 03:19:22,149 - INFO - Action: Found product #18
+2025-08-25 03:19:22,149 - INFO - Action: Found product #19
+2025-08-25 03:19:22,155 - INFO - Action: Found product #20
+2025-08-25 03:19:22,155 - INFO - Reached max products limit (20)
+2025-08-25 03:19:22,155 - INFO - Extracted 20 valid products using .product-card
+2025-08-25 03:19:22,155 - INFO - Page 3: Found 20 products (Total: 60)
+2025-08-25 03:19:22,155 - INFO - Completed Comme Des Garçons: 60 total products across 3 pages

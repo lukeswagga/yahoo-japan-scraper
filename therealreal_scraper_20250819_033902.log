@@ -1,0 +1,9 @@
+2025-08-19 03:39:02,585 - INFO - Action: Starting TheRealReal scraper
+2025-08-19 03:39:02,585 - INFO - Scraping brand: Junya Watanabe
+2025-08-19 03:39:02,585 - INFO - Action: Starting scrape for brand: Junya Watanabe
+2025-08-19 03:39:02,585 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_asc
+2025-08-19 03:39:02,871 - WARNING - Status code 403 on attempt 1
+2025-08-19 03:39:07,504 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_asc
+2025-08-19 03:39:07,746 - WARNING - Status code 403 on attempt 2
+2025-08-19 03:39:11,053 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_asc
+2025-08-19 03:39:11,320 - WARNING - Status code 403 on attempt 3

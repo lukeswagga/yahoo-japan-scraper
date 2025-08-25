@@ -1,0 +1,145 @@
+[
+  {
+    "timestamp": "2025-08-19T04:07:25.468833",
+    "action": "Attempting login",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:07:25.761218",
+    "action": "Starting TheRealReal scraper",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:07:25.761565",
+    "action": "Starting scrape for brand: Junya Watanabe",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:07:25.761756",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_low_to_high&page=1&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:07:46.827351",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_low_to_high&page=1&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:07:47.756129",
+    "action": "Starting scrape for brand: Comme Des Gar\u00e7ons",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:07:47.756201",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_low_to_high&page=1&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:07:48.343597",
+    "action": "Starting scrape for brand: CDG",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:07:48.345864",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=price_low_to_high&page=1&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:08:16.105747",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=price_low_to_high&page=1&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:08:43.181362",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=price_low_to_high&page=1&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:08:53.608099",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Jackets&price_max=100&sort=price_low_to_high&page=1&category=clothing-jackets&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:09:27.034019",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Jackets&price_max=100&sort=price_low_to_high&page=1&category=clothing-jackets&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:09:54.285457",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Jackets&price_max=100&sort=price_low_to_high&page=1&category=clothing-jackets&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:10:02.047529",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Shirts&price_max=100&sort=price_low_to_high&page=1&category=clothing-shirts&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:10:23.184687",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Shirts&price_max=100&sort=price_low_to_high&page=1&category=clothing-shirts&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:10:49.525706",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Shirts&price_max=100&sort=price_low_to_high&page=1&category=clothing-shirts&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:10:54.608759",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Pants&price_max=100&sort=price_low_to_high&page=1&category=clothing-pants&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:11:15.141229",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Pants&price_max=100&sort=price_low_to_high&page=1&category=clothing-pants&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:11:41.294364",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Pants&price_max=100&sort=price_low_to_high&page=1&category=clothing-pants&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:11:46.692193",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Hoodies&price_max=100&sort=price_low_to_high&page=1&category=clothing-hoodies&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:12:11.462436",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Hoodies&price_max=100&sort=price_low_to_high&page=1&category=clothing-hoodies&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:12:32.591023",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG+Hoodies&price_max=100&sort=price_low_to_high&page=1&category=clothing-hoodies&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:12:33.251007",
+    "action": "Starting scrape for brand: Rick Owens",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:12:33.253072",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=price_low_to_high&page=1&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:12:57.383015",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=price_low_to_high&page=1&department=men",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:12:58.089849",
+    "action": "Scraping completed",
+    "data": {
+      "total_products": 0,
+      "brands_scraped": [
+        "Junya Watanabe",
+        "Comme Des Gar\u00e7ons",
+        "CDG",
+        "Rick Owens"
+      ]
+    }
+  }
+]

@@ -1,0 +1,70 @@
+[
+  {
+    "timestamp": "2025-08-19T04:01:58.912159",
+    "action": "Starting TheRealReal scraper",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:01:58.912345",
+    "action": "Starting scrape for brand: Junya Watanabe",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:01:58.912400",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_asc",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:02:24.312209",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_asc",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:02:49.547269",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_asc",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:02:50.373057",
+    "action": "Starting scrape for brand: Comme Des Gar\u00e7ons",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:02:50.373122",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_asc",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:02:53.805269",
+    "action": "Starting scrape for brand: CDG",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:02:53.805312",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=price_asc",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:02:54.208561",
+    "action": "Starting scrape for brand: Rick Owens",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:02:54.208600",
+    "action": "Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=price_asc",
+    "data": null
+  },
+  {
+    "timestamp": "2025-08-19T04:02:54.828730",
+    "action": "Scraping completed",
+    "data": {
+      "total_products": 0,
+      "brands_scraped": [
+        "Junya Watanabe",
+        "Comme Des Gar\u00e7ons",
+        "CDG",
+        "Rick Owens"
+      ]
+    }
+  }
+]

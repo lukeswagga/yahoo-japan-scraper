@@ -1,0 +1,62 @@
+2025-08-19 04:31:00,966 - INFO - Action: Starting simple scraper
+2025-08-19 04:31:00,966 - INFO - Scraping brand: Junya Watanabe
+2025-08-19 04:31:00,966 - INFO - Action: Starting scrape for brand: Junya Watanabe
+2025-08-19 04:31:00,966 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_low_to_high&department=men
+2025-08-19 04:31:01,786 - INFO - Page title: All Categories | The RealReal
+2025-08-19 04:31:01,805 - INFO - Found 119 items with selector: .product-card
+2025-08-19 04:31:01,806 - INFO - Action: Found product
+2025-08-19 04:31:01,806 - INFO - Action: Found product
+2025-08-19 04:31:01,809 - INFO - Action: Found product
+2025-08-19 04:31:01,811 - INFO - Action: Found product
+2025-08-19 04:31:01,813 - INFO - Action: Found product
+2025-08-19 04:31:01,814 - INFO - Action: Found product
+2025-08-19 04:31:21,728 - INFO - Scraping brand: Comme Des Garçons
+2025-08-19 04:31:21,729 - INFO - Action: Starting scrape for brand: Comme Des Garçons
+2025-08-19 04:31:21,729 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_low_to_high&department=men
+2025-08-19 04:31:22,286 - INFO - Page title: All Categories | The RealReal
+2025-08-19 04:31:22,306 - INFO - Found 119 items with selector: .product-card
+2025-08-19 04:31:22,307 - INFO - Action: Found product
+2025-08-19 04:31:22,309 - INFO - Action: Found product
+2025-08-19 04:31:22,309 - INFO - Action: Found product
+2025-08-19 04:31:22,310 - INFO - Action: Found product
+2025-08-19 04:31:22,310 - INFO - Action: Found product
+2025-08-19 04:31:22,310 - INFO - Action: Found product
+2025-08-19 04:31:22,311 - INFO - Action: Found product
+2025-08-19 04:31:22,312 - INFO - Action: Found product
+2025-08-19 04:31:22,312 - INFO - Action: Found product
+2025-08-19 04:31:22,314 - INFO - Action: Found product
+2025-08-19 04:31:22,314 - INFO - Action: Found product
+2025-08-19 04:31:22,316 - INFO - Action: Found product
+2025-08-19 04:31:22,318 - INFO - Action: Found product
+2025-08-19 04:31:22,320 - INFO - Action: Found product
+2025-08-19 04:31:22,321 - INFO - Action: Found product
+2025-08-19 04:31:22,322 - INFO - Action: Found product
+2025-08-19 04:31:22,322 - INFO - Action: Found product
+2025-08-19 04:31:41,837 - INFO - Scraping brand: CDG
+2025-08-19 04:31:41,838 - INFO - Action: Starting scrape for brand: CDG
+2025-08-19 04:31:41,838 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=price_low_to_high&department=men
+2025-08-19 04:31:42,215 - INFO - Page title: All Categories | The RealReal
+2025-08-19 04:31:42,228 - INFO - Found 46 items with selector: .product-card
+2025-08-19 04:31:42,228 - INFO - Action: Found product
+2025-08-19 04:31:42,229 - INFO - Action: Found product
+2025-08-19 04:31:42,229 - INFO - Action: Found product
+2025-08-19 04:31:42,230 - INFO - Action: Found product
+2025-08-19 04:31:42,232 - INFO - Action: Found product
+2025-08-19 04:31:42,232 - INFO - Action: Found product
+2025-08-19 04:31:42,232 - INFO - Action: Found product
+2025-08-19 04:31:42,232 - INFO - Action: Found product
+2025-08-19 04:31:42,233 - INFO - Action: Found product
+2025-08-19 04:31:42,233 - INFO - Action: Found product
+2025-08-19 04:31:42,234 - INFO - Action: Found product
+2025-08-19 04:32:06,888 - INFO - Scraping brand: Rick Owens
+2025-08-19 04:32:06,888 - INFO - Action: Starting scrape for brand: Rick Owens
+2025-08-19 04:32:06,889 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=price_low_to_high&department=men
+2025-08-19 04:32:07,372 - INFO - Page title: All Categories | The RealReal
+2025-08-19 04:32:07,391 - INFO - Found 119 items with selector: .product-card
+2025-08-19 04:32:07,405 - INFO - Action: Found product
+2025-08-19 04:32:28,593 - INFO - Action: Scraping completed
+2025-08-19 04:32:28,598 - INFO - Results saved to therealreal_results_20250819_043228.json
+2025-08-19 04:32:28,598 - INFO - Sending payload for: Unknown Product...
+2025-08-19 04:32:28,937 - ERROR - ❌ Discord webhook failed: 400
+2025-08-19 04:32:28,937 - ERROR - Response: {"embeds": ["0"]}
+2025-08-19 04:32:28,937 - ERROR - Stopping Discord sends due to 400 error

@@ -14,8 +14,7 @@ import re
 import base64
 import subprocess
 import sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
+
 
 # Try to import optional packages
 try:
@@ -24,15 +23,7 @@ try:
 except ImportError:
     HAS_CLOUDSCRAPER = False
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'TheRealReal Scraper is running')
-    
-    def log_message(self, format, *args):
-        pass  # Suppress server logs
+
 
 @dataclass
 class Product:
@@ -114,66 +105,7 @@ class SimpleTheRealRealScraper:
         
         self.session.headers.update(headers)
     
-    def get_free_proxies(self):
-        """Get list of free proxies to rotate through"""
-        free_proxies = [
-            {'http': 'http://51.158.108.135:8811', 'https': 'http://51.158.108.135:8811'},
-            {'http': 'http://154.16.63.16:3128', 'https': 'http://154.16.63.16:3128'},
-            {'http': 'http://103.149.162.194:80', 'https': 'http://103.149.162.194:80'},
-            {'http': 'http://103.149.162.195:80', 'https': 'http://103.149.162.195:80'},
-            {'http': 'http://103.149.162.196:80', 'https': 'http://103.149.162.196:80'},
-            {'http': 'http://103.149.162.197:80', 'https': 'http://103.149.162.197:80'},
-            {'http': 'http://103.149.162.198:80', 'https': 'http://103.149.162.198:80'},
-            {'http': 'http://103.149.162.199:80', 'https': 'http://103.149.162.199:80'},
-            {'http': 'http://103.149.162.200:80', 'https': 'http://103.149.162.200:80'},
-            {'http': 'http://103.149.162.201:80', 'https': 'http://103.149.162.201:80'},
-            # Add more proxies as needed
-        ]
-        return free_proxies
-    
-    def fetch_fresh_proxies(self):
-        """Fetch fresh proxies from free proxy services"""
-        try:
-            # Try to get proxies from free-proxy-list.net
-            response = requests.get('https://free-proxy-list.net/', timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                proxy_table = soup.find('textarea')
-                if proxy_table:
-                    proxy_lines = proxy_table.text.strip().split('\n')
-                    fresh_proxies = []
-                    for line in proxy_lines[1:]:  # Skip header
-                        if line.strip():
-                            parts = line.split('\t')
-                            if len(parts) >= 2:
-                                ip = parts[0]
-                                port = parts[1]
-                                proxy = {
-                                    'http': f'http://{ip}:{port}',
-                                    'https': f'http://{ip}:{port}'
-                                }
-                                fresh_proxies.append(proxy)
-                    
-                    if fresh_proxies:
-                        self.logger.info(f"🔄 Fetched {len(fresh_proxies)} fresh proxies")
-                        return fresh_proxies
-        except Exception as e:
-            self.logger.warning(f"⚠️ Failed to fetch fresh proxies: {e}")
-        
-        # Fallback to static list
-        return self.get_free_proxies()
-    
-    def test_proxy(self, proxy):
-        """Test if a proxy is working"""
-        try:
-            test_response = requests.get(
-                'http://httpbin.org/ip', 
-                proxies=proxy, 
-                timeout=10
-            )
-            return test_response.status_code == 200
-        except:
-            return False
+
     
     def setup_logging(self):
         # Use a single persistent log file
@@ -204,50 +136,24 @@ class SimpleTheRealRealScraper:
         time.sleep(delay)
     
     def make_request(self, url: str, retries: int = 3) -> Optional[requests.Response]:
-        # Try to get fresh proxies first, fallback to static list
-        proxies = self.fetch_fresh_proxies()
-        
         for attempt in range(retries):
             try:
                 self.log_conversation(f"Making request to: {url}")
                 
-                # Add some randomness
+                # Add some randomness between attempts
                 if attempt > 0:
                     self.random_delay(5, 10)
                 
-                # Try with proxy first, then without if proxy fails
-                proxy = None
-                if proxies:
-                    # Test proxies and use a working one
-                    working_proxies = [p for p in proxies if self.test_proxy(p)]
-                    if working_proxies:
-                        proxy = random.choice(working_proxies)
-                        self.logger.info(f"🔄 Using tested proxy: {list(proxy.values())[0]}")
-                    else:
-                        self.logger.warning("⚠️ No working proxies found, using direct connection")
-                
-                if proxy:
-                    response = self.session.get(url, proxies=proxy, timeout=30)
-                else:
-                    response = self.session.get(url, timeout=30)
+                response = self.session.get(url, timeout=30)
                 
                 if response.status_code == 200:
                     self.logger.info(f"✅ Successfully fetched: {url}")
                     return response
-                elif response.status_code == 403:
-                    self.logger.warning(f"🚫 403 Forbidden - trying different proxy")
-                    # Remove failed proxy from list
-                    if proxy and proxy in proxies:
-                        proxies.remove(proxy)
-                    continue
                 else:
                     self.logger.warning(f"⚠️ Status {response.status_code} for: {url}")
                     
             except Exception as e:
                 self.logger.error(f"❌ Request failed (attempt {attempt + 1}/{retries}): {str(e)}")
-                # Remove failed proxy from list
-                if 'proxy' in locals() and proxy and proxy in proxies:
-                    proxies.remove(proxy)
                 if attempt == retries - 1:
                     return None
                 
@@ -735,35 +641,31 @@ def main():
 
 # Railway deployment functions
 def run_as_service():
-    """Run continuously with health check server for Railway"""
-    import os
+    """Run continuously with 5-minute intervals for local use"""
     import schedule
     
-    # Start health check server in background
-    port = int(os.environ.get('PORT', 8000))
-    server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
-    server_thread.start()
-    print(f"Health check server running on port {port}")
-    
     def job():
-        print(f"\nRunning scrape at {datetime.now()}")
-        scraper = SimpleTheRealRealScraper()
-        products = scraper.run_scraper()
-        print(f"Found {len(products)} new products")
+        print(f"\n🔄 Running scrape at {datetime.now()}")
+        try:
+            scraper = SimpleTheRealRealScraper()
+            products = scraper.run_scraper()
+            print(f"✅ Found {len(products)} new products")
+        except Exception as e:
+            print(f"❌ Error during scrape: {e}")
     
-    # Run every 15 minutes
-    schedule.every(15).minutes.do(job)
+    # Run every 5 minutes
+    schedule.every(5).minutes.do(job)
     job()  # Run immediately
     
-    print("Scheduled to run every 15 minutes")
+    print("🕐 Scheduled to run every 5 minutes")
+    print("Press Ctrl+C to stop")
+    
     try:
         while True:
             schedule.run_pending()
-            time.sleep(60)
+            time.sleep(30)  # Check every 30 seconds
     except KeyboardInterrupt:
-        print("\nService stopped")
-        server.shutdown()
+        print("\n🛑 Service stopped by user")
 
 def create_railway_requirements():
     """Create requirements.txt for Railway deployment"""

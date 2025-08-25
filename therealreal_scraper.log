@@ -1,0 +1,250 @@
+2025-08-25 14:56:24,278 - INFO - Action: Starting scraper
+2025-08-25 14:56:24,278 - INFO - Scraping brand: Junya Watanabe
+2025-08-25 14:56:24,278 - INFO - Action: Starting scrape for brand: Junya Watanabe
+2025-08-25 14:56:24,278 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=newest&department=men&page=1
+2025-08-25 14:56:25,005 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=newest&department=men&page=1
+2025-08-25 14:56:25,144 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 14:56:25,162 - INFO - Found 119 items with selector: .product-card
+2025-08-25 14:56:25,164 - INFO - Action: Found product
+2025-08-25 14:56:25,195 - INFO - Action: Found product
+2025-08-25 14:56:25,197 - INFO - Action: Found product
+2025-08-25 14:56:25,211 - INFO - Action: Found product
+2025-08-25 14:56:25,220 - INFO - Action: Found product
+2025-08-25 15:04:26,172 - INFO - Action: Starting scraper
+2025-08-25 15:04:26,173 - INFO - Scraping brand: Junya Watanabe
+2025-08-25 15:04:26,173 - INFO - Action: Starting scrape for brand: Junya Watanabe
+2025-08-25 15:04:26,173 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:04:26,763 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:04:26,896 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 15:04:26,915 - INFO - Found 119 items with selector: .product-card
+2025-08-25 15:04:26,917 - INFO - Action: Found product
+2025-08-25 15:04:26,948 - INFO - Action: Found product
+2025-08-25 15:04:26,950 - INFO - Action: Found product
+2025-08-25 15:04:26,965 - INFO - Action: Found product
+2025-08-25 15:04:26,973 - INFO - Action: Found product
+2025-08-25 15:04:52,168 - INFO - Scraping brand: Comme Des Garçons
+2025-08-25 15:04:52,169 - INFO - Action: Starting scrape for brand: Comme Des Garçons
+2025-08-25 15:04:52,170 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:04:52,654 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:04:52,792 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 15:04:52,811 - INFO - Found 119 items with selector: .product-card
+2025-08-25 15:04:52,816 - INFO - Action: Found product
+2025-08-25 15:04:52,817 - INFO - Action: Found product
+2025-08-25 15:04:52,818 - INFO - Action: Found product
+2025-08-25 15:04:52,819 - INFO - Action: Found product
+2025-08-25 15:04:52,819 - INFO - Action: Found product
+2025-08-25 15:04:52,820 - INFO - Action: Found product
+2025-08-25 15:04:52,821 - INFO - Action: Found product
+2025-08-25 15:04:52,822 - INFO - Action: Found product
+2025-08-25 15:04:52,827 - INFO - Action: Found product
+2025-08-25 15:04:52,828 - INFO - Action: Found product
+2025-08-25 15:04:52,829 - INFO - Action: Found product
+2025-08-25 15:04:52,836 - INFO - Action: Found product
+2025-08-25 15:04:52,840 - INFO - Action: Found product
+2025-08-25 15:04:52,841 - INFO - Action: Found product
+2025-08-25 15:04:52,841 - INFO - Action: Found product
+2025-08-25 15:04:52,843 - INFO - Action: Found product
+2025-08-25 15:04:52,850 - INFO - Action: Found product
+2025-08-25 15:04:52,855 - INFO - Action: Found product
+2025-08-25 15:04:52,855 - INFO - Action: Found product
+2025-08-25 15:04:52,857 - INFO - Action: Found product
+2025-08-25 15:04:52,860 - INFO - Action: Found product
+2025-08-25 15:04:52,861 - INFO - Action: Found product
+2025-08-25 15:04:52,862 - INFO - Action: Found product
+2025-08-25 15:04:52,863 - INFO - Action: Found product
+2025-08-25 15:04:52,865 - INFO - Action: Found product
+2025-08-25 15:04:52,875 - INFO - Action: Found product
+2025-08-25 15:04:52,876 - INFO - Action: Found product
+2025-08-25 15:05:11,511 - INFO - Scraping brand: CDG
+2025-08-25 15:05:11,512 - INFO - Action: Starting scrape for brand: CDG
+2025-08-25 15:05:11,513 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:05:11,881 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:05:11,973 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 15:05:11,986 - INFO - Found 49 items with selector: .product-card
+2025-08-25 15:05:11,987 - INFO - Action: Found product
+2025-08-25 15:05:11,988 - INFO - Action: Found product
+2025-08-25 15:05:11,989 - INFO - Action: Found product
+2025-08-25 15:05:11,992 - INFO - Action: Found product
+2025-08-25 15:05:11,992 - INFO - Action: Found product
+2025-08-25 15:05:30,405 - INFO - Scraping brand: Rick Owens
+2025-08-25 15:05:30,407 - INFO - Action: Starting scrape for brand: Rick Owens
+2025-08-25 15:05:30,407 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:05:30,853 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:05:30,997 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 15:05:31,017 - INFO - Found 119 items with selector: .product-card
+2025-08-25 15:05:31,075 - INFO - Action: Found product
+2025-08-25 15:05:31,089 - INFO - Action: Found product
+2025-08-25 15:05:55,234 - INFO - Found 39 new products
+2025-08-25 15:05:55,238 - INFO - Results saved to therealreal_results_20250825_150555.json
+2025-08-25 15:05:55,484 - INFO - ✅ Sent: Junya WatanabeCrew Neck Short Sleeve T-Shirt...
+2025-08-25 15:05:56,393 - INFO - ✅ Sent: JUNYA WATANABE COMME des GARCONS MAN x BARACUTAPat...
+2025-08-25 15:05:57,246 - INFO - ✅ Sent: Junya WatanabeSweatpants...
+2025-08-25 15:05:58,056 - INFO - ✅ Sent: eye Junya Watanabe Comme des Garçons MAN x Champio...
+2025-08-25 15:05:58,919 - INFO - ✅ Sent: Junya Watanabe X ReebokPatent Leather Sneakers...
+2025-08-25 15:05:59,736 - INFO - ✅ Sent: Comme des Garçons SHIRTShort Sleeve Button-Up Top...
+2025-08-25 15:06:00,474 - INFO - ✅ Sent: Comme des Garçons Play x ConverseCanvas Sneakers...
+2025-08-25 15:06:01,272 - INFO - ✅ Sent: Comme des Garçons PlayGraphic Print Crew Neck T-Sh...
+2025-08-25 15:06:02,066 - INFO - ✅ Sent: Comme des Garçons PlayGraphic Print Crew Neck T-Sh...
+2025-08-25 15:06:02,802 - INFO - ✅ Sent: Comme des Garçons Play x ConverseCanvas Graphic Pr...
+2025-08-25 15:06:03,621 - INFO - ✅ Sent: Comme des Garçons PlayStriped Crew Neck Top...
+2025-08-25 15:06:04,392 - INFO - ✅ Sent: Comme des Garçons Play x ConverseCanvas Sneakers...
+2025-08-25 15:06:05,153 - INFO - ✅ Sent: Comme des Garçons Play x ConverseCanvas Graphic Pr...
+2025-08-25 15:06:06,079 - INFO - ✅ Sent: Comme des Garçons PlayStriped Crew Neck Top...
+2025-08-25 15:06:06,939 - INFO - ✅ Sent: Black Comme des Garçons x NikeTerminator High SP S...
+2025-08-25 15:06:07,822 - INFO - ✅ Sent: Comme des Garçons Play x ConverseCanvas Printed Sn...
+2025-08-25 15:06:09,041 - INFO - ✅ Sent: Friends and Comme Des Garcons X Jean Paul Gaultier...
+2025-08-25 15:06:10,160 - INFO - ✅ Sent: BLACK Comme des GarçonsCrew Neck Long Sleeve Henle...
+2025-08-25 15:06:11,072 - INFO - ✅ Sent: Comme des Garçons Play x ConverseCanvas Printed Sn...
+2025-08-25 15:06:12,157 - INFO - ✅ Sent: Comme des Garçons PlayStriped Crew Neck Top...
+2025-08-25 15:06:12,987 - INFO - ✅ Sent: Comme des Garçons PlayCrew Neck Short Sleeve T-Shi...
+2025-08-25 15:06:13,825 - INFO - ✅ Sent: Comme des Garçons PlayStriped Crew Neck Top...
+2025-08-25 15:06:14,760 - INFO - ✅ Sent: Comme des Garçons SHIRTCrew Neck Short Sleeve T-Sh...
+2025-08-25 15:06:15,632 - INFO - ✅ Sent: Comme des Garçons PlayShort Sleeve Polo...
+2025-08-25 15:06:16,439 - INFO - ✅ Sent: Comme des Garçons PlayCrew Neck Short Sleeve T-Shi...
+2025-08-25 15:06:17,419 - INFO - ✅ Sent: Comme des Garçons SHIRTStriped Crew Neck Top...
+2025-08-25 15:06:18,339 - INFO - ✅ Sent: Comme des Garçons Play x ConverseCanvas Printed Sn...
+2025-08-25 15:06:19,204 - INFO - ✅ Sent: Comme des Garçons PlayGraphic Print Crew Neck T-Sh...
+2025-08-25 15:06:20,062 - INFO - ✅ Sent: Comme des Garçons Play x ConverseCanvas Printed Sn...
+2025-08-25 15:06:20,947 - INFO - ✅ Sent: Comme des GarçonsSolid Nylon Socks...
+2025-08-25 15:06:21,776 - INFO - ✅ Sent: Comme des Garçons PlayGraphic Print Crew Neck T-Sh...
+2025-08-25 15:06:23,473 - INFO - ✅ Sent: Comme des Garçons Play x ConverseCanvas Printed Sn...
+2025-08-25 15:06:24,314 - INFO - ✅ Sent: CDG x The North FaceNylon Sneakers...
+2025-08-25 15:06:26,487 - INFO - ✅ Sent: CDG x The North FaceNylon Plaid Print Sneakers...
+2025-08-25 15:06:27,392 - INFO - ✅ Sent: CDG x The North FaceNylon Colorblock Pattern Sneak...
+2025-08-25 15:06:28,234 - INFO - ✅ Sent: Comme des Garçons x SpalwartNylon Sneakers...
+2025-08-25 15:06:29,067 - INFO - ✅ Sent: CDG by Comme des GarçonsStriped Long Sleeve Button...
+2025-08-25 15:06:29,935 - INFO - ✅ Sent: Rick Owens x ChampionScoop Neck Mini Dress...
+2025-08-25 15:06:30,898 - INFO - ✅ Sent: Rick OwensStraight Leg Pants...
+2025-08-25 15:19:31,539 - INFO - Action: Starting scraper
+2025-08-25 15:19:31,540 - INFO - Scraping brand: Junya Watanabe
+2025-08-25 15:19:31,540 - INFO - Action: Starting scrape for brand: Junya Watanabe
+2025-08-25 15:19:31,540 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:19:32,178 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:19:32,312 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 15:19:32,331 - INFO - Found 119 items with selector: .product-card
+2025-08-25 15:19:32,332 - INFO - Action: Found product
+2025-08-25 15:19:32,363 - INFO - Action: Found product
+2025-08-25 15:19:32,365 - INFO - Action: Found product
+2025-08-25 15:19:32,380 - INFO - Action: Found product
+2025-08-25 15:19:32,389 - INFO - Action: Found product
+2025-08-25 15:19:54,873 - INFO - Scraping brand: Comme Des Garçons
+2025-08-25 15:19:54,873 - INFO - Action: Starting scrape for brand: Comme Des Garçons
+2025-08-25 15:19:54,873 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:19:55,285 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:19:55,471 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 15:19:55,490 - INFO - Found 119 items with selector: .product-card
+2025-08-25 15:19:55,495 - INFO - Action: Found product
+2025-08-25 15:19:55,496 - INFO - Action: Found product
+2025-08-25 15:19:55,497 - INFO - Action: Found product
+2025-08-25 15:19:55,498 - INFO - Action: Found product
+2025-08-25 15:19:55,498 - INFO - Action: Found product
+2025-08-25 15:19:55,500 - INFO - Action: Found product
+2025-08-25 15:19:55,501 - INFO - Action: Found product
+2025-08-25 15:19:55,507 - INFO - Action: Found product
+2025-08-25 15:19:55,507 - INFO - Action: Found product
+2025-08-25 15:19:55,508 - INFO - Action: Found product
+2025-08-25 15:19:55,515 - INFO - Action: Found product
+2025-08-25 15:19:55,519 - INFO - Action: Found product
+2025-08-25 15:19:55,520 - INFO - Action: Found product
+2025-08-25 15:19:55,520 - INFO - Action: Found product
+2025-08-25 15:19:55,522 - INFO - Action: Found product
+2025-08-25 15:19:55,529 - INFO - Action: Found product
+2025-08-25 15:19:55,534 - INFO - Action: Found product
+2025-08-25 15:19:55,534 - INFO - Action: Found product
+2025-08-25 15:19:55,536 - INFO - Action: Found product
+2025-08-25 15:19:55,539 - INFO - Action: Found product
+2025-08-25 15:19:55,540 - INFO - Action: Found product
+2025-08-25 15:19:55,541 - INFO - Action: Found product
+2025-08-25 15:19:55,542 - INFO - Action: Found product
+2025-08-25 15:19:55,544 - INFO - Action: Found product
+2025-08-25 15:19:55,554 - INFO - Action: Found product
+2025-08-25 15:19:55,555 - INFO - Action: Found product
+2025-08-25 15:20:17,837 - INFO - Scraping brand: CDG
+2025-08-25 15:20:17,838 - INFO - Action: Starting scrape for brand: CDG
+2025-08-25 15:20:17,838 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:20:18,171 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:20:18,268 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 15:20:18,282 - INFO - Found 49 items with selector: .product-card
+2025-08-25 15:20:18,282 - INFO - Action: Found product
+2025-08-25 15:20:18,284 - INFO - Action: Found product
+2025-08-25 15:20:18,284 - INFO - Action: Found product
+2025-08-25 15:20:18,287 - INFO - Action: Found product
+2025-08-25 15:20:18,288 - INFO - Action: Found product
+2025-08-25 15:20:44,099 - INFO - Scraping brand: Rick Owens
+2025-08-25 15:20:44,100 - INFO - Action: Starting scrape for brand: Rick Owens
+2025-08-25 15:20:44,100 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:20:44,533 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=newest&department=men&page=1
+2025-08-25 15:20:44,668 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 15:20:44,686 - INFO - Found 119 items with selector: .product-card
+2025-08-25 15:20:44,710 - INFO - Action: Found product
+2025-08-25 15:20:44,722 - INFO - Action: Found product
+2025-08-25 15:21:11,099 - INFO - No new products found
+2025-08-25 16:28:50,606 - INFO - Action: Starting scraper
+2025-08-25 16:28:50,607 - INFO - Scraping brand: Junya Watanabe
+2025-08-25 16:28:50,607 - INFO - Action: Starting scrape for brand: Junya Watanabe
+2025-08-25 16:28:50,607 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=newest&department=men&page=1
+2025-08-25 16:28:51,668 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=newest&department=men&page=1
+2025-08-25 16:28:51,774 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 16:28:51,794 - INFO - Found 119 items with selector: .product-card
+2025-08-25 16:28:51,795 - INFO - Action: Found product
+2025-08-25 16:28:51,829 - INFO - Action: Found product
+2025-08-25 16:28:51,831 - INFO - Action: Found product
+2025-08-25 16:28:51,847 - INFO - Action: Found product
+2025-08-25 16:28:51,857 - INFO - Action: Found product
+2025-08-25 16:29:17,566 - INFO - Scraping brand: Comme Des Garçons
+2025-08-25 16:29:17,566 - INFO - Action: Starting scrape for brand: Comme Des Garçons
+2025-08-25 16:29:17,566 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=newest&department=men&page=1
+2025-08-25 16:29:17,991 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=newest&department=men&page=1
+2025-08-25 16:29:18,130 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 16:29:18,150 - INFO - Found 119 items with selector: .product-card
+2025-08-25 16:29:18,154 - INFO - Action: Found product
+2025-08-25 16:29:18,155 - INFO - Action: Found product
+2025-08-25 16:29:18,156 - INFO - Action: Found product
+2025-08-25 16:29:18,157 - INFO - Action: Found product
+2025-08-25 16:29:18,158 - INFO - Action: Found product
+2025-08-25 16:29:18,159 - INFO - Action: Found product
+2025-08-25 16:29:18,159 - INFO - Action: Found product
+2025-08-25 16:29:18,160 - INFO - Action: Found product
+2025-08-25 16:29:18,166 - INFO - Action: Found product
+2025-08-25 16:29:18,166 - INFO - Action: Found product
+2025-08-25 16:29:18,167 - INFO - Action: Found product
+2025-08-25 16:29:18,175 - INFO - Action: Found product
+2025-08-25 16:29:18,178 - INFO - Action: Found product
+2025-08-25 16:29:18,179 - INFO - Action: Found product
+2025-08-25 16:29:18,180 - INFO - Action: Found product
+2025-08-25 16:29:18,181 - INFO - Action: Found product
+2025-08-25 16:29:18,189 - INFO - Action: Found product
+2025-08-25 16:29:18,193 - INFO - Action: Found product
+2025-08-25 16:29:18,194 - INFO - Action: Found product
+2025-08-25 16:29:18,195 - INFO - Action: Found product
+2025-08-25 16:29:18,198 - INFO - Action: Found product
+2025-08-25 16:29:18,199 - INFO - Action: Found product
+2025-08-25 16:29:18,201 - INFO - Action: Found product
+2025-08-25 16:29:18,201 - INFO - Action: Found product
+2025-08-25 16:29:18,203 - INFO - Action: Found product
+2025-08-25 16:29:18,214 - INFO - Action: Found product
+2025-08-25 16:29:18,215 - INFO - Action: Found product
+2025-08-25 16:29:38,449 - INFO - Scraping brand: CDG
+2025-08-25 16:29:38,451 - INFO - Action: Starting scrape for brand: CDG
+2025-08-25 16:29:38,451 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=newest&department=men&page=1
+2025-08-25 16:29:38,849 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=newest&department=men&page=1
+2025-08-25 16:29:38,950 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 16:29:38,964 - INFO - Found 49 items with selector: .product-card
+2025-08-25 16:29:38,965 - INFO - Action: Found product
+2025-08-25 16:29:38,966 - INFO - Action: Found product
+2025-08-25 16:29:38,966 - INFO - Action: Found product
+2025-08-25 16:29:38,969 - INFO - Action: Found product
+2025-08-25 16:29:38,970 - INFO - Action: Found product
+2025-08-25 16:30:00,916 - INFO - Scraping brand: Rick Owens
+2025-08-25 16:30:00,916 - INFO - Action: Starting scrape for brand: Rick Owens
+2025-08-25 16:30:00,916 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=newest&department=men&page=1
+2025-08-25 16:30:01,442 - INFO - ✅ Successfully fetched: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=newest&department=men&page=1
+2025-08-25 16:30:01,571 - INFO - Scraping page: All Categories | The RealReal
+2025-08-25 16:30:01,589 - INFO - Found 119 items with selector: .product-card
+2025-08-25 16:30:01,614 - INFO - Action: Found product
+2025-08-25 16:30:01,627 - INFO - Action: Found product
+2025-08-25 16:30:21,558 - INFO - No new products found
+2025-08-25 16:32:26,793 - INFO - Action: Starting scraper
+2025-08-25 16:32:26,793 - INFO - Scraping brand: Junya Watanabe
+2025-08-25 16:32:26,794 - INFO - Action: Starting scrape for brand: Junya Watanabe
+2025-08-25 16:32:27,313 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=newest&department=men&page=1

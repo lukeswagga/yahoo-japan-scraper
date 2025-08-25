@@ -1,0 +1,84 @@
+2025-08-19 04:07:25,468 - INFO - Action: Attempting login
+2025-08-19 04:07:25,760 - ERROR - Failed to load login page: 403
+2025-08-19 04:07:25,761 - INFO - Action: Starting TheRealReal scraper
+2025-08-19 04:07:25,761 - INFO - Scraping brand: Junya Watanabe
+2025-08-19 04:07:25,761 - INFO - Action: Starting scrape for brand: Junya Watanabe
+2025-08-19 04:07:25,761 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_low_to_high&page=1&department=men
+2025-08-19 04:07:25,996 - WARNING - 403 Forbidden on attempt 1
+2025-08-19 04:07:38,805 - INFO - Cleared session state and reset headers
+2025-08-19 04:07:46,826 - INFO - Rotated User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWeb...
+2025-08-19 04:07:46,827 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Junya+Watanabe&price_max=100&sort=price_low_to_high&page=1&department=men
+2025-08-19 04:07:47,755 - INFO - Found 119 products using selector: .product-card
+2025-08-19 04:07:47,755 - ERROR - Error scraping Junya Watanabe: 'TheRealRealScraper' object has no attribute 'parse_product_card'
+2025-08-19 04:07:47,756 - INFO - Scraping brand: Comme Des Garçons
+2025-08-19 04:07:47,756 - INFO - Action: Starting scrape for brand: Comme Des Garçons
+2025-08-19 04:07:47,756 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Comme+Des+Gar%C3%A7ons&price_max=100&sort=price_low_to_high&page=1&department=men
+2025-08-19 04:07:48,343 - INFO - Found 119 products using selector: .product-card
+2025-08-19 04:07:48,343 - ERROR - Error scraping Comme Des Garçons: 'TheRealRealScraper' object has no attribute 'parse_product_card'
+2025-08-19 04:07:48,343 - INFO - Scraping brand: CDG
+2025-08-19 04:07:48,343 - INFO - Action: Starting scrape for brand: CDG
+2025-08-19 04:07:48,345 - INFO - Rotated User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_2 like Mac...
+2025-08-19 04:07:48,345 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=price_low_to_high&page=1&department=men
+2025-08-19 04:07:50,407 - WARNING - 403 Forbidden on attempt 1
+2025-08-19 04:08:04,458 - INFO - Cleared session state and reset headers
+2025-08-19 04:08:16,105 - INFO - Rotated User-Agent: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537...
+2025-08-19 04:08:16,105 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=price_low_to_high&page=1&department=men
+2025-08-19 04:08:16,417 - WARNING - 403 Forbidden on attempt 2
+2025-08-19 04:08:31,285 - INFO - Cleared session state and reset headers
+2025-08-19 04:08:43,181 - INFO - Rotated User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_2_1 like Mac...
+2025-08-19 04:08:43,181 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG&price_max=100&sort=price_low_to_high&page=1&department=men
+2025-08-19 04:08:43,428 - WARNING - 403 Forbidden on attempt 3
+2025-08-19 04:08:53,607 - INFO - Rotated User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_2 like Mac...
+2025-08-19 04:08:53,608 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Jackets&price_max=100&sort=price_low_to_high&page=1&category=clothing-jackets&department=men
+2025-08-19 04:08:55,328 - WARNING - 403 Forbidden on attempt 1
+2025-08-19 04:09:15,110 - INFO - Cleared session state and reset headers
+2025-08-19 04:09:27,033 - INFO - Rotated User-Agent: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537...
+2025-08-19 04:09:27,034 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Jackets&price_max=100&sort=price_low_to_high&page=1&category=clothing-jackets&department=men
+2025-08-19 04:09:29,403 - WARNING - 403 Forbidden on attempt 2
+2025-08-19 04:09:45,269 - INFO - Cleared session state and reset headers
+2025-08-19 04:09:54,285 - INFO - Rotated User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Ap...
+2025-08-19 04:09:54,285 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Jackets&price_max=100&sort=price_low_to_high&page=1&category=clothing-jackets&department=men
+2025-08-19 04:09:54,614 - WARNING - 403 Forbidden on attempt 3
+2025-08-19 04:10:02,047 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Shirts&price_max=100&sort=price_low_to_high&page=1&category=clothing-shirts&department=men
+2025-08-19 04:10:02,297 - WARNING - 403 Forbidden on attempt 1
+2025-08-19 04:10:16,830 - INFO - Cleared session state and reset headers
+2025-08-19 04:10:23,184 - INFO - Rotated User-Agent: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537...
+2025-08-19 04:10:23,184 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Shirts&price_max=100&sort=price_low_to_high&page=1&category=clothing-shirts&department=men
+2025-08-19 04:10:23,409 - WARNING - 403 Forbidden on attempt 2
+2025-08-19 04:10:41,660 - INFO - Cleared session state and reset headers
+2025-08-19 04:10:49,525 - INFO - Rotated User-Agent: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA...
+2025-08-19 04:10:49,525 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Shirts&price_max=100&sort=price_low_to_high&page=1&category=clothing-shirts&department=men
+2025-08-19 04:10:49,748 - WARNING - 403 Forbidden on attempt 3
+2025-08-19 04:10:54,608 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Pants&price_max=100&sort=price_low_to_high&page=1&category=clothing-pants&department=men
+2025-08-19 04:10:54,851 - WARNING - 403 Forbidden on attempt 1
+2025-08-19 04:11:10,001 - INFO - Cleared session state and reset headers
+2025-08-19 04:11:15,140 - INFO - Rotated User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_2 like Mac...
+2025-08-19 04:11:15,141 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Pants&price_max=100&sort=price_low_to_high&page=1&category=clothing-pants&department=men
+2025-08-19 04:11:15,408 - WARNING - 403 Forbidden on attempt 2
+2025-08-19 04:11:32,668 - INFO - Cleared session state and reset headers
+2025-08-19 04:11:41,294 - INFO - Rotated User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Ap...
+2025-08-19 04:11:41,294 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Pants&price_max=100&sort=price_low_to_high&page=1&category=clothing-pants&department=men
+2025-08-19 04:11:42,873 - WARNING - 403 Forbidden on attempt 3
+2025-08-19 04:11:46,692 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Hoodies&price_max=100&sort=price_low_to_high&page=1&category=clothing-hoodies&department=men
+2025-08-19 04:11:46,909 - WARNING - 403 Forbidden on attempt 1
+2025-08-19 04:12:04,098 - INFO - Cleared session state and reset headers
+2025-08-19 04:12:11,462 - INFO - Rotated User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_2 like Mac...
+2025-08-19 04:12:11,462 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Hoodies&price_max=100&sort=price_low_to_high&page=1&category=clothing-hoodies&department=men
+2025-08-19 04:12:13,652 - WARNING - 403 Forbidden on attempt 2
+2025-08-19 04:12:26,735 - INFO - Cleared session state and reset headers
+2025-08-19 04:12:32,590 - INFO - Rotated User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWeb...
+2025-08-19 04:12:32,591 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=CDG+Hoodies&price_max=100&sort=price_low_to_high&page=1&category=clothing-hoodies&department=men
+2025-08-19 04:12:33,250 - INFO - Found 6 products using selector: .product-card
+2025-08-19 04:12:33,250 - ERROR - Error scraping CDG: 'TheRealRealScraper' object has no attribute 'parse_product_card'
+2025-08-19 04:12:33,250 - INFO - Scraping brand: Rick Owens
+2025-08-19 04:12:33,251 - INFO - Action: Starting scrape for brand: Rick Owens
+2025-08-19 04:12:33,253 - INFO - Rotated User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_2 like Mac...
+2025-08-19 04:12:33,253 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=price_low_to_high&page=1&department=men
+2025-08-19 04:12:33,361 - WARNING - 403 Forbidden on attempt 1
+2025-08-19 04:12:48,191 - INFO - Cleared session state and reset headers
+2025-08-19 04:12:57,382 - INFO - Rotated User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWeb...
+2025-08-19 04:12:57,383 - INFO - Action: Making request to: https://www.therealreal.com/shop?keywords=Rick+Owens&price_max=100&sort=price_low_to_high&page=1&department=men
+2025-08-19 04:12:58,089 - INFO - Found 119 products using selector: .product-card
+2025-08-19 04:12:58,089 - ERROR - Error scraping Rick Owens: 'TheRealRealScraper' object has no attribute 'parse_product_card'
+2025-08-19 04:12:58,089 - INFO - Action: Scraping completed
+2025-08-19 04:12:58,090 - INFO - Results saved to therealreal_results_20250819_041258.json
