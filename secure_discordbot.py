@@ -991,22 +991,48 @@ TRIMLIST_BRANDS = {
 
 TRIMLIST_MAX_PRICE = 60.0  # $60 limit for trimlist
 
-def determine_target_channel(price_usd, brand, deal_quality, title):
-    """Enhanced channel routing with trimlist support"""
+def determine_target_channel(price_usd, brand, deal_quality, title, scraper_source=None):
+    """Enhanced channel routing with scraper-specific channels and trimlist support"""
     channels = []
     
     # Always send to main auction alerts
     channels.append("🎯-auction-alerts")
     
-    # TRIMLIST - Specific brands under $60
-    if brand in TRIMLIST_BRANDS and price_usd <= TRIMLIST_MAX_PRICE:
-        channels.append("🏆-trimlist")
-        print(f"🏆 TRIMLIST HIT: {brand} at ${price_usd:.2f} -> trimlist")
+    # SCRAPER-SPECIFIC CHANNELS (Priority routing)
+    if scraper_source:
+        scraper_source_lower = scraper_source.lower()
+        
+        # Buy It Now Scraper -> 🛒-buy-it-now
+        if "buy_it_now" in scraper_source_lower:
+            channels.append("🛒-buy-it-now")
+            print(f"🛒 Buy It Now listing from {scraper_source} -> buy-it-now channel")
+        
+        # New Listings Scraper -> 🆕-new-listings  
+        elif "new_listings" in scraper_source_lower:
+            channels.append("🆕-new-listings")
+            print(f"🆕 New listing from {scraper_source} -> new-listings channel")
+        
+        # Budget Steals Scraper -> 💰-budget-steals
+        elif "budget_steals" in scraper_source_lower:
+            channels.append("💰-budget-steals")
+            print(f"💰 Budget steal from {scraper_source} -> budget-steals channel")
+        
+        # Ending Soon Scraper -> ⏰-ending-soon
+        elif "ending_soon" in scraper_source_lower:
+            channels.append("⏰-ending-soon")
+            print(f"⏰ Ending soon from {scraper_source} -> ending-soon channel")
     
-    # Budget steals - STRICT $100 limit (but not if already in trimlist)
+    # TRIMLIST - Specific brands under $60 (but not if already routed by scraper)
+    if brand in TRIMLIST_BRANDS and price_usd <= TRIMLIST_MAX_PRICE:
+        if "🏆-trimlist" not in channels:  # Don't duplicate if scraper already routed
+            channels.append("🏆-trimlist")
+            print(f"🏆 TRIMLIST HIT: {brand} at ${price_usd:.2f} -> trimlist")
+    
+    # Budget steals - STRICT $100 limit (but not if already in trimlist or scraper-routed)
     elif price_usd <= 100.0:
-        channels.append("💰-budget-steals")
-        print(f"💰 Budget steal: ${price_usd:.2f} -> budget-steals")
+        if "💰-budget-steals" not in channels:  # Don't duplicate if scraper already routed
+            channels.append("💰-budget-steals")
+            print(f"💰 Budget steal: ${price_usd:.2f} -> budget-steals")
     
     # High-value pieces
     if price_usd >= 500.0 and deal_quality >= 0.3:
@@ -1107,8 +1133,9 @@ async def send_single_listing_enhanced(auction_data):
             print(f"⚠️ Duplicate found, skipping: {auction_data['auction_id']}")
             return False
         
-        # Determine target channels based on price and quality
-        target_channels = determine_target_channel(price_usd, brand, deal_quality, title)
+        # Determine target channels based on price, quality, and scraper source
+        scraper_source = auction_data.get('scraper_source', '')
+        target_channels = determine_target_channel(price_usd, brand, deal_quality, title, scraper_source)
         
         embed = create_listing_embed(auction_data)
         main_message = None
@@ -3732,7 +3759,7 @@ async def test_trimlist(ctx, brand: str, price: float):
         'deal_quality': 0.2
     }
     
-    channels = determine_target_channel(price, full_brand, 0.2, f'Test {full_brand} Item')
+    channels = determine_target_channel(price, full_brand, 0.2, f'Test {full_brand} Item', 'test_scraper')
     is_eligible = is_trimlist_eligible(full_brand, price)
     
     embed = discord.Embed(
@@ -3939,7 +3966,7 @@ async def test_budget_filter(ctx, price: float):
         'end_time': '2025-08-20 12:00:00'
     }
     
-    channels = determine_target_channel(price, 'Test Brand', 0.2, 'Test Budget Item')
+    channels = determine_target_channel(price, 'Test Brand', 0.2, 'Test Budget Item', 'test_scraper')
     
     embed = discord.Embed(
         title="🧪 Budget Filter Test",
