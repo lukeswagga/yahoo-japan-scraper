@@ -25,7 +25,7 @@ class YahooScraperBase:
         self.scraper_db = "auction_tracking.db"
         
         # Discord Bot Integration
-        self.discord_bot_url = os.getenv('DISCORD_BOT_URL', 'http://localhost:8000')
+        self.discord_bot_url = os.getenv('DISCORD_BOT_URL', 'https://motivated-stillness-production.up.railway.app')
         if self.discord_bot_url and not self.discord_bot_url.startswith(('http://', 'https://')):
             self.discord_bot_url = f"https://{self.discord_bot_url}"
         
@@ -401,11 +401,19 @@ class YahooScraperBase:
         try:
             webhook_url = f"{self.discord_bot_url}/webhook/listing"
             
+            # Debug logging
+            print(f"🔗 Attempting to send to: {webhook_url}")
+            print(f"📦 Data includes scraper_source: {auction_data.get('scraper_source', 'NOT SET')}")
+            
             # Ensure scraper_source is set for proper Discord bot routing
             if 'scraper_source' not in auction_data:
                 auction_data['scraper_source'] = self.scraper_name
             
             response = requests.post(webhook_url, json=auction_data, timeout=10)
+            
+            print(f"📡 Response status: {response.status_code}")
+            if response.status_code != 200:
+                print(f"📄 Response content: {response.text[:200]}...")
             
             if response.status_code in [200, 204]:
                 print(f"✅ Sent to Discord bot: {auction_data['title'][:50]}...")
