@@ -2,3 +2,7 @@ requests==2.31.0
 beautifulsoup4==4.12.2
 cloudscraper==1.2.71
 schedule==1.2.0
+discord.py==2.3.2
+flask==3.0.0
+asyncio
+python-dotenv==1.0.0
