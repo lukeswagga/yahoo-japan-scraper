@@ -2652,16 +2652,23 @@ def stats():
     total_reactions = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
     active_users = db_manager.execute_query('SELECT COUNT(DISTINCT user_id) FROM user_preferences WHERE setup_complete = TRUE', fetch_one=True)
     
+    # Enhanced buffer monitoring
+    buffer_info = {
+        "current_size": len(batch_buffer),
+        "max_size": 100,  # Maximum buffer size
+        "scraper_sources": list(set([item.get('scraper_source', 'unknown') for item in batch_buffer[:10]]))  # First 10 sources
+    }
+    
     return jsonify({
         "total_listings": total_listings[0] if total_listings else 0,
         "total_reactions": total_reactions[0] if total_reactions else 0,
         "active_users": active_users[0] if active_users else 0,
-        "buffer_size": len(batch_buffer)
+        "buffer": buffer_info
     }), 200
 
 @app.route('/webhook/listing', methods=['POST'])
 def webhook_listing():
-    """Receive listing from Yahoo sniper"""
+    """Receive listing from multiple scrapers with rate limiting buffer"""
     try:
         if not request.is_json:
             return jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
@@ -2671,13 +2678,25 @@ def webhook_listing():
         if not listing_data or 'auction_id' not in listing_data:
             return jsonify({"status": "error", "message": "Invalid listing data"}), 400
         
-        # Run the async function in the bot's event loop
+        # Add scraper source info for debugging
+        scraper_source = listing_data.get('scraper_source', 'unknown')
+        print(f"📥 Received listing from {scraper_source}: {listing_data.get('title', 'Unknown')[:50]}...")
+        
+        # Add to buffer instead of sending immediately (prevents rate limiting)
         if bot.is_ready():
-            asyncio.run_coroutine_threadsafe(
-                send_single_listing_enhanced(listing_data), 
-                bot.loop
-            )
-            return jsonify({"status": "success", "message": "Listing received"}), 200
+            # Add to batch buffer for rate-limited processing
+            batch_buffer.append(listing_data)
+            buffer_size = len(batch_buffer)
+            
+            print(f"📦 Added to buffer (size: {buffer_size}) from {scraper_source}")
+            
+            # Return success immediately to prevent scraper timeouts
+            return jsonify({
+                "status": "success", 
+                "message": "Listing buffered", 
+                "buffer_size": buffer_size,
+                "scraper_source": scraper_source
+            }), 200
         else:
             return jsonify({"status": "error", "message": "Bot not ready"}), 503
             
@@ -2731,7 +2750,6 @@ def webhook_stats():
             VALUES (%s, %s, %s, %s, %s)
         ''' if db_manager.use_postgres else '''
             INSERT INTO scraper_stats (total_found, quality_filtered, sent_to_discord, errors_count, keywords_searched)
-            VALUES (?, ?, ?, ?, ?)
         ''', (
             stats_data['total_found'],
             stats_data['quality_filtered'], 
@@ -2742,6 +2760,57 @@ def webhook_stats():
         
         return jsonify({"status": "success"}), 200
     except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/webhook/process_buffer', methods=['POST'])
+def process_buffer_webhook():
+    """Process buffered listings with rate limiting"""
+    try:
+        if not bot.is_ready():
+            return jsonify({"status": "error", "message": "Bot not ready"}), 503
+        
+        # Process buffer in batches to avoid rate limiting
+        if batch_buffer:
+            # Take up to 5 listings at a time
+            batch_size = min(5, len(batch_buffer))
+            batch_to_process = batch_buffer[:batch_size]
+            
+            # Remove processed items from buffer
+            batch_buffer[:batch_size] = []
+            
+            print(f"🔄 Processing buffer batch: {batch_size} listings")
+            
+            # Process each listing with rate limiting
+            for i, listing_data in enumerate(batch_to_process):
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        send_single_listing_enhanced(listing_data), 
+                        bot.loop
+                    )
+                    print(f"✅ Processed {i+1}/{batch_size} from buffer")
+                    
+                    # Rate limiting: wait 2 seconds between each listing
+                    if i < batch_size - 1:  # Don't wait after the last one
+                        time.sleep(2)
+                        
+                except Exception as e:
+                    print(f"❌ Error processing buffered listing: {e}")
+                    continue
+            
+            return jsonify({
+                "status": "success", 
+                "message": f"Processed {batch_size} listings",
+                "remaining_buffer": len(batch_buffer)
+            }), 200
+        else:
+            return jsonify({
+                "status": "success", 
+                "message": "Buffer empty",
+                "remaining_buffer": 0
+            }), 200
+            
+    except Exception as e:
+        print(f"❌ Buffer processing error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 class PremiumTierManager:
