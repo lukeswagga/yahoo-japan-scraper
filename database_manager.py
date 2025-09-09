@@ -146,6 +146,8 @@ class DatabaseManager:
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT UNIQUE,
                 tier VARCHAR(20) DEFAULT 'free',
+                daily_count INTEGER DEFAULT 0,
+                last_reset TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 upgraded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 expires_at TIMESTAMP,
                 payment_provider VARCHAR(50),
@@ -153,6 +155,33 @@ class DatabaseManager:
                 status VARCHAR(20) DEFAULT 'active',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_digest_queue (
+                id SERIAL PRIMARY KEY,
+                auction_id VARCHAR(100),
+                title TEXT,
+                brand VARCHAR(100),
+                price_jpy INTEGER,
+                price_usd REAL,
+                zenmarket_url TEXT,
+                yahoo_url TEXT,
+                image_url TEXT,
+                deal_quality REAL DEFAULT 0.5,
+                priority_score REAL DEFAULT 0.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS notification_logs (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                auction_id VARCHAR(100),
+                notification_type VARCHAR(20),
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -187,12 +216,14 @@ class DatabaseManager:
             ("user_preferences", "size_alerts_enabled", "BOOLEAN DEFAULT FALSE"),
             ("user_preferences", "preferred_sizes", "TEXT"),
             ("user_preferences", "auto_bookmark_likes", "BOOLEAN DEFAULT TRUE"),
+            ("user_subscriptions", "daily_count", "INTEGER DEFAULT 0"),
+            ("user_subscriptions", "last_reset", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
         ]
         
         for table_name, column_name, column_type in missing_columns:
             try:
                 # Validate table and column names to prevent SQL injection
-                if table_name not in ['listings', 'user_preferences', 'user_bookmarks', 'reactions', 'scraper_stats']:
+                if table_name not in ['listings', 'user_preferences', 'user_bookmarks', 'reactions', 'scraper_stats', 'user_subscriptions', 'daily_digest_queue', 'notification_logs']:
                     print(f"⚠️ Skipping invalid table name: {table_name}")
                     continue
                 if not column_name.replace('_', '').isalnum():
@@ -314,6 +345,8 @@ class DatabaseManager:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER UNIQUE,
                 tier TEXT DEFAULT 'free',
+                daily_count INTEGER DEFAULT 0,
+                last_reset TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 upgraded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 expires_at TIMESTAMP,
                 payment_provider TEXT,
@@ -323,6 +356,59 @@ class DatabaseManager:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_digest_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                auction_id TEXT,
+                title TEXT,
+                brand TEXT,
+                price_jpy INTEGER,
+                price_usd REAL,
+                zenmarket_url TEXT,
+                yahoo_url TEXT,
+                image_url TEXT,
+                deal_quality REAL DEFAULT 0.5,
+                priority_score REAL DEFAULT 0.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS notification_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                auction_id TEXT,
+                notification_type TEXT,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Add missing columns for SQLite
+        self._add_missing_columns_sqlite(cursor)
+    
+    def _add_missing_columns_sqlite(self, cursor):
+        """Add missing columns to existing SQLite tables"""
+        missing_columns = [
+            ("user_subscriptions", "daily_count", "INTEGER DEFAULT 0"),
+            ("user_subscriptions", "last_reset", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+        ]
+        
+        for table_name, column_name, column_def in missing_columns:
+            try:
+                # Validate table and column names to prevent SQL injection
+                if table_name not in ['user_subscriptions', 'daily_digest_queue', 'notification_logs']:
+                    print(f"⚠️ Skipping invalid table name: {table_name}")
+                    continue
+                if not column_name.replace('_', '').isalnum():
+                    print(f"⚠️ Skipping invalid column name: {column_name}")
+                    continue
+                
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}")
+                print(f"✅ Added missing column: {table_name}.{column_name}")
+            except Exception as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"⚠️ Column add warning for {table_name}.{column_name}: {e}")
     
     def execute_query(self, query, params=None, fetch_one=False, fetch_all=False):
         """Execute a database query with proper error handling"""
