@@ -303,15 +303,26 @@ start_time = time.time()
 @app.route('/health', methods=['GET'])
 def health():
     try:
+        # Check if Discord bot is connected
+        bot_status = "connected" if bot.is_ready() else "connecting"
+        
+        # Check if advanced features are available
+        advanced_status = "available" if ADVANCED_FEATURES_AVAILABLE else "limited"
+        
         return jsonify({
             "status": "healthy",
             "service": "discord-bot",
+            "bot_status": bot_status,
+            "advanced_features": advanced_status,
+            "uptime_seconds": int(time.time() - start_time),
             "timestamp": datetime.now(timezone.utc).isoformat()
         }), 200
     except Exception as e:
         return jsonify({
-            "status": "error", 
-            "error": str(e)
+            "status": "error",
+            "service": "discord-bot", 
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }), 500
 
 @app.route('/', methods=['GET'])
@@ -319,6 +330,15 @@ def root():
     return jsonify({
         "service": "Archive Collective Discord Bot", 
         "status": "running",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }), 200
+
+@app.route('/ping', methods=['GET'])
+def ping():
+    """Simple ping endpoint for Railway healthchecks"""
+    return jsonify({
+        "status": "ok",
+        "message": "pong",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }), 200
 
@@ -4574,6 +4594,21 @@ def main():
         print("🌐 Starting webhook server...")
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
+        
+        # Give Flask server time to start up
+        time.sleep(2)
+        
+        # Test health endpoint
+        try:
+            import requests
+            response = requests.get('http://localhost:8000/health', timeout=5)
+            if response.status_code == 200:
+                print("✅ Health endpoint responding successfully")
+            else:
+                print(f"⚠️ Health endpoint returned status {response.status_code}")
+        except Exception as e:
+            print(f"⚠️ Health endpoint test failed: {e}")
+        
         print("🌐 Webhook server started on port 8000")
         
         print("🔒 SECURITY: Performing startup security checks...")
