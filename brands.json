@@ -1,0 +1,257 @@
+{
+  "Raf Simons": {
+    "variants": [
+      "Raf Simons",
+      "ラフシモンズ"
+    ],
+    "subcategories": [
+      "jacket",
+      "shirt",
+      "ラフ ジャケット"
+    ]
+  },
+  "Maison Margiela": {
+    "variants": [
+      "Maison Margiela",
+      "Margiela",
+      "マルジェラ"
+    ],
+    "subcategories": [
+      "jacket",
+      "coat",
+      "shoes",
+      "マルジェラ ジャケット"
+    ]
+  },
+  "Prada": {
+    "variants": [
+      "Prada",
+      "プラダ"
+    ],
+    "subcategories": [
+      "jacket",
+      "bag",
+      "shoes"
+    ]
+  },
+  "Miu Miu": {
+    "variants": [
+      "Miu Miu",
+      "ミュウミュウ"
+    ],
+    "subcategories": [
+      "jacket",
+      "coat",
+      "shirt",
+      "pants",
+      "sweater",
+      "ミュウミュウ ジャケット"
+    ]
+  },
+  "Chrome Hearts": {
+    "variants": [
+      "Chrome Hearts",
+      "クロムハーツ"
+    ],
+    "subcategories": [
+      "ring",
+      "jacket",
+      "クロムハーツ リング"
+    ]
+  },
+  "Rick Owens": {
+    "variants": [
+      "Rick Owens",
+      "リックオウエンス"
+    ],
+    "subcategories": [
+      "jacket",
+      "shoes",
+      "pants",
+      "リック ジャケット"
+    ]
+  },
+  "Kiko Kostadinov": {
+    "variants": [
+      "Kiko Kostadinov",
+      "キココスタディノフ"
+    ],
+    "subcategories": [
+      "jacket",
+      "shoes",
+      "pants"
+    ]
+  },
+  "Yohji Yamamoto": {
+    "variants": [
+      "Yohji Yamamoto",
+      "ヨウジヤマモト",
+      "Yamamoto"
+    ],
+    "subcategories": [
+      "jacket",
+      "coat",
+      "pants",
+      "shirt",
+      "ヨウジ ジャケット",
+      "ヨウジ パンツ"
+    ]
+  },
+  "Martine Rose": {
+    "variants": [
+      "Martine Rose"
+    ],
+    "subcategories": [
+      "shirt",
+      "jacket",
+      "pants"
+    ]
+  },
+  "Balenciaga": {
+    "variants": [
+      "Balenciaga",
+      "バレンシアガ"
+    ],
+    "subcategories": [
+      "coat",
+      "jacket",
+      "pants",
+      "shoes",
+      "バレンシアガ ジャケット"
+    ]
+  },
+  "Celine": {
+    "variants": [
+      "Celine",
+      "セリーヌ"
+    ],
+    "subcategories": [
+      "coat",
+      "jacket",
+      "pants",
+      "セリーヌ ジャケット"
+    ]
+  },
+  "Alyx": {
+    "variants": [
+      "Alyx",
+      "1017 ALYX 9SM",
+      "アリクス"
+    ],
+    "subcategories": [
+      "belt",
+      "jacket",
+      "pants",
+      "bag",
+      "アリクス ジャケット",
+      "アリクス ベルト"
+    ]
+  },
+  "Undercover": {
+    "variants": [
+      "Undercover",
+      "アンダーカバー"
+    ],
+    "subcategories": [
+      "jacket",
+      "shirt",
+      "pants",
+      "アンダーカバー ジャケット"
+    ]
+  },
+  "Bottega Veneta": {
+    "variants": [
+      "Bottega Veneta",
+      "ボッテガ・ヴェネタ"
+    ],
+    "subcategories": [
+      "bag",
+      "shoes",
+      "jacket"
+    ]
+  },
+  "Junya Watanabe": {
+    "variants": [
+      "Junya Watanabe",
+      "ジュンヤワタナベ"
+    ],
+    "subcategories": [
+      "jacket",
+      "shirt",
+      "pants",
+      "ジュンヤ ジャケット"
+    ]
+  },
+  "Comme Des Garcons": {
+    "variants": [
+      "Comme Des Garcons",
+      "CDG",
+      "コムデギャルソン"
+    ],
+    "subcategories": [
+      "shirt",
+      "pants",
+      "ジャケット"
+    ]
+  },
+  "Jean Paul Gaultier": {
+    "variants": [
+      "Jean Paul Gaultier",
+      "ジャンポール・ゴルチエ",
+      "JPG",
+      "Gaultier",
+      "ゴルチエ"
+    ],
+    "subcategories": [
+      "jacket",
+      "coat",
+      "shirt",
+      "pants",
+      "bag",
+      "denim",
+      "blazer",
+      "トレンチ",
+      "ジャケット",
+      "パンツ",
+      "バッグ"
+    ]
+  },
+  "Vetements": {
+    "variants": [
+      "Vetements",
+      "ヴェトモン"
+    ],
+    "subcategories": [
+      "jacket",
+      "hoodie",
+      "t-shirt",
+      "denim",
+      "pants",
+      "ヴェトモン ジャケット",
+      "ヴェトモン パンツ"
+    ]
+  },
+  "Helmut Lang": {
+    "variants": [
+      "Helmut Lang",
+      "ヘルムートラング"
+    ],
+    "subcategories": [
+      "jacket",
+      "shirt",
+      "denim"
+    ]
+  },
+  "Hysteric Glamour": {
+    "variants": [
+      "Hysteric Glamour",
+      "ヒステリックグラマー"
+    ],
+    "subcategories": [
+      "t-shirt",
+      "denim",
+      "jacket",
+      "ヒステリックグラマー デニム"
+    ]
+  }
+}
