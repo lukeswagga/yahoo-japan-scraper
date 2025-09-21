@@ -132,8 +132,17 @@ class BudgetStealsScraper(YahooScraperBase):
                 listings = self.scrape_brand_budget_steals(brand, brand_info)
                 
                 for listing in listings:
-                    # Add scraper source for proper Discord bot routing
+                    # Add scraper-specific metadata
                     listing['scraper_source'] = 'budget_steals_scraper'
+                    listing['is_budget_steal'] = True
+                    listing['listing_type'] = 'budget_steal'
+                    
+                    # Enhanced logging for debugging
+                    print(f"🔍 Processing budget steal: {listing['title'][:50]}...")
+                    print(f"   💰 Price: ${listing['price_usd']:.2f} (¥{listing['price_jpy']:,})")
+                    print(f"   🏷️ Brand: {listing['brand']}")
+                    print(f"   📊 Quality Score: {listing.get('deal_quality', 0):.2f}")
+                    print(f"   💸 Budget Limit: ${self.max_budget}")
                     
                     # Send to Discord bot (let it handle channel routing)
                     if self.send_to_discord(listing):
@@ -162,6 +171,8 @@ class BudgetStealsScraper(YahooScraperBase):
         print(f"   📤 Sent: {total_sent} items")
         print(f"   💰 Budget Limit: ${self.max_budget}")
         print(f"   💾 Tracking: {len(self.seen_ids)} seen items")
+        print(f"   🚫 Enhanced spam filtering applied")
+        print(f"   🎯 Target: {self.target_channel}")
     
     def start_scheduler(self):
         """Start the scheduler for budget steals scraping"""

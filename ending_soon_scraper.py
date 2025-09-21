@@ -167,8 +167,17 @@ class EndingSoonScraper(YahooScraperBase):
                 listings = self.scrape_brand_ending_soon(brand, brand_info)
                 
                 for listing in listings:
-                    # Add scraper source for proper Discord bot routing
+                    # Add scraper-specific metadata
                     listing['scraper_source'] = 'ending_soon_scraper'
+                    listing['is_ending_soon'] = True
+                    listing['listing_type'] = 'ending_soon_auction'
+                    
+                    # Enhanced logging for debugging
+                    print(f"🔍 Processing ending soon listing: {listing['title'][:50]}...")
+                    print(f"   💰 Price: ${listing['price_usd']:.2f} (¥{listing['price_jpy']:,})")
+                    print(f"   🏷️ Brand: {listing['brand']}")
+                    print(f"   ⏰ End Time: {listing.get('end_time', 'Unknown')}")
+                    print(f"   📊 Quality Score: {listing.get('deal_quality', 0):.2f}")
                     
                     # Send to Discord bot (let it handle channel routing)
                     if self.send_to_discord(listing):
@@ -196,6 +205,8 @@ class EndingSoonScraper(YahooScraperBase):
         print(f"   🔍 Found: {total_found} items")
         print(f"   📤 Sent: {total_sent} items")
         print(f"   💾 Tracking: {len(self.seen_ids)} seen items")
+        print(f"   🚫 Enhanced spam filtering applied")
+        print(f"   🎯 Target: {self.target_channel}")
     
     def start_scheduler(self):
         """Start the scheduler for ending soon scraping"""

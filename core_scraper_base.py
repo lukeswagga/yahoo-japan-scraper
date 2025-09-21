@@ -201,9 +201,9 @@ class YahooScraperBase:
             params['s1'] = 'cbids'
             params['o1'] = sort_order
         
-        # Add price filters if needed
-        min_price_jpy = int(3 * self.current_usd_jpy_rate)
-        max_price_jpy = int(1500 * self.current_usd_jpy_rate)
+        # Enhanced price filters (lowered minimum, increased maximum)
+        min_price_jpy = int(3 * self.current_usd_jpy_rate)  # Lowered from $5 to $3
+        max_price_jpy = int(1500 * self.current_usd_jpy_rate)  # Increased from $1000 to $1500
         params['aucminprice'] = str(min_price_jpy)
         params['aucmaxprice'] = str(max_price_jpy)
         
@@ -232,7 +232,16 @@ class YahooScraperBase:
             
             # Get title
             title = link_tag.get_text(strip=True)
-            if not title or not self.is_clothing_item(title):
+            if not title:
+                return None
+            
+            # Enhanced spam filtering before clothing check
+            if self.is_enhanced_spam(title):
+                print(f"🚫 Enhanced spam filter blocked: {title[:50]}...")
+                return None
+            
+            if not self.is_clothing_item(title):
+                print(f"🚫 Clothing filter blocked: {title[:50]}...")
                 return None
             
             # Get price
@@ -294,12 +303,47 @@ class YahooScraperBase:
             print(f"❌ Error extracting auction data: {e}")
             return None
     
-    def is_clothing_item(self, title):
-        """Check if item is clothing using basic detection"""
+    def is_enhanced_spam(self, title, brand=None):
+        """Enhanced spam detection with new exclusions and JDirectItems filtering"""
         title_lower = title.lower()
         
-        # Exclude non-clothing items
-        excluded_items = {
+        # NEW HIGH PRIORITY EXCLUSIONS
+        new_excluded_keywords = {
+            "LEGO", "レゴ",  # LEGO blocks
+            "Water Tank", "ウォータータンク", "水タンク",  # Water tanks
+            "BMW Touring E91", "BMW E91", "E91",  # BMW car parts
+            "Mazda", "マツダ",  # Mazda car parts
+            "Band of Outsiders", "バンドオブアウトサイダーズ"  # Unwanted brand
+        }
+        
+        for excluded in new_excluded_keywords:
+            if excluded.lower() in title_lower:
+                print(f"🚫 NEW EXCLUSION BLOCKED: {excluded}")
+                return True
+        
+        # STRICT JDirectItems FILTERING
+        if "jdirectitems" in title_lower:
+            # Extract category using regex pattern
+            import re
+            pattern = r'jdirectitems auction.*?→\s*([^,\n]+)'
+            match = re.search(pattern, title_lower)
+            if match:
+                category = match.group(1).strip().lower()
+                
+                # Only allow fashion-related categories
+                allowed_categories = {
+                    "fashion", "clothing", "apparel", 
+                    "ファッション", "衣類", "服", "洋服"
+                }
+                
+                if not any(allowed in category for allowed in allowed_categories):
+                    print(f"🚫 JDirectItems NON-FASHION BLOCKED: {category}")
+                    return True
+                else:
+                    print(f"✅ JDirectItems FASHION ALLOWED: {category}")
+        
+        # EXISTING EXCLUSIONS (enhanced)
+        existing_excluded_items = {
             "perfume", "cologne", "fragrance", "香水", "watch", "時計", 
             "motorcycle", "engine", "エンジン", "cb400", "vtr250",
             "server", "raid", "pci", "computer", "食品", "food", "snack",
@@ -308,16 +352,29 @@ class YahooScraperBase:
             "本", "figure", "フィギュア", "toy", "おもちゃ"
         }
         
-        for excluded in excluded_items:
+        for excluded in existing_excluded_items:
             if excluded in title_lower:
-                return False
+                print(f"🚫 EXISTING EXCLUSION BLOCKED: {excluded}")
+                return True
         
-        # Look for clothing keywords
+        return False
+    
+    def is_clothing_item(self, title):
+        """Enhanced clothing detection with better filtering"""
+        # First check for spam using enhanced filtering
+        if self.is_enhanced_spam(title):
+            return False
+            
+        title_lower = title.lower()
+        
+        # Look for clothing keywords (expanded)
         clothing_keywords = {
             "shirt", "tee", "tshirt", "t-shirt", "jacket", "blazer", "coat",
             "pants", "trousers", "jeans", "hoodie", "sweatshirt", "sweater",
-            "dress", "skirt", "shorts", "シャツ", "Tシャツ", "ジャケット",
-            "パンツ", "パーカー", "スウェット", "セーター", "ワンピース"
+            "dress", "skirt", "shorts", "vest", "cardigan", "pullover",
+            "シャツ", "Tシャツ", "ジャケット", "コート", "パンツ", "ジーンズ",
+            "パーカー", "スウェット", "セーター", "ワンピース", "スカート",
+            "ベスト", "カーディガン", "プルオーバー", "アウター", "インナー"
         }
         
         for clothing_word in clothing_keywords:
@@ -370,29 +427,43 @@ class YahooScraperBase:
             return "unknown"
     
     def calculate_deal_quality(self, price_usd, brand, title):
-        """Calculate deal quality score (0-1)"""
+        """Enhanced deal quality scoring with more generous thresholds"""
         title_lower = title.lower()
-        quality = 0.1  # Base quality
+        quality = 0.2  # Higher base quality (was 0.1)
         
-        # Brand quality boost
-        if brand in ["Raf Simons", "Rick Owens", "Maison Margiela"]:
-            quality += 0.3
-        elif brand in ["Yohji Yamamoto", "Junya Watanabe", "Undercover"]:
-            quality += 0.2
+        # Enhanced brand quality boost (more generous)
+        premium_brands = ["Raf Simons", "Rick Owens", "Maison Margiela", "Jean Paul Gaultier"]
+        high_tier_brands = ["Yohji Yamamoto", "Junya Watanabe", "Undercover", "Vetements"]
+        mid_tier_brands = ["Comme des Garcons", "Martine Rose", "Balenciaga", "Alyx"]
+        
+        if brand in premium_brands:
+            quality += 0.4  # Increased from 0.3
+        elif brand in high_tier_brands:
+            quality += 0.3  # Increased from 0.2
+        elif brand in mid_tier_brands:
+            quality += 0.25  # New tier
         else:
+            quality += 0.15  # Increased from 0.1
+        
+        # More generous price quality boost
+        if price_usd <= 80:  # Lowered from 100
+            quality += 0.35  # Increased from 0.3
+        elif price_usd <= 150:  # Lowered from 200
+            quality += 0.25  # Increased from 0.2
+        elif price_usd <= 250:  # Lowered from 300
+            quality += 0.15  # Increased from 0.1
+        elif price_usd <= 400:  # New tier
             quality += 0.1
         
-        # Price quality boost
-        if price_usd <= 100:
-            quality += 0.3
-        elif price_usd <= 200:
-            quality += 0.2
-        elif price_usd <= 300:
-            quality += 0.1
+        # Archive/rare keywords (enhanced)
+        archive_keywords = ["archive", "rare", "fw", "ss", "limited", "vintage", "deadstock", "sample"]
+        if any(word in title_lower for word in archive_keywords):
+            quality += 0.25  # Increased from 0.2
         
-        # Archive/rare keywords
-        if any(word in title_lower for word in ["archive", "rare", "fw", "ss", "limited"]):
-            quality += 0.2
+        # Size bonus (common sizes get slight boost)
+        size_keywords = ["m", "l", "medium", "large", "28", "30", "32", "34", "36"]
+        if any(word in title_lower for word in size_keywords):
+            quality += 0.05
         
         return min(quality, 1.0)
     

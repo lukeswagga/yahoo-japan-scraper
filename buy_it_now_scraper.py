@@ -134,8 +134,17 @@ class BuyItNowScraper(YahooScraperBase):
                 listings = self.scrape_brand_buy_it_now(brand, brand_info)
                 
                 for listing in listings:
-                    # Add scraper source for proper Discord bot routing
+                    # Add scraper-specific metadata
                     listing['scraper_source'] = 'buy_it_now_scraper'
+                    listing['is_buy_it_now'] = True
+                    listing['listing_type'] = 'buy_it_now'
+                    
+                    # Enhanced logging for debugging
+                    print(f"🔍 Processing buy it now listing: {listing['title'][:50]}...")
+                    print(f"   💰 Price: ${listing['price_usd']:.2f} (¥{listing['price_jpy']:,})")
+                    print(f"   🏷️ Brand: {listing['brand']}")
+                    print(f"   📊 Quality Score: {listing.get('deal_quality', 0):.2f}")
+                    print(f"   🛒 Buy It Now: {listing.get('confirmed_buy_it_now', False)}")
                     
                     # Send to Discord bot (let it handle channel routing)
                     if self.send_to_discord(listing):
@@ -163,6 +172,8 @@ class BuyItNowScraper(YahooScraperBase):
         print(f"   🔍 Found: {total_found} items")
         print(f"   📤 Sent: {total_sent} items")
         print(f"   💾 Tracking: {len(self.seen_ids)} seen items")
+        print(f"   🚫 Enhanced spam filtering applied")
+        print(f"   🎯 Target: {self.target_channel}")
     
     def start_scheduler(self):
         """Start the scheduler for buy it now scraping"""

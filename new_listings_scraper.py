@@ -125,11 +125,17 @@ class NewListingsScraper(YahooScraperBase):
                 listings = self.scrape_brand_new_listings(brand, brand_info)
                 
                 for listing in listings:
-                    # Mark as new listing
+                    # Add scraper-specific metadata
                     listing['is_new_listing'] = True
-                    
-                    # Add scraper source for proper Discord bot routing
                     listing['scraper_source'] = 'new_listings_scraper'
+                    listing['listing_type'] = 'new_auction'
+                    
+                    # Enhanced logging for debugging
+                    print(f"🔍 Processing new listing: {listing['title'][:50]}...")
+                    print(f"   💰 Price: ${listing['price_usd']:.2f} (¥{listing['price_jpy']:,})")
+                    print(f"   🏷️ Brand: {listing['brand']}")
+                    print(f"   📊 Quality Score: {listing.get('deal_quality', 0):.2f}")
+                    print(f"   🆕 New listing detected")
                     
                     # Send to Discord bot (let it handle channel routing)
                     if self.send_to_discord(listing):
@@ -160,6 +166,8 @@ class NewListingsScraper(YahooScraperBase):
         print(f"   🔍 Found: {total_found} items")
         print(f"   📤 Sent: {total_sent} items")
         print(f"   💾 Tracking: {len(self.seen_ids)} seen items")
+        print(f"   🚫 Enhanced spam filtering applied")
+        print(f"   🎯 Target: {self.target_channel}")
     
     def start_scheduler(self):
         """Start the scheduler for new listings scraping"""
