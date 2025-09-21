@@ -7,14 +7,31 @@ Run this separately from the main Flask server to avoid asyncio conflicts
 import os
 import sys
 import time
-from datetime import datetime, timezone, timedelta
 import asyncio
+from datetime import datetime, timezone, timedelta
+import discord
+from discord.ext import commands
 
-# Add the current directory to Python path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Environment variables
+BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+GUILD_ID = int(os.getenv('GUILD_ID', 0))
 
-# Import the bot from the main file
-from secure_discordbot import bot, BOT_TOKEN, GUILD_ID, ADVANCED_FEATURES_AVAILABLE
+# Create bot instance
+intents = discord.Intents.default()
+intents.message_content = True
+intents.reactions = True
+intents.members = True
+
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f'✅ Discord bot connected as {bot.user}!')
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        print(f'🎯 Connected to server: {guild.name}')
+    else:
+        print(f'❌ Could not find guild with ID {GUILD_ID}')
 
 async def main():
     """Run the Discord bot standalone"""
