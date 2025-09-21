@@ -18,8 +18,18 @@ from database_manager import (
     init_subscription_tables, test_postgres_connection,
     get_user_size_preferences, set_user_size_preferences, mark_reminder_sent
 )
-from notification_tiers import tier_manager
-from daily_scheduler import daily_scheduler
+# Optional imports for advanced features
+try:
+    from notification_tiers import tier_manager
+    from daily_scheduler import daily_scheduler
+    ADVANCED_FEATURES_AVAILABLE = True
+    print("✅ Advanced features (notification tiers, daily scheduler) loaded successfully")
+except ImportError as e:
+    print(f"⚠️ Advanced features not available: {e}")
+    print("📝 Bot will run with basic functionality only")
+    tier_manager = None
+    daily_scheduler = None
+    ADVANCED_FEATURES_AVAILABLE = False
 
 # Set up secure logging
 logging.basicConfig(
@@ -1378,8 +1388,9 @@ async def on_ready():
         preference_learner = UserPreferenceLearner()
         delayed_manager = DelayedListingManager()
         
-        # Initialize notification tier system
-        tier_manager.set_bot(bot)
+        # Initialize notification tier system - if available
+        if ADVANCED_FEATURES_AVAILABLE and tier_manager:
+            tier_manager.set_bot(bot)
         
         # Find and set daily digest channel
         daily_digest_channel = discord.utils.get(guild.channels, name='daily-digest')
@@ -1393,8 +1404,9 @@ async def on_ready():
         bot.loop.create_task(process_batch_buffer())
         bot.loop.create_task(delayed_manager.process_delayed_queue())
         
-        # Start daily scheduler
-        daily_scheduler.start()
+        # Start daily scheduler - if available
+        if ADVANCED_FEATURES_AVAILABLE and daily_scheduler:
+            daily_scheduler.start()
         
         print("⏰ Started batch buffer processor")
         print("🧠 User preference learning system initialized")
@@ -2857,10 +2869,12 @@ def webhook_listing():
             batch_buffer.append(listing_data)
             buffer_size = len(batch_buffer)
             
-            # Queue for daily digest (all users get this)
+        # Queue for daily digest (all users get this) - if available
+        if ADVANCED_FEATURES_AVAILABLE and tier_manager:
             asyncio.create_task(tier_manager.queue_for_daily_digest(listing_data))
-            
-            # Send real-time notifications to eligible users
+        
+        # Send real-time notifications to eligible users - if available
+        if ADVANCED_FEATURES_AVAILABLE:
             asyncio.create_task(send_tier_notifications(listing_data))
             
             print(f"📦 Added to buffer (size: {buffer_size}) from {scraper_source}")
@@ -3382,6 +3396,10 @@ def create_listing_embed(listing_data):
 @commands.has_permissions(administrator=True)
 async def setup_tiers_command(ctx):
     print(f"🔧 setup_tiers called by {ctx.author.name}")
+    
+    if not ADVANCED_FEATURES_AVAILABLE:
+        await ctx.send("❌ Advanced features (notification tiers) are not available. Please ensure all required modules are deployed.")
+        return
     
     try:
         global tier_manager
@@ -4364,20 +4382,24 @@ async def setup_notification_tiers(ctx):
         return
     
     try:
-        # Initialize tier system
-        tier_manager.set_bot(bot)
+        # Initialize tier system - if available
+        if ADVANCED_FEATURES_AVAILABLE and tier_manager:
+            tier_manager.set_bot(bot)
+            
+            # Find daily digest channel
+            daily_digest_channel = discord.utils.get(ctx.guild.channels, name='daily-digest')
+            if daily_digest_channel:
+                tier_manager.set_daily_digest_channel(daily_digest_channel.id)
+                await ctx.send(f"✅ Notification tier system initialized!\n📰 Daily digest channel: {daily_digest_channel.mention}")
+            else:
+                await ctx.send("⚠️ Please create a #daily-digest channel first, then run this command again.")
         
-        # Find daily digest channel
-        daily_digest_channel = discord.utils.get(ctx.guild.channels, name='daily-digest')
-        if daily_digest_channel:
-            tier_manager.set_daily_digest_channel(daily_digest_channel.id)
-            await ctx.send(f"✅ Notification tier system initialized!\n📰 Daily digest channel: {daily_digest_channel.mention}")
+        # Start scheduler - if available
+        if ADVANCED_FEATURES_AVAILABLE and daily_scheduler:
+            daily_scheduler.start()
+            await ctx.send("📅 Daily scheduler started (digest at 9 AM UTC, counter reset at midnight UTC)")
         else:
-            await ctx.send("⚠️ Please create a #daily-digest channel first, then run this command again.")
-        
-        # Start scheduler
-        daily_scheduler.start()
-        await ctx.send("📅 Daily scheduler started (digest at 9 AM UTC, counter reset at midnight UTC)")
+            await ctx.send("⚠️ Advanced features not available. Bot running in basic mode.")
         
     except Exception as e:
         await ctx.send(f"❌ Error initializing tier system: {e}")
