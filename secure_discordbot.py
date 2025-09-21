@@ -4414,12 +4414,25 @@ def run_flask():
         run_flask()
 
 def run_discord_bot():
-    """Run Discord bot in a separate thread"""
+    """Run Discord bot in a separate thread with proper asyncio handling"""
     try:
         print("🤖 Starting Discord bot in background...")
-        bot.run(BOT_TOKEN)
+        
+        # Create a new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            loop.run_until_complete(bot.start(BOT_TOKEN))
+        except Exception as e:
+            print(f"❌ Discord bot error: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            loop.close()
+            
     except Exception as e:
-        print(f"❌ Discord bot error: {e}")
+        print(f"❌ Discord bot thread error: {e}")
         import traceback
         traceback.print_exc()
 
