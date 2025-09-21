@@ -9,6 +9,7 @@ import os
 import logging
 import time
 import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import hmac
 import hashlib
 import random
@@ -296,6 +297,27 @@ class SizeAlertSystem:
             
         except Exception as e:
             print(f"❌ Error sending size alert: {e}")
+
+# Simple health server for Railway
+class SimpleHealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ['/health', '/ping', '/']:
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            response = {
+                "status": "healthy",
+                "service": "discord-bot",
+                "uptime_seconds": int(time.time() - start_time),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            self.wfile.write(json.dumps(response).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        pass
 
 app = Flask(__name__)
 start_time = time.time()
@@ -4383,8 +4405,9 @@ async def test_exclusions(ctx, *, title: str):
 
 def run_flask():
     try:
-        print("🌐 Starting Flask server on port 8000...")
-        app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
+        port = int(os.environ.get('PORT', 8000))
+        print(f"🌐 Starting Flask server on port {port}...")
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
     except Exception as e:
         print(f"❌ Flask server error: {e}")
         time.sleep(5)
@@ -4654,6 +4677,16 @@ def main():
             print("🔄 Continuing without database - will retry later")
         
         print("🌐 Starting Flask server as main process...")
+        
+        # Start Discord bot in background first
+        print("🤖 Starting Discord bot in background...")
+        discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
+        discord_thread.start()
+        
+        # Give Discord bot time to start
+        time.sleep(2)
+        
+        # Start Flask server (this will be the main blocking process)
         run_flask()
         
     except Exception as e:
