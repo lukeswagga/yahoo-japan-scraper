@@ -4383,11 +4383,22 @@ async def test_exclusions(ctx, *, title: str):
 
 def run_flask():
     try:
-        app.run(host='0.0.0.0', port=8000, debug=False)
+        print("🌐 Starting Flask server on port 8000...")
+        app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
     except Exception as e:
         print(f"❌ Flask server error: {e}")
         time.sleep(5)
         run_flask()
+
+def run_discord_bot():
+    """Run Discord bot in a separate thread"""
+    try:
+        print("🤖 Starting Discord bot in background...")
+        bot.run(BOT_TOKEN)
+    except Exception as e:
+        print(f"❌ Discord bot error: {e}")
+        import traceback
+        traceback.print_exc()
 
 # ============================================================================
 # NOTIFICATION TIER SYSTEM COMMANDS
@@ -4591,25 +4602,24 @@ def main():
     try:
         print("🚀 Starting Discord bot...")
         
-        print("🌐 Starting webhook server...")
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+        # Initialize bot components before starting Discord thread
+        print("🔧 Initializing bot components...")
         
-        # Give Flask server time to start up
-        time.sleep(2)
+        # Initialize preference learner and delayed manager
+        preference_learner = UserPreferenceLearner()
+        delayed_manager = DelayedListingManager()
         
-        # Test health endpoint
-        try:
-            import requests
-            response = requests.get('http://localhost:8000/health', timeout=5)
-            if response.status_code == 200:
-                print("✅ Health endpoint responding successfully")
-            else:
-                print(f"⚠️ Health endpoint returned status {response.status_code}")
-        except Exception as e:
-            print(f"⚠️ Health endpoint test failed: {e}")
+        # Initialize notification tier system - if available
+        if ADVANCED_FEATURES_AVAILABLE and tier_manager:
+            tier_manager.set_bot(bot)
         
-        print("🌐 Webhook server started on port 8000")
+        print("🤖 Starting Discord bot in background thread...")
+        discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
+        discord_thread.start()
+        
+        # Give Discord bot time to initialize
+        time.sleep(3)
+        print("✅ Discord bot thread started")
         
         print("🔒 SECURITY: Performing startup security checks...")
         
@@ -4643,8 +4653,8 @@ def main():
             print(f"⚠️ Database initialization warning: {e}")
             print("🔄 Continuing without database - will retry later")
         
-        print("🤖 Connecting to Discord...")
-        bot.run(BOT_TOKEN)
+        print("🌐 Starting Flask server as main process...")
+        run_flask()
         
     except Exception as e:
         print(f"❌ CRITICAL ERROR in main(): {e}")
