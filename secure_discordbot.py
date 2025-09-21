@@ -4414,22 +4414,12 @@ def run_flask():
         run_flask()
 
 def run_discord_bot():
-    """Run Discord bot in a separate thread with proper asyncio handling"""
+    """Run Discord bot in a separate thread"""
     try:
         print("🤖 Starting Discord bot in background...")
         
-        # Create a new event loop for this thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            loop.run_until_complete(bot.start(BOT_TOKEN))
-        except Exception as e:
-            print(f"❌ Discord bot error: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            loop.close()
+        # Use bot.run() which handles its own event loop properly
+        bot.run(BOT_TOKEN)
             
     except Exception as e:
         print(f"❌ Discord bot thread error: {e}")
@@ -4691,16 +4681,16 @@ def main():
         
         print("🌐 Starting Flask server as main process...")
         
-        # Start Discord bot in background first
-        print("🤖 Starting Discord bot in background...")
-        discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
-        discord_thread.start()
+        # Start Flask server in a thread so we can also run Discord bot
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
         
-        # Give Discord bot time to start
+        # Give Flask server time to start
         time.sleep(2)
         
-        # Start Flask server (this will be the main blocking process)
-        run_flask()
+        print("🤖 Starting Discord bot in main thread...")
+        # Run Discord bot in main thread (this will block, keeping the process alive)
+        bot.run(BOT_TOKEN)
         
     except Exception as e:
         print(f"❌ CRITICAL ERROR in main(): {e}")
