@@ -4680,17 +4680,10 @@ def main():
             print("🔄 Continuing without database - will retry later")
         
         print("🌐 Starting Flask server as main process...")
+        print("🤖 Discord bot will be started separately to avoid asyncio conflicts")
         
-        # Start Flask server in a thread so we can also run Discord bot
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-        
-        # Give Flask server time to start
-        time.sleep(2)
-        
-        print("🤖 Starting Discord bot in main thread...")
-        # Run Discord bot in main thread (this will block, keeping the process alive)
-        bot.run(BOT_TOKEN)
+        # Just run Flask server as main process - Discord bot can be started separately
+        run_flask()
         
     except Exception as e:
         print(f"❌ CRITICAL ERROR in main(): {e}")
