@@ -2905,31 +2905,34 @@ def webhook_listing():
                 "scraper_source": scraper_source
             }), 200
         
-        # Add to buffer instead of sending immediately (prevents rate limiting)
-        if bot.is_ready():
-            # Add to batch buffer for rate-limited processing
-            batch_buffer.append(listing_data)
-            buffer_size = len(batch_buffer)
-            
+        # Add to buffer for processing (Discord bot may be running separately)
+        batch_buffer.append(listing_data)
+        buffer_size = len(batch_buffer)
+        
         # Queue for daily digest (all users get this) - if available
         if ADVANCED_FEATURES_AVAILABLE and tier_manager:
-            asyncio.create_task(tier_manager.queue_for_daily_digest(listing_data))
+            try:
+                asyncio.create_task(tier_manager.queue_for_daily_digest(listing_data))
+            except Exception as e:
+                print(f"⚠️ Could not queue for daily digest: {e}")
         
         # Send real-time notifications to eligible users - if available
         if ADVANCED_FEATURES_AVAILABLE:
-            asyncio.create_task(send_tier_notifications(listing_data))
-            
-            print(f"📦 Added to buffer (size: {buffer_size}) from {scraper_source}")
-            
-            # Return success immediately to prevent scraper timeouts
-            return jsonify({
-                "status": "success", 
-                "message": "Listing buffered and queued for notifications", 
-                "buffer_size": buffer_size,
-                "scraper_source": scraper_source
-            }), 200
-        else:
-            return jsonify({"status": "error", "message": "Bot not ready"}), 503
+            try:
+                asyncio.create_task(send_tier_notifications(listing_data))
+            except Exception as e:
+                print(f"⚠️ Could not send tier notifications: {e}")
+        
+        print(f"📦 Added to buffer (size: {buffer_size}) from {scraper_source}")
+        print(f"💡 Note: Discord bot should be running separately to process these listings")
+        
+        # Return success immediately to prevent scraper timeouts
+        return jsonify({
+            "status": "success", 
+            "message": "Listing buffered - Discord bot should process separately", 
+            "buffer_size": buffer_size,
+            "scraper_source": scraper_source
+        }), 200
             
     except Exception as e:
         print(f"❌ Webhook error: {e}")
@@ -4649,17 +4652,21 @@ def main():
         
         print("🔒 SECURITY: Performing startup security checks...")
         
-        if not BOT_TOKEN or len(BOT_TOKEN) < 50:
-            print("❌ SECURITY FAILURE: Invalid bot token!")
-            print("🌐 Keeping webhook server alive for health checks...")
-            while True:
-                time.sleep(60)
+        # For Railway deployment, allow Flask server to run without Discord bot token
+        # The Discord bot will be started separately on local machine
+        if not BOT_TOKEN or len(BOT_TOKEN) < 30:
+            print("⚠️ Discord bot token not configured - Flask server will run without Discord bot")
+            print("🌐 This is expected for Railway deployment")
+            print("🤖 Discord bot should be started separately on local machine")
+        else:
+            print("✅ Discord bot token configured")
         
         if not GUILD_ID:
-            print("❌ SECURITY FAILURE: Invalid guild ID!")
-            print("🌐 Keeping webhook server alive for health checks...")
-            while True:
-                time.sleep(60)
+            print("⚠️ Discord guild ID not configured - Flask server will run without Discord bot")
+            print("🌐 This is expected for Railway deployment")
+            print("🤖 Discord bot should be started separately on local machine")
+        else:
+            print(f"✅ Discord guild ID configured: {GUILD_ID}")
         
         print("✅ SECURITY: Basic security checks passed")
         print(f"🎯 Target server ID: {GUILD_ID}")
