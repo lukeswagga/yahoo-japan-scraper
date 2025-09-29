@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Channel Router for Discord Auction Bot
+Routes listings to appropriate channels based on tier access and user preferences
+"""
+
+import discord
+import logging
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
+
+class ChannelRouter:
+    def __init__(self, bot, tier_manager):
+        """
+        Initialize channel router
+        
+        Args:
+            bot: Discord bot instance
+            tier_manager: TierManager instance for user tier management
+        """
+        self.bot = bot
+        self.tier_manager = tier_manager
+        
+        # Channel name mapping for scraper sources
+        self.scraper_to_channel = {
+            'ending_soon_scraper': 'ending-soon',
+            'budget_steals_scraper': 'budget-steals',
+            'new_listings_scraper': 'new-listings',
+            'buy_it_now_scraper': 'buy-it-now'
+        }
+        
+        # Brand to channel name mapping (updated to match actual channels)
+        self.brand_to_channel = {
+            'Raf Simons': 'raf-simons',
+            'Rick Owens': 'rick-owens',
+            'Maison Margiela': 'maison-margiela',
+            'Jean Paul Gaultier': 'jean-paul-gaultier',
+            'Yohji Yamamoto': 'yohji-yamamoto',
+            'Junya Watanabe': 'junya-watanabe',
+            'Undercover': 'undercover',
+            'Vetements': 'vetements',
+            'Comme des Garçons': 'comme-des-garcons',
+            'Martine Rose': 'martine-rose',
+            'Balenciaga': 'balenciaga',
+            'Alyx': 'alyx',
+            'Celine': 'celine',
+            'Bottega Veneta': 'bottega-veneta',
+            'Kiko Kostadinov': 'kiko-kostadinov',
+            'Prada': 'prada',
+            'Miu Miu': 'miu-miu',
+            'Chrome Hearts': 'chrome-hearts',
+            'Gosha Rubchinskiy': 'gosha-rubchinskiy',
+            'Helmut Lang': 'helmut-lang',
+            'Hysteric Glamour': 'hysteric-glamour',
+            'Issey Miyake': 'issey-miyake'
+        }
+    
+    async def route_listing(self, listing_data: Dict[str, Any]) -> bool:
+        """
+        Route listing to appropriate channels based on tier access
+        
+        Args:
+            listing_data: Dictionary containing listing information
+            
+        Returns:
+            True if routing was successful, False otherwise
+        """
+        try:
+            # 1. Add to listing_queue for daily digest (all tiers)
+            await self._queue_for_digest(listing_data)
+            
+            # 2. Route to standard-feed (standard tier users with brand preference match)
+            await self._route_to_standard_feed(listing_data)
+            
+            # 3. Route to instant tier channels
+            await self._route_to_instant_channels(listing_data)
+            
+            logger.info(f"✅ Successfully routed listing {listing_data.get('auction_id')}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to route listing: {e}")
+            return False
+    
+    async def _queue_for_digest(self, listing_data: Dict[str, Any]) -> bool:
+        """Add listing to queue for daily digest"""
+        try:
+            priority_score = listing_data.get('priority_score', 0.5)
+            await self.tier_manager.add_listing_to_queue(listing_data, priority_score)
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to queue listing for digest: {e}")
+            return False
+    
+    async def _route_to_standard_feed(self, listing_data: Dict[str, Any]) -> bool:
+        """
+        Send to #standard-feed if matches any standard user's preferences
+        
+        Only posts once per listing, not per user
+        """
+        try:
+            standard_users = await self.tier_manager.get_all_standard_users()
+            if not standard_users:
+                return True  # No standard users, nothing to do
+            
+            listing_brand = listing_data.get('brand', 'Unknown')
+            
+            # Check if any standard user would want this listing
+            matching_users = []
+            for user_id in standard_users:
+                # Check if user can receive more listings today
+                if not await self.tier_manager.can_send_to_standard(user_id):
+                    continue
+                
+                # Check if listing brand matches user preferences
+                preferred_brands = await self.tier_manager.get_preferred_brands(user_id)
+                if not preferred_brands or listing_brand in preferred_brands:
+                    matching_users.append(user_id)
+            
+            # If we have matching users, post to standard-feed
+            if matching_users:
+                channel = discord.utils.get(self.bot.get_all_channels(), name='standard-feed')
+                if channel:
+                    embed = self._create_listing_embed(listing_data)
+                    await channel.send(embed=embed)
+                    
+                    # Increment counter for all matching users
+                    for user_id in matching_users:
+                        await self.tier_manager.increment_standard_count(user_id)
+                    
+                    logger.info(f"✅ Posted to standard-feed for {len(matching_users)} users")
+                    return True
+                else:
+                    logger.warning("⚠️ #standard-feed channel not found")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to route to standard feed: {e}")
+            return False
+    
+    async def _route_to_instant_channels(self, listing_data: Dict[str, Any]) -> bool:
+        """Post to instant tier channels"""
+        try:
+            # Post to #auction-alerts (all listings)
+            await self._post_to_channel('auction-alerts', listing_data)
+            
+            # Post to scraper-specific channel
+            scraper_source = listing_data.get('scraper_source', '')
+            channel_name = self.scraper_to_channel.get(scraper_source)
+            if channel_name:
+                await self._post_to_channel(channel_name, listing_data)
+            
+            # Post to brand-specific channel
+            brand = listing_data.get('brand', 'Unknown')
+            if brand != 'Unknown':
+                brand_channel = self.brand_to_channel.get(brand)
+                if brand_channel:
+                    await self._post_to_channel(brand_channel, listing_data)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to route to instant channels: {e}")
+            return False
+    
+    async def _post_to_channel(self, channel_name: str, listing_data: Dict[str, Any]) -> bool:
+        """
+        Post listing to specific channel
+        
+        Args:
+            channel_name: Name of the Discord channel
+            listing_data: Listing information
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            channel = discord.utils.get(self.bot.get_all_channels(), name=channel_name)
+            if not channel:
+                logger.warning(f"⚠️ Channel #{channel_name} not found")
+                return False
+            
+            embed = self._create_listing_embed(listing_data)
+            await channel.send(embed=embed)
+            logger.info(f"✅ Posted to #{channel_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to post to #{channel_name}: {e}")
+            return False
+    
+    def _create_listing_embed(self, listing_data: Dict[str, Any]) -> discord.Embed:
+        """
+        Create rich embed for listing
+        
+        Args:
+            listing_data: Dictionary containing listing information
+            
+        Returns:
+            Discord Embed object
+        """
+        try:
+            # Create base embed
+            embed = discord.Embed(
+                title=listing_data.get('title', 'Unknown Title')[:256],
+                url=listing_data.get('zenmarket_url', ''),
+                color=discord.Color.blue(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            # Add fields
+            embed.add_field(
+                name="🏷️ Brand", 
+                value=listing_data.get('brand', 'Unknown'), 
+                inline=True
+            )
+            
+            price_jpy = listing_data.get('price_jpy', 0)
+            price_usd = listing_data.get('price_usd', 0)
+            embed.add_field(
+                name="💰 Price", 
+                value=f"¥{price_jpy:,} (${price_usd:.2f})", 
+                inline=True
+            )
+            
+            deal_quality = listing_data.get('deal_quality', 0)
+            embed.add_field(
+                name="⭐ Quality", 
+                value=f"{deal_quality:.1%}", 
+                inline=True
+            )
+            
+            # Add priority score if available
+            priority_score = listing_data.get('priority_score')
+            if priority_score is not None:
+                embed.add_field(
+                    name="📊 Priority", 
+                    value=f"{priority_score:.2f}", 
+                    inline=True
+                )
+            
+            # Add scraper source
+            scraper_source = listing_data.get('scraper_source', '')
+            if scraper_source:
+                embed.add_field(
+                    name="🔍 Source", 
+                    value=scraper_source.replace('_scraper', '').replace('_', ' ').title(), 
+                    inline=True
+                )
+            
+            # Add image if available
+            image_url = listing_data.get('image_url')
+            if image_url:
+                embed.set_thumbnail(url=image_url)
+            
+            # Add links
+            yahoo_url = listing_data.get('yahoo_url', '')
+            zenmarket_url = listing_data.get('zenmarket_url', '')
+            if yahoo_url and zenmarket_url:
+                embed.add_field(
+                    name="🔗 Links", 
+                    value=f"[Yahoo Japan]({yahoo_url}) | [ZenMarket]({zenmarket_url})", 
+                    inline=False
+                )
+            
+            # Add footer with auction ID
+            auction_id = listing_data.get('auction_id', 'Unknown')
+            embed.set_footer(text=f"Auction ID: {auction_id}")
+            
+            return embed
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create listing embed: {e}")
+            # Return minimal embed on error
+            return discord.Embed(
+                title="Listing Error",
+                description="Failed to create listing embed",
+                color=discord.Color.red()
+            )
+    
+    async def get_channel_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about channel routing
+        
+        Returns:
+            Dictionary with channel statistics
+        """
+        try:
+            stats = {
+                'total_channels': 0,
+                'instant_channels': 0,
+                'standard_channels': 0,
+                'brand_channels': 0,
+                'missing_channels': []
+            }
+            
+            # Check all expected channels
+            all_expected_channels = [
+                'daily-digest', 'standard-feed', 'auction-alerts',
+                'ending-soon', 'budget-steals', 'new-listings', 'buy-it-now'
+            ]
+            
+            # Add brand channels
+            all_expected_channels.extend(self.brand_to_channel.values())
+            
+            for channel_name in all_expected_channels:
+                channel = discord.utils.get(self.bot.get_all_channels(), name=channel_name)
+                if channel:
+                    stats['total_channels'] += 1
+                    
+                    if channel_name in ['daily-digest', 'standard-feed']:
+                        stats['standard_channels'] += 1
+                    elif channel_name in self.brand_to_channel.values():
+                        stats['brand_channels'] += 1
+                    else:
+                        stats['instant_channels'] += 1
+                else:
+                    stats['missing_channels'].append(channel_name)
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get channel stats: {e}")
+            return {'error': str(e)}
+    
+    def get_brand_channel_name(self, brand: str) -> Optional[str]:
+        """
+        Get Discord channel name for a brand
+        
+        Args:
+            brand: Brand name
+            
+        Returns:
+            Channel name or None if not found
+        """
+        return self.brand_to_channel.get(brand)
+    
+    def get_scraper_channel_name(self, scraper_source: str) -> Optional[str]:
+        """
+        Get Discord channel name for a scraper source
+        
+        Args:
+            scraper_source: Scraper source name
+            
+        Returns:
+            Channel name or None if not found
+        """
+        return self.scraper_to_channel.get(scraper_source)

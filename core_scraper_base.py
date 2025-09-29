@@ -29,6 +29,8 @@ class YahooScraperBase:
         if self.discord_bot_url and not self.discord_bot_url.startswith(('http://', 'https://')):
             self.discord_bot_url = f"https://{self.discord_bot_url}"
         
+        print(f"🔗 Discord Bot URL configured: {self.discord_bot_url}")
+        
         # Exchange rate
         self.current_usd_jpy_rate = 147.0
         self.seen_ids = self.load_seen_items()

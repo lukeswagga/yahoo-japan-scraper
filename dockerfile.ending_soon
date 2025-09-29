@@ -1,0 +1,149 @@
+# Dockerfile.ending_soon
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY core_scraper_base.py .
+COPY ending_soon_scraper.py .
+COPY brands.json .
+
+EXPOSE 8000
+
+CMD ["python", "ending_soon_scraper.py"]
+
+---
+
+# Dockerfile.new_listings  
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY core_scraper_base.py .
+COPY new_listings_scraper.py .
+COPY brands.json .
+
+EXPOSE 8000
+
+CMD ["python", "new_listings_scraper.py"]
+
+---
+
+# Dockerfile.budget_steals
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY core_scraper_base.py .
+COPY budget_steals_scraper.py .
+COPY brands.json .
+
+EXPOSE 8000
+
+CMD ["python", "budget_steals_scraper.py"]
+
+---
+
+# Dockerfile.buy_it_now
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY core_scraper_base.py .
+COPY buy_it_now_scraper.py .
+COPY brands.json .
+
+EXPOSE 8000
+
+CMD ["python", "buy_it_now_scraper.py"]
+
+---
+
+# requirements.txt
+requests==2.31.0
+beautifulsoup4==4.12.2
+flask==3.0.0
+schedule==1.2.0
+
+---
+
+# railway.ending_soon.json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile.ending_soon"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": false,
+    "restartPolicyType": "ON_FAILURE",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300
+  }
+}
+
+---
+
+# railway.new_listings.json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile.new_listings"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": false,
+    "restartPolicyType": "ON_FAILURE",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300
+  }
+}
+
+---
+
+# railway.budget_steals.json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile.budget_steals"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": false,
+    "restartPolicyType": "ON_FAILURE",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300
+  }
+}
+
+---
+
+# railway.buy_it_now.json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile.buy_it_now"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": false,
+    "restartPolicyType": "ON_FAILURE",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300
+  }
+}

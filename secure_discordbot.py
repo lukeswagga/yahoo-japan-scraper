@@ -9,7 +9,6 @@ import os
 import logging
 import time
 import json
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import hmac
 import hashlib
 import random
@@ -19,18 +18,12 @@ from database_manager import (
     init_subscription_tables, test_postgres_connection,
     get_user_size_preferences, set_user_size_preferences, mark_reminder_sent
 )
-# Optional imports for advanced features
-try:
-    from notification_tiers import tier_manager
-    from daily_scheduler import daily_scheduler
-    ADVANCED_FEATURES_AVAILABLE = True
-    print("✅ Advanced features (notification tiers, daily scheduler) loaded successfully")
-except ImportError as e:
-    print(f"⚠️ Advanced features not available: {e}")
-    print("📝 Bot will run with basic functionality only")
-    tier_manager = None
-    daily_scheduler = None
-    ADVANCED_FEATURES_AVAILABLE = False
+
+# Tier system imports
+from tier_manager import TierManager
+from priority_calculator import PriorityCalculator
+from channel_router import ChannelRouter
+from digest_manager import DigestManager
 
 # Set up secure logging
 logging.basicConfig(
@@ -298,53 +291,21 @@ class SizeAlertSystem:
         except Exception as e:
             print(f"❌ Error sending size alert: {e}")
 
-# Simple health server for Railway
-class SimpleHealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path in ['/health', '/ping', '/']:
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            response = {
-                "status": "healthy",
-                "service": "discord-bot",
-                "uptime_seconds": int(time.time() - start_time),
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-            self.wfile.write(json.dumps(response).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def log_message(self, format, *args):
-        pass
-
 app = Flask(__name__)
 start_time = time.time()
 
 @app.route('/health', methods=['GET'])
 def health():
     try:
-        # Check if Discord bot is connected
-        bot_status = "connected" if bot.is_ready() else "connecting"
-        
-        # Check if advanced features are available
-        advanced_status = "available" if ADVANCED_FEATURES_AVAILABLE else "limited"
-        
         return jsonify({
             "status": "healthy",
             "service": "discord-bot",
-            "bot_status": bot_status,
-            "advanced_features": advanced_status,
-            "uptime_seconds": int(time.time() - start_time),
             "timestamp": datetime.now(timezone.utc).isoformat()
         }), 200
     except Exception as e:
         return jsonify({
-            "status": "error",
-            "service": "discord-bot", 
-            "error": str(e),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "status": "error", 
+            "error": str(e)
         }), 500
 
 @app.route('/', methods=['GET'])
@@ -352,15 +313,6 @@ def root():
     return jsonify({
         "service": "Archive Collective Discord Bot", 
         "status": "running",
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }), 200
-
-@app.route('/ping', methods=['GET'])
-def ping():
-    """Simple ping endpoint for Railway healthchecks"""
-    return jsonify({
-        "status": "ok",
-        "message": "pong",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }), 200
 
@@ -428,7 +380,6 @@ SUPPORTED_PROXIES = {
 BRAND_CHANNEL_MAP = {
     "Vetements": "vetements",
     "Alyx": "alyx", 
-    "Anonymous Club": "anonymous-club",
     "Balenciaga": "balenciaga",
     "Bottega Veneta": "bottega-veneta",
     "Celine": "celine",
@@ -461,7 +412,50 @@ guild = None
 auction_channel = None
 brand_channels_cache = {}
 reminder_system = None
+
+# Tier system components
+tier_manager = None
+priority_calculator = None
+channel_router = None
+digest_manager = None
+brand_data = None
 size_alert_system = None
+
+def load_brand_data():
+    """Load brand data from brands.json file"""
+    try:
+        if os.path.exists("brands.json"):
+            with open("brands.json", 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+            logger.warning("⚠️ brands.json not found, using default brand data")
+            return get_default_brand_data()
+    except Exception as e:
+        logger.error(f"❌ Failed to load brand data: {e}")
+        return get_default_brand_data()
+
+def get_default_brand_data():
+    """Get default brand data with tier information"""
+    return {
+        "Raf Simons": {"variants": ["raf simons", "raf", "ラフシモンズ"], "tier": 1},
+        "Rick Owens": {"variants": ["rick owens", "rick", "リックオウエンス"], "tier": 1},
+        "Maison Margiela": {"variants": ["margiela", "maison margiela", "メゾンマルジェラ"], "tier": 1},
+        "Jean Paul Gaultier": {"variants": ["jean paul gaultier", "gaultier", "jpg", "ジャンポールゴルチエ"], "tier": 1},
+        "Yohji Yamamoto": {"variants": ["yohji yamamoto", "yohji", "ヨウジヤマモト"], "tier": 2},
+        "Junya Watanabe": {"variants": ["junya watanabe", "junya", "ジュンヤワタナベ"], "tier": 2},
+        "Undercover": {"variants": ["undercover", "アンダーカバー"], "tier": 2},
+        "Vetements": {"variants": ["vetements", "ヴェトモン"], "tier": 2},
+        "Comme des Garçons": {"variants": ["comme des garcons", "cdg", "コムデギャルソン"], "tier": 3},
+        "Martine Rose": {"variants": ["martine rose", "martine"], "tier": 3},
+        "Balenciaga": {"variants": ["balenciaga", "バレンシアガ"], "tier": 3},
+        "Alyx": {"variants": ["alyx", "1017 alyx 9sm"], "tier": 3},
+        "Celine": {"variants": ["celine", "セリーヌ"], "tier": 4},
+        "Bottega Veneta": {"variants": ["bottega veneta", "bottega"], "tier": 4},
+        "Kiko Kostadinov": {"variants": ["kiko kostadinov", "kiko"], "tier": 4},
+        "Prada": {"variants": ["prada", "プラダ"], "tier": 4},
+        "Miu Miu": {"variants": ["miu miu", "ミュウミュウ"], "tier": 4},
+        "Chrome Hearts": {"variants": ["chrome hearts", "chrome"], "tier": 5}
+    }
 
 class UserPreferenceLearner:
     def __init__(self):
@@ -746,150 +740,6 @@ class UserPreferenceLearner:
                 return True
         
         return False
-
-def final_spam_check(listing_data):
-    """Final spam check before Discord sending with enhanced filtering"""
-    title = listing_data.get('title', '')
-    brand = listing_data.get('brand', '')
-    title_lower = title.lower()
-    
-    # NEW HIGH PRIORITY EXCLUSIONS (same as in core_scraper_base.py)
-    new_excluded_keywords = {
-        "LEGO", "レゴ",  # LEGO blocks
-        "Water Tank", "ウォータータンク", "水タンク",  # Water tanks
-        "BMW Touring E91", "BMW E91", "E91",  # BMW car parts
-        "Mazda", "マツダ",  # Mazda car parts
-        "Band of Outsiders", "バンドオブアウトサイダーズ"  # Unwanted brand
-    }
-    
-    for excluded in new_excluded_keywords:
-        if excluded.lower() in title_lower:
-            print(f"🚫 FINAL SPAM CHECK - NEW EXCLUSION BLOCKED: {excluded}")
-            return True
-    
-    # STRICT JDirectItems FILTERING
-    if "jdirectitems" in title_lower:
-        import re
-        pattern = r'jdirectitems auction.*?→\s*([^,\n]+)'
-        match = re.search(pattern, title_lower)
-        if match:
-            category = match.group(1).strip().lower()
-            
-            # Only allow fashion-related categories
-            allowed_categories = {
-                "fashion", "clothing", "apparel", 
-                "ファッション", "衣類", "服", "洋服"
-            }
-            
-            if not any(allowed in category for allowed in allowed_categories):
-                print(f"🚫 FINAL SPAM CHECK - JDirectItems NON-FASHION BLOCKED: {category}")
-                return True
-            else:
-                print(f"✅ FINAL SPAM CHECK - JDirectItems FASHION ALLOWED: {category}")
-    
-    # Use existing spam detection
-    if preference_learner and preference_learner.is_likely_spam(title, brand):
-        print(f"🚫 FINAL SPAM CHECK - Existing spam patterns detected")
-        return True
-    
-    print(f"✅ FINAL SPAM CHECK - Listing passed all filters")
-    return False
-
-def create_enhanced_listing_embed(listing_data):
-    """Create enhanced embed with scraper-specific styling"""
-    title = listing_data.get('title', '')
-    brand = listing_data.get('brand', '')
-    price_jpy = listing_data.get('price_jpy', 0)
-    price_usd = listing_data.get('price_usd', 0)
-    deal_quality = listing_data.get('deal_quality', 0.5)
-    priority = listing_data.get('priority', 0.0)
-    seller_id = listing_data.get('seller_id', 'unknown')
-    zenmarket_url = listing_data.get('zenmarket_url', '')
-    image_url = listing_data.get('image_url', '')
-    auction_id = listing_data.get('auction_id', '')
-    auction_end_time = listing_data.get('auction_end_time', None)
-    sizes = listing_data.get('sizes', [])
-    scraper_source = listing_data.get('scraper_source', 'unknown')
-    
-    # Scraper-specific colors and emojis
-    scraper_config = {
-        'ending_soon_scraper': {'color': 0xff6b6b, 'emoji': '⏰', 'name': 'Ending Soon'},
-        'budget_steals_scraper': {'color': 0x4ecdc4, 'emoji': '💰', 'name': 'Budget Steal'},
-        'new_listings_scraper': {'color': 0x45b7d1, 'emoji': '🆕', 'name': 'New Listing'},
-        'buy_it_now_scraper': {'color': 0x96ceb4, 'emoji': '🛒', 'name': 'Buy It Now'}
-    }
-    
-    # Get scraper-specific styling
-    config = scraper_config.get(scraper_source, {'color': 0xff4444, 'emoji': '📦', 'name': 'Auction'})
-    
-    # Quality-based color override
-    if deal_quality >= 0.8 or priority >= 100:
-        config['color'] = 0x00ff00
-        quality_emoji = "🔥"
-    elif deal_quality >= 0.6 or priority >= 70:
-        config['color'] = 0xffa500
-        quality_emoji = "🌟"
-    else:
-        quality_emoji = "⭐"
-    
-    display_title = title
-    if len(display_title) > 100:
-        display_title = display_title[:97] + "..."
-    
-    # Enhanced description with scraper info
-    description = f"{config['emoji']} **{config['name']}**\n"
-    description += f"💴 **¥{price_jpy:,}** (~${price_usd:.2f})\n"
-    description += f"🏷️ **{brand.replace('_', ' ').title()}**\n"
-    description += f"{quality_emoji} **Quality: {deal_quality:.1%}** | **Priority: {priority:.0f}**\n"
-    description += f"👤 **Seller:** {seller_id}\n"
-
-    if sizes:
-        description += f"📏 **Sizes:** {', '.join(sizes)}\n"
-    
-    # Add scraper-specific metadata
-    if listing_data.get('is_ending_soon'):
-        description += f"⏰ **Ending Soon**\n"
-    if listing_data.get('is_budget_steal'):
-        description += f"💰 **Budget Steal**\n"
-    if listing_data.get('is_new_listing'):
-        description += f"🆕 **New Listing**\n"
-    if listing_data.get('is_buy_it_now'):
-        description += f"🛒 **Buy It Now**\n"
-    
-    # Add time remaining if available
-    if auction_end_time:
-        try:
-            end_dt = datetime.fromisoformat(auction_end_time.replace('Z', '+00:00'))
-            time_remaining = end_dt - datetime.now(timezone.utc)
-            if time_remaining.total_seconds() > 0:
-                hours = int(time_remaining.total_seconds() // 3600)
-                minutes = int((time_remaining.total_seconds() % 3600) // 60)
-                description += f"⏰ **Time Remaining:** {hours}h {minutes}m\n"
-        except:
-            pass
-    
-    auction_id_clean = auction_id.replace('yahoo_', '')
-    link_section = "\n**🛒 Proxy Links:**\n"
-    for key, proxy_info in SUPPORTED_PROXIES.items():
-        proxy_url = generate_proxy_url(auction_id_clean, key)
-        link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
-    
-    description += link_section
-    
-    embed = discord.Embed(
-        title=display_title,
-        url=zenmarket_url,
-        description=description,
-        color=config['color'],
-        timestamp=datetime.now(timezone.utc)
-    )
-    
-    if image_url:
-        embed.set_thumbnail(url=image_url)
-    
-    embed.set_footer(text=f"ID: {auction_id} | Source: {config['name']} | !setup for proxy config | React 👍/👎 to train")
-    
-    return embed
 
 preference_learner = None
 
@@ -1304,7 +1154,7 @@ def detect_brand_in_title_enhanced(title):
     # Then fall back to regular brand detection
     title_lower = title.lower()
     
-    for brand, details in BRAND_DATA.items():
+    for brand, details in brand_data.items():
         for variant in details["variants"]:
             if variant.lower() in title_lower:
                 return brand
@@ -1335,7 +1185,7 @@ async def send_single_listing_enhanced(auction_data):
         scraper_source = auction_data.get('scraper_source', '')
         target_channels = determine_target_channel(price_usd, brand, deal_quality, title, scraper_source)
         
-        embed = create_enhanced_listing_embed(auction_data)
+        embed = create_listing_embed(auction_data)
         main_message = None
         sent_count = 0
         
@@ -1389,7 +1239,7 @@ async def send_to_premium_channels_immediately(listing_data):
             channel = discord.utils.get(guild.text_channels, name='🎯-auction-alerts')
         
         if channel:
-            embed = create_enhanced_listing_embed(listing_data)
+            embed = create_listing_embed(listing_data)
             embed.set_footer(text=f"Pro/Elite Real-time Alert | ID: {listing_data['auction_id']}")
             
             # Check channel permissions - only Pro/Elite should see this
@@ -1420,6 +1270,7 @@ async def send_individual_listings_with_rate_limit(batch_data):
 @bot.event
 async def on_ready():
     global guild, auction_channel, preference_learner, tier_manager, delayed_manager, reminder_system, size_alert_system
+    global priority_calculator, channel_router, digest_manager, brand_data
     print(f'✅ Bot connected as {bot.user}!')
     guild = bot.get_guild(GUILD_ID)
     
@@ -1427,37 +1278,67 @@ async def on_ready():
         print(f'🎯 Connected to server: {guild.name}')
         auction_channel = await get_or_create_auction_channel()
         
+        # Initialize existing systems
         preference_learner = UserPreferenceLearner()
+        tier_manager = PremiumTierManager(bot)
         delayed_manager = DelayedListingManager()
         
-        # Initialize notification tier system - if available
-        if ADVANCED_FEATURES_AVAILABLE and tier_manager:
-            tier_manager.set_bot(bot)
+        # Initialize new tier system
+        print("🔄 Initializing tier system...")
+        brand_data = load_brand_data()
         
-        # Find and set daily digest channel
-        daily_digest_channel = discord.utils.get(guild.channels, name='daily-digest')
-        if daily_digest_channel:
-            tier_manager.set_daily_digest_channel(daily_digest_channel.id)
-            print(f"📰 Daily digest channel set: #{daily_digest_channel.name}")
-        else:
-            print("⚠️ Daily digest channel not found - please create #daily-digest channel")
+        # Initialize tier system components
+        tier_manager_new = TierManager()
+        await tier_manager_new.init_database()
+        
+        priority_calculator = PriorityCalculator(brand_data)
+        channel_router = ChannelRouter(bot, tier_manager_new)
+        digest_manager = DigestManager(bot, tier_manager_new)
         
         # Start background tasks
         bot.loop.create_task(process_batch_buffer())
         bot.loop.create_task(delayed_manager.process_delayed_queue())
-        
-        # Start daily scheduler - if available
-        if ADVANCED_FEATURES_AVAILABLE and daily_scheduler:
-            daily_scheduler.start()
+        bot.loop.create_task(reset_counters())
+        bot.loop.create_task(post_digest())
         
         print("⏰ Started batch buffer processor")
         print("🧠 User preference learning system initialized")
-        print("💎 Notification tier system initialized")
+        print("💎 Premium tier system initialized")
         print("⏳ Delayed listing manager started")
-        print("📅 Daily scheduler started")
+        print("🎯 Tier system initialized")
+        print("📊 Priority calculator initialized")
+        print("🛣️ Channel router initialized")
+        print("📰 Digest manager initialized")
     else:
         print(f'❌ Could not find server with ID: {GUILD_ID}')
 
+async def reset_counters():
+    """Reset standard tier counters at midnight UTC"""
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            if now.hour == 0 and now.minute == 0:  # Midnight UTC
+                if tier_manager:
+                    await tier_manager.reset_daily_counters()
+                    print("✅ Reset daily counters for standard tier users")
+            await asyncio.sleep(60)  # Check every minute
+        except Exception as e:
+            print(f"❌ Error in reset_counters: {e}")
+            await asyncio.sleep(300)  # Wait 5 minutes on error
+
+async def post_digest():
+    """Post daily digest at 9 AM UTC"""
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            if now.hour == 9 and now.minute == 0:  # 9 AM UTC
+                if digest_manager:
+                    await digest_manager.generate_daily_digest()
+                    print("✅ Posted daily digest")
+            await asyncio.sleep(60)  # Check every minute
+        except Exception as e:
+            print(f"❌ Error in post_digest: {e}")
+            await asyncio.sleep(300)  # Wait 5 minutes on error
 
 @bot.event
 async def on_reaction_add(reaction, user):
@@ -1987,12 +1868,12 @@ async def volume_debug_command(ctx):
         main_channel = discord.utils.get(guild.text_channels, name="🎯-auction-alerts")
         main_message = None
         if main_channel:
-            embed = create_enhanced_listing_embed(auction_data)
+            embed = create_listing_embed(listing_data)
             main_message = await main_channel.send(embed=embed)
-            print(f"📤 Sent to MAIN channel: {title[:30]}...")
+            print(f"📤 Sent to MAIN channel: {listing_data.get('title', 'Unknown')[:30]}...")
             
             # Add to database with end time
-            add_listing(auction_data, main_message.id)
+            add_listing(listing_data, main_message.id)
             
             # Allow users to react manually without pre-added bot reactions
         
@@ -2882,7 +2763,7 @@ def stats():
 
 @app.route('/webhook/listing', methods=['POST'])
 def webhook_listing():
-    """Receive listing from multiple scrapers with rate limiting buffer"""
+    """Receive listing from multiple scrapers with tier system routing"""
     try:
         if not request.is_json:
             return jsonify({"status": "error", "message": "Content-Type must be application/json"}), 400
@@ -2896,43 +2777,37 @@ def webhook_listing():
         scraper_source = listing_data.get('scraper_source', 'unknown')
         print(f"📥 Received listing from {scraper_source}: {listing_data.get('title', 'Unknown')[:50]}...")
         
-        # FINAL SPAM CHECK before processing
-        if final_spam_check(listing_data):
-            print(f"🚫 Final spam check blocked listing from {scraper_source}")
+        # Process with tier system if bot is ready
+        if bot.is_ready() and priority_calculator and channel_router:
+            # Calculate priority score
+            priority_score = priority_calculator.calculate_priority(listing_data)
+            listing_data['priority_score'] = priority_score
+            
+            # Route to appropriate channels
+            asyncio.create_task(channel_router.route_listing(listing_data))
+            
+            print(f"🎯 Routed listing with priority {priority_score:.2f} from {scraper_source}")
+            
             return jsonify({
-                "status": "blocked", 
-                "message": "Listing blocked by final spam check", 
+                "status": "success", 
+                "message": "Listing routed to tier system", 
+                "priority_score": priority_score,
                 "scraper_source": scraper_source
             }), 200
-        
-        # Add to buffer for processing (Discord bot may be running separately)
-        batch_buffer.append(listing_data)
-        buffer_size = len(batch_buffer)
-        
-        # Queue for daily digest (all users get this) - if available
-        if ADVANCED_FEATURES_AVAILABLE and tier_manager:
-            try:
-                asyncio.create_task(tier_manager.queue_for_daily_digest(listing_data))
-            except Exception as e:
-                print(f"⚠️ Could not queue for daily digest: {e}")
-        
-        # Send real-time notifications to eligible users - if available
-        if ADVANCED_FEATURES_AVAILABLE:
-            try:
-                asyncio.create_task(send_tier_notifications(listing_data))
-            except Exception as e:
-                print(f"⚠️ Could not send tier notifications: {e}")
-        
-        print(f"📦 Added to buffer (size: {buffer_size}) from {scraper_source}")
-        print(f"💡 Note: Discord bot should be running separately to process these listings")
-        
-        # Return success immediately to prevent scraper timeouts
-        return jsonify({
-            "status": "success", 
-            "message": "Listing buffered - Discord bot should process separately", 
-            "buffer_size": buffer_size,
-            "scraper_source": scraper_source
-        }), 200
+        else:
+            # Fallback to old system if tier system not ready
+            if bot.is_ready():
+                batch_buffer.append(listing_data)
+                buffer_size = len(batch_buffer)
+                print(f"📦 Added to buffer (size: {buffer_size}) from {scraper_source}")
+                return jsonify({
+                    "status": "success", 
+                    "message": "Listing buffered (fallback)", 
+                    "buffer_size": buffer_size,
+                    "scraper_source": scraper_source
+                }), 200
+            else:
+                return jsonify({"status": "error", "message": "Bot not ready"}), 503
             
     except Exception as e:
         print(f"❌ Webhook error: {e}")
@@ -3324,7 +3199,7 @@ class DelayedListingManager:
             channel = discord.utils.get(guild.text_channels, name=channel_name)
             if channel:
                 try:
-                    embed = create_enhanced_listing_embed(listing)
+                    embed = create_listing_embed(listing)
                     
                     # Add free tier messaging
                     delay_hours = (datetime.now() - (queued_item['delivery_time'] - timedelta(seconds=7200))).total_seconds() / 3600
@@ -3441,10 +3316,6 @@ def create_listing_embed(listing_data):
 @commands.has_permissions(administrator=True)
 async def setup_tiers_command(ctx):
     print(f"🔧 setup_tiers called by {ctx.author.name}")
-    
-    if not ADVANCED_FEATURES_AVAILABLE:
-        await ctx.send("❌ Advanced features (notification tiers) are not available. Please ensure all required modules are deployed.")
-        return
     
     try:
         global tier_manager
@@ -4369,304 +4240,36 @@ async def check_budget_steals(ctx):
     
     await ctx.send(embed=embed)
 
-@bot.command(name='test_exclusions')
-@commands.has_permissions(administrator=True)
-async def test_exclusions(ctx, *, title: str):
-    """Test the enhanced spam filtering with a specific title"""
-    
-    # Create test listing data
-    test_data = {
-        'auction_id': 'test_exclusion_123',
-        'title': title,
-        'brand': 'Test Brand',
-        'price_jpy': 10000,
-        'price_usd': 67.00,
-        'deal_quality': 0.5,
-        'scraper_source': 'test_scraper'
-    }
-    
-    # Test final spam check
-    is_spam = final_spam_check(test_data)
-    
-    # Create test embed
-    embed = create_enhanced_listing_embed(test_data)
-    
-    # Add test results
-    embed.add_field(
-        name="🧪 Test Results",
-        value=f"**Spam Check:** {'🚫 BLOCKED' if is_spam else '✅ ALLOWED'}\n**Title:** {title[:100]}...",
-        inline=False
-    )
-    
-    embed.color = 0xff0000 if is_spam else 0x00ff00
-    
-    await ctx.send(embed=embed)
-    
-    # Additional detailed logging
-    print(f"🧪 Test exclusions command used with title: {title}")
-    print(f"   Result: {'BLOCKED' if is_spam else 'ALLOWED'}")
-
 def run_flask():
     try:
-        port = int(os.environ.get('PORT', 8000))
-        print(f"🌐 Starting Flask server on port {port}...")
-        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
+        app.run(host='0.0.0.0', port=8000, debug=False)
     except Exception as e:
         print(f"❌ Flask server error: {e}")
         time.sleep(5)
         run_flask()
 
-def run_discord_bot():
-    """Run Discord bot in a separate thread"""
-    try:
-        print("🤖 Starting Discord bot in background...")
-        
-        # Use bot.run() which handles its own event loop properly
-        bot.run(BOT_TOKEN)
-            
-    except Exception as e:
-        print(f"❌ Discord bot thread error: {e}")
-        import traceback
-        traceback.print_exc()
-
-# ============================================================================
-# NOTIFICATION TIER SYSTEM COMMANDS
-# ============================================================================
-
-@bot.command(name='setup_notification_tiers')
-async def setup_notification_tiers(ctx):
-    """Initialize the notification tier system (admin only)"""
-    # Check if user is admin (you can customize this check)
-    if ctx.author.id != 123456789012345678:  # Replace with your admin user ID
-        await ctx.send("❌ This command is admin only.")
-        return
-    
-    try:
-        # Initialize tier system - if available
-        if ADVANCED_FEATURES_AVAILABLE and tier_manager:
-            tier_manager.set_bot(bot)
-            
-            # Find daily digest channel
-            daily_digest_channel = discord.utils.get(ctx.guild.channels, name='daily-digest')
-            if daily_digest_channel:
-                tier_manager.set_daily_digest_channel(daily_digest_channel.id)
-                await ctx.send(f"✅ Notification tier system initialized!\n📰 Daily digest channel: {daily_digest_channel.mention}")
-            else:
-                await ctx.send("⚠️ Please create a #daily-digest channel first, then run this command again.")
-        
-        # Start scheduler - if available
-        if ADVANCED_FEATURES_AVAILABLE and daily_scheduler:
-            daily_scheduler.start()
-            await ctx.send("📅 Daily scheduler started (digest at 9 AM UTC, counter reset at midnight UTC)")
-        else:
-            await ctx.send("⚠️ Advanced features not available. Bot running in basic mode.")
-        
-    except Exception as e:
-        await ctx.send(f"❌ Error initializing tier system: {e}")
-
-@bot.command(name='upgrade_tier')
-async def upgrade_tier(ctx, user: discord.Member, tier: str):
-    """Upgrade a user's notification tier (admin only)"""
-    # Check if user is admin
-    if ctx.author.id != 123456789012345678:  # Replace with your admin user ID
-        await ctx.send("❌ This command is admin only.")
-        return
-    
-    if tier.lower() not in ['free', 'standard', 'instant']:
-        await ctx.send("❌ Invalid tier. Use: free, standard, or instant")
-        return
-    
-    try:
-        success = await tier_manager.upgrade_user_tier(user.id, tier.lower())
-        if success:
-            tier_name = tier_manager.TIER_NAMES[tier.lower()]
-            await ctx.send(f"✅ Upgraded {user.mention} to **{tier_name}** tier!")
-        else:
-            await ctx.send(f"❌ Failed to upgrade {user.mention}")
-    except Exception as e:
-        await ctx.send(f"❌ Error upgrading user: {e}")
-
-@bot.command(name='my_notifications')
-async def my_notifications(ctx):
-    """Show user's current notification tier and usage"""
-    try:
-        user_id = ctx.author.id
-        tier = await tier_manager.get_user_tier(user_id)
-        count, last_reset = await tier_manager.get_user_daily_count(user_id)
-        limit = tier_manager.TIER_LIMITS[tier]
-        
-        embed = discord.Embed(
-            title="🔔 Your Notification Settings",
-            color=0x7289da,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        tier_name = tier_manager.TIER_NAMES[tier]
-        embed.add_field(name="Current Tier", value=tier_name, inline=True)
-        
-        if tier == 'free':
-            embed.add_field(
-                name="Notifications", 
-                value="Daily digest only\n(Posted to #daily-digest at 9 AM UTC)", 
-                inline=True
-            )
-        elif tier == 'standard':
-            embed.add_field(
-                name="Daily Usage", 
-                value=f"{count}/{limit} notifications used", 
-                inline=True
-            )
-            embed.add_field(
-                name="Reset Time", 
-                value="Midnight UTC daily", 
-                inline=True
-            )
-        else:  # instant
-            embed.add_field(
-                name="Notifications", 
-                value="Unlimited real-time DMs", 
-                inline=True
-            )
-        
-        embed.add_field(
-            name="Upgrade Options",
-            value="**Standard ($12/month)**: 50 real-time DMs per day\n"
-                  "**Instant ($25/month)**: Unlimited real-time notifications\n"
-                  "Contact an admin to upgrade!",
-            inline=False
-        )
-        
-        await ctx.send(embed=embed)
-        
-    except Exception as e:
-        await ctx.send(f"❌ Error getting notification info: {e}")
-
-@bot.command(name='send_digest_now')
-async def send_digest_now(ctx):
-    """Manually trigger daily digest (admin only)"""
-    # Check if user is admin
-    if ctx.author.id != 123456789012345678:  # Replace with your admin user ID
-        await ctx.send("❌ This command is admin only.")
-        return
-    
-    try:
-        await ctx.send("📰 Sending daily digest...")
-        success = await tier_manager.send_daily_digest()
-        if success:
-            await ctx.send("✅ Daily digest sent successfully!")
-        else:
-            await ctx.send("❌ Failed to send daily digest")
-    except Exception as e:
-        await ctx.send(f"❌ Error sending digest: {e}")
-
-@bot.command(name='tier_stats')
-async def tier_stats(ctx):
-    """Show tier distribution statistics (admin only)"""
-    # Check if user is admin
-    if ctx.author.id != 123456789012345678:  # Replace with your admin user ID
-        await ctx.send("❌ This command is admin only.")
-        return
-    
-    try:
-        stats = await tier_manager.get_tier_stats()
-        
-        embed = discord.Embed(
-            title="📊 Notification Tier Statistics",
-            color=0x7289da,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        total_users = sum(stats.values())
-        embed.add_field(name="Total Active Users", value=str(total_users), inline=True)
-        
-        for tier, count in stats.items():
-            tier_name = tier_manager.TIER_NAMES[tier]
-            percentage = (count / total_users * 100) if total_users > 0 else 0
-            embed.add_field(
-                name=tier_name, 
-                value=f"{count} users ({percentage:.1f}%)", 
-                inline=True
-            )
-        
-        await ctx.send(embed=embed)
-        
-    except Exception as e:
-        await ctx.send(f"❌ Error getting tier stats: {e}")
-
-# ============================================================================
-# TIER NOTIFICATION FUNCTIONS
-# ============================================================================
-
-async def send_tier_notifications(listing_data):
-    """Send real-time notifications to users based on their tier"""
-    try:
-        # Get all active users with real-time notifications enabled
-        users = db_manager.execute_query(
-            'SELECT user_id FROM user_subscriptions WHERE status = %s AND tier IN (%s, %s)'
-            if db_manager.use_postgres else
-            'SELECT user_id FROM user_subscriptions WHERE status = ? AND tier IN (?, ?)',
-            ('active', 'standard', 'instant'),
-            fetch_all=True
-        )
-        
-        if not users:
-            return
-        
-        # Send notifications to eligible users
-        notification_tasks = []
-        for user_row in users:
-            user_id = user_row['user_id'] if isinstance(user_row, dict) else user_row[0]
-            notification_tasks.append(tier_manager.send_real_time_notification(user_id, listing_data))
-        
-        # Execute all notifications concurrently
-        if notification_tasks:
-            results = await asyncio.gather(*notification_tasks, return_exceptions=True)
-            successful = sum(1 for result in results if result is True)
-            logger.info(f"Sent {successful}/{len(notification_tasks)} real-time notifications for listing {listing_data.get('auction_id', 'unknown')}")
-        
-    except Exception as e:
-        logger.error(f"Error sending tier notifications: {e}")
-
 def main():
     try:
         print("🚀 Starting Discord bot...")
         
-        # Initialize bot components before starting Discord thread
-        print("🔧 Initializing bot components...")
-        
-        # Initialize preference learner and delayed manager
-        preference_learner = UserPreferenceLearner()
-        delayed_manager = DelayedListingManager()
-        
-        # Initialize notification tier system - if available
-        if ADVANCED_FEATURES_AVAILABLE and tier_manager:
-            tier_manager.set_bot(bot)
-        
-        print("🤖 Starting Discord bot in background thread...")
-        discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
-        discord_thread.start()
-        
-        # Give Discord bot time to initialize
-        time.sleep(3)
-        print("✅ Discord bot thread started")
+        print("🌐 Starting webhook server...")
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        print("🌐 Webhook server started on port 8000")
         
         print("🔒 SECURITY: Performing startup security checks...")
         
-        # For Railway deployment, allow Flask server to run without Discord bot token
-        # The Discord bot will be started separately on local machine
-        if not BOT_TOKEN or len(BOT_TOKEN) < 30:
-            print("⚠️ Discord bot token not configured - Flask server will run without Discord bot")
-            print("🌐 This is expected for Railway deployment")
-            print("🤖 Discord bot should be started separately on local machine")
-        else:
-            print("✅ Discord bot token configured")
+        if not BOT_TOKEN or len(BOT_TOKEN) < 50:
+            print("❌ SECURITY FAILURE: Invalid bot token!")
+            print("🌐 Keeping webhook server alive for health checks...")
+            while True:
+                time.sleep(60)
         
         if not GUILD_ID:
-            print("⚠️ Discord guild ID not configured - Flask server will run without Discord bot")
-            print("🌐 This is expected for Railway deployment")
-            print("🤖 Discord bot should be started separately on local machine")
-        else:
-            print(f"✅ Discord guild ID configured: {GUILD_ID}")
+            print("❌ SECURITY FAILURE: Invalid guild ID!")
+            print("🌐 Keeping webhook server alive for health checks...")
+            while True:
+                time.sleep(60)
         
         print("✅ SECURITY: Basic security checks passed")
         print(f"🎯 Target server ID: {GUILD_ID}")
@@ -4686,11 +4289,8 @@ def main():
             print(f"⚠️ Database initialization warning: {e}")
             print("🔄 Continuing without database - will retry later")
         
-        print("🌐 Starting Flask server as main process...")
-        print("🤖 Discord bot will be started separately to avoid asyncio conflicts")
-        
-        # Just run Flask server as main process - Discord bot can be started separately
-        run_flask()
+        print("🤖 Connecting to Discord...")
+        bot.run(BOT_TOKEN)
         
     except Exception as e:
         print(f"❌ CRITICAL ERROR in main(): {e}")
@@ -4703,6 +4303,139 @@ def main():
                 time.sleep(60)
         except KeyboardInterrupt:
             print("👋 Shutting down...")
+
+# ===== TIER SYSTEM COMMANDS =====
+
+@bot.command(name='tier')
+async def tier_command(ctx):
+    """Show your current tier and stats"""
+    if not tier_manager:
+        await ctx.send("❌ Tier system not initialized")
+        return
+    
+    try:
+        stats = await tier_manager.get_user_stats(str(ctx.author.id))
+        
+        embed = discord.Embed(title="Your Tier Info", color=discord.Color.blue())
+        embed.add_field(name="Current Tier", value=stats['tier'].title(), inline=False)
+        
+        if stats['tier'] == 'standard':
+            embed.add_field(name="Listings Today", value=f"{stats['count']}/100", inline=True)
+            embed.add_field(name="Preferred Brands", value=", ".join(stats['brands']) if stats['brands'] else "All brands", inline=False)
+        elif stats['tier'] == 'instant':
+            embed.add_field(name="Access", value="All channels + real-time alerts", inline=False)
+        
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Error getting tier info: {e}")
+
+@bot.command(name='setbrands')
+async def setbrands_command(ctx, *, brands: str):
+    """Set your preferred brands (Standard tier only)"""
+    if not tier_manager:
+        await ctx.send("❌ Tier system not initialized")
+        return
+    
+    try:
+        user_tier = await tier_manager.get_user_tier(str(ctx.author.id))
+        
+        if user_tier != 'standard':
+            await ctx.send("❌ This command is only for Standard tier members!")
+            return
+        
+        # Parse comma-separated brands
+        brand_list = [b.strip().title() for b in brands.split(',')]
+        
+        success = await tier_manager.set_preferred_brands(str(ctx.author.id), brand_list)
+        if success:
+            await ctx.send(f"✅ Brand preferences updated: {', '.join(brand_list)}")
+        else:
+            await ctx.send("❌ Failed to update brand preferences")
+    except Exception as e:
+        await ctx.send(f"❌ Error setting brands: {e}")
+
+@bot.command(name='settier')
+@commands.has_permissions(administrator=True)
+async def settier_command(ctx, member: discord.Member, tier: str):
+    """Admin: Set user tier"""
+    if not tier_manager:
+        await ctx.send("❌ Tier system not initialized")
+        return
+    
+    if tier.lower() not in ['free', 'standard', 'instant']:
+        await ctx.send("❌ Invalid tier! Use: free, standard, or instant")
+        return
+    
+    try:
+        success = await tier_manager.set_user_tier(str(member.id), tier.lower())
+        if success:
+            # Assign Discord role
+            role_name = tier.title()
+            role = discord.utils.get(ctx.guild.roles, name=role_name)
+            if role:
+                await member.add_role(role)
+            
+            await ctx.send(f"✅ Set {member.mention} to {tier.title()} tier")
+        else:
+            await ctx.send("❌ Failed to set user tier")
+    except Exception as e:
+        await ctx.send(f"❌ Error setting tier: {e}")
+
+@bot.command(name='stats')
+async def stats_command(ctx):
+    """Show your notification stats"""
+    await tier_command(ctx)  # Reuse tier command
+
+@bot.command(name='digest_stats')
+@commands.has_permissions(administrator=True)
+async def digest_stats_command(ctx):
+    """Show digest statistics (admin only)"""
+    if not digest_manager:
+        await ctx.send("❌ Digest manager not initialized")
+        return
+    
+    try:
+        stats = await digest_manager.get_digest_stats()
+        
+        embed = discord.Embed(title="📊 Digest Statistics", color=discord.Color.green())
+        embed.add_field(name="Recent Listings (24h)", value=stats.get('recent_listings_24h', 0), inline=True)
+        embed.add_field(name="Weekly Listings (7d)", value=stats.get('weekly_listings_7d', 0), inline=True)
+        embed.add_field(name="Avg Priority (24h)", value=f"{stats.get('avg_priority_24h', 0):.2f}", inline=True)
+        
+        # Top brands
+        top_brands_24h = stats.get('top_brands_24h', {})
+        if top_brands_24h:
+            brands_text = "\n".join([f"{brand}: {count}" for brand, count in list(top_brands_24h.items())[:5]])
+            embed.add_field(name="Top Brands (24h)", value=brands_text, inline=False)
+        
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Error getting digest stats: {e}")
+
+@bot.command(name='channel_stats')
+@commands.has_permissions(administrator=True)
+async def channel_stats_command(ctx):
+    """Show channel routing statistics (admin only)"""
+    if not channel_router:
+        await ctx.send("❌ Channel router not initialized")
+        return
+    
+    try:
+        stats = await channel_router.get_channel_stats()
+        
+        embed = discord.Embed(title="🛣️ Channel Statistics", color=discord.Color.orange())
+        embed.add_field(name="Total Channels", value=stats.get('total_channels', 0), inline=True)
+        embed.add_field(name="Instant Channels", value=stats.get('instant_channels', 0), inline=True)
+        embed.add_field(name="Standard Channels", value=stats.get('standard_channels', 0), inline=True)
+        embed.add_field(name="Brand Channels", value=stats.get('brand_channels', 0), inline=True)
+        
+        missing = stats.get('missing_channels', [])
+        if missing:
+            embed.add_field(name="Missing Channels", value="\n".join(missing[:10]), inline=False)
+        
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"❌ Error getting channel stats: {e}")
 
 if __name__ == "__main__":
     # Initialize database
