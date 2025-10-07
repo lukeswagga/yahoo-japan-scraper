@@ -1479,11 +1479,12 @@ async def on_ready():
         if ADVANCED_FEATURES_AVAILABLE and tier_manager:
             tier_manager.set_bot(bot)
         
-        # Find and set daily digest channel
-        daily_digest_channel = discord.utils.get(guild.channels, name='daily-digest')
-        if daily_digest_channel:
-            tier_manager.set_daily_digest_channel(daily_digest_channel.id)
-            print(f"📰 Daily digest channel set: #{daily_digest_channel.name}")
+        # Find and set daily digest channel (only if tier system is available)
+        if TIER_SYSTEM_AVAILABLE and 'tier_manager_new' in locals():
+            daily_digest_channel = discord.utils.get(guild.channels, name='daily-digest')
+            if daily_digest_channel:
+                tier_manager_new.set_daily_digest_channel(daily_digest_channel.id)
+                print(f"📰 Daily digest channel set: #{daily_digest_channel.name}")
         else:
             print("⚠️ Daily digest channel not found - please create #daily-digest channel")
         
@@ -3000,6 +3001,8 @@ def webhook_listing():
             except Exception as e:
                 print(f"❌ Tier system routing failed: {e}")
                 # Fall through to old system
+        else:
+            print(f"⚠️ Tier system not available - bot_ready: {bot.is_ready()}, priority_calc: {priority_calculator is not None}, channel_router: {channel_router is not None}")
         
         # Fallback to old system
         batch_buffer.append(listing_data)
