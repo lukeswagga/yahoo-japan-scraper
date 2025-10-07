@@ -1420,6 +1420,7 @@ async def send_individual_listings_with_rate_limit(batch_data):
 @bot.event
 async def on_ready():
     global guild, auction_channel, preference_learner, tier_manager, delayed_manager, reminder_system, size_alert_system
+    global priority_calculator, channel_router, digest_manager, brand_data
     print(f'✅ Bot connected as {bot.user}!')
     guild = bot.get_guild(GUILD_ID)
     
@@ -1427,8 +1428,30 @@ async def on_ready():
         print(f'🎯 Connected to server: {guild.name}')
         auction_channel = await get_or_create_auction_channel()
         
+        # Initialize existing systems
         preference_learner = UserPreferenceLearner()
         delayed_manager = DelayedListingManager()
+        
+        # Initialize new tier system
+        print("🔄 Initializing tier system...")
+        brand_data = load_brand_data()
+        
+        # Initialize tier system components
+        tier_manager_new = TierManager()
+        await tier_manager_new.init_database()
+        
+        priority_calculator = PriorityCalculator(brand_data)
+        channel_router = ChannelRouter(bot, tier_manager_new)
+        digest_manager = DigestManager(bot, tier_manager_new)
+        
+        # Start background tasks
+        bot.loop.create_task(reset_counters())
+        bot.loop.create_task(post_digest())
+        
+        print("🎯 Tier system initialized")
+        print("📊 Priority calculator initialized")
+        print("🛣️ Channel router initialized")
+        print("📰 Digest manager initialized")
         
         # Initialize notification tier system - if available
         if ADVANCED_FEATURES_AVAILABLE and tier_manager:
@@ -1458,6 +1481,33 @@ async def on_ready():
     else:
         print(f'❌ Could not find server with ID: {GUILD_ID}')
 
+async def reset_counters():
+    """Reset standard tier counters at midnight UTC"""
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            if now.hour == 0 and now.minute == 0:  # Midnight UTC
+                if tier_manager:
+                    await tier_manager.reset_daily_counters()
+                    print("✅ Reset daily counters for standard tier users")
+            await asyncio.sleep(60)  # Check every minute
+        except Exception as e:
+            print(f"❌ Error in reset_counters: {e}")
+            await asyncio.sleep(300)  # Wait 5 minutes on error
+
+async def post_digest():
+    """Post daily digest at 9 AM UTC"""
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            if now.hour == 9 and now.minute == 0:  # 9 AM UTC
+                if digest_manager:
+                    await digest_manager.generate_daily_digest()
+                    print("✅ Posted daily digest")
+            await asyncio.sleep(60)  # Check every minute
+        except Exception as e:
+            print(f"❌ Error in post_digest: {e}")
+            await asyncio.sleep(300)  # Wait 5 minutes on error
 
 @bot.event
 async def on_reaction_add(reaction, user):
