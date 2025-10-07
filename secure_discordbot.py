@@ -19,6 +19,22 @@ from database_manager import (
     init_subscription_tables, test_postgres_connection,
     get_user_size_preferences, set_user_size_preferences, mark_reminder_sent
 )
+
+# Tier system imports
+try:
+    from tier_manager import TierManager
+    from priority_calculator import PriorityCalculator
+    from channel_router import ChannelRouter
+    from digest_manager import DigestManager
+    TIER_SYSTEM_AVAILABLE = True
+    print("✅ Tier system modules imported successfully")
+except ImportError as e:
+    print(f"⚠️ Tier system modules not available: {e}")
+    TierManager = None
+    PriorityCalculator = None
+    ChannelRouter = None
+    DigestManager = None
+    TIER_SYSTEM_AVAILABLE = False
 # Optional imports for advanced features
 try:
     from notification_tiers import tier_manager
@@ -1432,26 +1448,32 @@ async def on_ready():
         preference_learner = UserPreferenceLearner()
         delayed_manager = DelayedListingManager()
         
-        # Initialize new tier system
-        print("🔄 Initializing tier system...")
-        brand_data = load_brand_data()
-        
-        # Initialize tier system components
-        tier_manager_new = TierManager()
-        await tier_manager_new.init_database()
-        
-        priority_calculator = PriorityCalculator(brand_data)
-        channel_router = ChannelRouter(bot, tier_manager_new)
-        digest_manager = DigestManager(bot, tier_manager_new)
-        
-        # Start background tasks
-        bot.loop.create_task(reset_counters())
-        bot.loop.create_task(post_digest())
-        
-        print("🎯 Tier system initialized")
-        print("📊 Priority calculator initialized")
-        print("🛣️ Channel router initialized")
-        print("📰 Digest manager initialized")
+        # Initialize new tier system if available
+        if TIER_SYSTEM_AVAILABLE:
+            print("🔄 Initializing tier system...")
+            brand_data = load_brand_data()
+            
+            # Initialize tier system components
+            tier_manager_new = TierManager()
+            await tier_manager_new.init_database()
+            
+            priority_calculator = PriorityCalculator(brand_data)
+            channel_router = ChannelRouter(bot, tier_manager_new)
+            digest_manager = DigestManager(bot, tier_manager_new)
+            
+            # Start background tasks
+            bot.loop.create_task(reset_counters())
+            bot.loop.create_task(post_digest())
+            
+            print("🎯 Tier system initialized")
+            print("📊 Priority calculator initialized")
+            print("🛣️ Channel router initialized")
+            print("📰 Digest manager initialized")
+        else:
+            print("⚠️ Tier system not available - running in basic mode")
+            priority_calculator = None
+            channel_router = None
+            digest_manager = None
         
         # Initialize notification tier system - if available
         if ADVANCED_FEATURES_AVAILABLE and tier_manager:
