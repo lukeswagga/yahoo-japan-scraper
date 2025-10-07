@@ -2905,23 +2905,33 @@ def webhook_listing():
                 "scraper_source": scraper_source
             }), 200
         
-        # Add to buffer for processing (Discord bot may be running separately)
+        # Process with tier system if available
+        if bot.is_ready() and priority_calculator and channel_router:
+            try:
+                # Calculate priority score
+                priority_score = priority_calculator.calculate_priority(listing_data)
+                listing_data['priority_score'] = priority_score
+                
+                # Route to appropriate channels using bot's event loop
+                if bot.loop and not bot.loop.is_closed():
+                    bot.loop.create_task(channel_router.route_listing(listing_data))
+                
+                print(f"🎯 Routed listing with priority {priority_score:.2f} from {scraper_source}")
+                
+                return jsonify({
+                    "status": "success", 
+                    "message": "Listing routed to tier system", 
+                    "priority_score": priority_score,
+                    "scraper_source": scraper_source
+                }), 200
+                
+            except Exception as e:
+                print(f"❌ Tier system routing failed: {e}")
+                # Fall through to old system
+        
+        # Fallback to old system
         batch_buffer.append(listing_data)
         buffer_size = len(batch_buffer)
-        
-        # Queue for daily digest (all users get this) - if available
-        if ADVANCED_FEATURES_AVAILABLE and tier_manager:
-            try:
-                asyncio.create_task(tier_manager.queue_for_daily_digest(listing_data))
-            except Exception as e:
-                print(f"⚠️ Could not queue for daily digest: {e}")
-        
-        # Send real-time notifications to eligible users - if available
-        if ADVANCED_FEATURES_AVAILABLE:
-            try:
-                asyncio.create_task(send_tier_notifications(listing_data))
-            except Exception as e:
-                print(f"⚠️ Could not send tier notifications: {e}")
         
         print(f"📦 Added to buffer (size: {buffer_size}) from {scraper_source}")
         print(f"💡 Note: Discord bot should be running separately to process these listings")
