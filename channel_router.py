@@ -24,38 +24,41 @@ class ChannelRouter:
         self.bot = bot
         self.tier_manager = tier_manager
         
-        # Channel name mapping for scraper sources
+        # Channel name mapping for scraper sources (with emojis to match actual Discord channels)
         self.scraper_to_channel = {
-            'ending_soon_scraper': 'ending-soon',
-            'budget_steals_scraper': 'budget-steals',
-            'new_listings_scraper': 'new-listings',
-            'buy_it_now_scraper': 'buy-it-now'
+            'ending_soon_scraper': '⏰-ending-soon',
+            'budget_steals_scraper': '💰-budget-steals',
+            'new_listings_scraper': '🆕-new-listings',
+            'buy_it_now_scraper': '🛒-buy-it-now'
         }
         
-        # Brand to channel name mapping (updated to match actual channels)
+        # Brand to channel name mapping (with emoji prefix to match actual Discord channels)
+        # Must match BRAND_CHANNEL_MAP in secure_discordbot.py exactly
         self.brand_to_channel = {
-            'Raf Simons': 'raf-simons',
-            'Rick Owens': 'rick-owens',
-            'Maison Margiela': 'maison-margiela',
-            'Jean Paul Gaultier': 'jean-paul-gaultier',
-            'Yohji Yamamoto': 'yohji-yamamoto',
-            'Junya Watanabe': 'junya-watanabe',
-            'Undercover': 'undercover',
-            'Vetements': 'vetements',
-            'Comme des Garçons': 'comme-des-garcons',
-            'Martine Rose': 'martine-rose',
-            'Balenciaga': 'balenciaga',
-            'Alyx': 'alyx',
-            'Celine': 'celine',
-            'Bottega Veneta': 'bottega-veneta',
-            'Kiko Kostadinov': 'kiko-kostadinov',
-            'Prada': 'prada',
-            'Miu Miu': 'miu-miu',
-            'Chrome Hearts': 'chrome-hearts',
-            'Gosha Rubchinskiy': 'gosha-rubchinskiy',
-            'Helmut Lang': 'helmut-lang',
-            'Hysteric Glamour': 'hysteric-glamour',
-            'Issey Miyake': 'issey-miyake'
+            'Vetements': '🏷️-vetements',
+            'Alyx': '🏷️-alyx',
+            'Anonymous Club': '🏷️-anonymous-club',
+            'Balenciaga': '🏷️-balenciaga',
+            'Bottega Veneta': '🏷️-bottega-veneta',
+            'Celine': '🏷️-celine',
+            'Chrome Hearts': '🏷️-chrome-hearts',
+            'Comme Des Garcons': '🏷️-comme-des-garcons',
+            'Gosha Rubchinskiy': '🏷️-gosha-rubchinskiy',
+            'Helmut Lang': '🏷️-helmut-lang',
+            'Hood By Air': '🏷️-hood-by-air',
+            'Miu Miu': '🏷️-miu-miu',
+            'Hysteric Glamour': '🏷️-hysteric-glamour',
+            'Junya Watanabe': '🏷️-junya-watanabe',
+            'Kiko Kostadinov': '🏷️-kiko-kostadinov',
+            'Maison Margiela': '🏷️-maison-margiela',
+            'Martine Rose': '🏷️-martine-rose',
+            'Prada': '🏷️-prada',
+            'Raf Simons': '🏷️-raf-simons',
+            'Rick Owens': '🏷️-rick-owens',
+            'Undercover': '🏷️-undercover',
+            'Jean Paul Gaultier': '🏷️-jean-paul-gaultier',
+            'Yohji Yamamoto': '🏷️-yohji_yamamoto',
+            'Issey Miyake': '🏷️-issey-miyake'
         }
     
     async def route_listing(self, listing_data: Dict[str, Any]) -> bool:
@@ -146,7 +149,7 @@ class ChannelRouter:
         """Post to instant tier channels"""
         try:
             # Post to #auction-alerts (all listings)
-            await self._post_to_channel('auction-alerts', listing_data)
+            await self._post_to_channel('🎯-auction-alerts', listing_data)
             
             # Post to scraper-specific channel
             scraper_source = listing_data.get('scraper_source', '')
@@ -298,10 +301,10 @@ class ChannelRouter:
                 'missing_channels': []
             }
             
-            # Check all expected channels
+            # Check all expected channels (with emojis to match actual Discord channels)
             all_expected_channels = [
-                'daily-digest', 'standard-feed', 'auction-alerts',
-                'ending-soon', 'budget-steals', 'new-listings', 'buy-it-now'
+                'daily-digest', 'standard-feed', '🎯-auction-alerts',
+                '⏰-ending-soon', '💰-budget-steals', '🆕-new-listings', '🛒-buy-it-now'
             ]
             
             # Add brand channels
