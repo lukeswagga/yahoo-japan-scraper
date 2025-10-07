@@ -3402,6 +3402,42 @@ delayed_manager = None
 reminder_system = None
 size_alert_system = None
 
+def load_brand_data():
+    """Load brand data from brands.json file"""
+    try:
+        if os.path.exists("brands.json"):
+            with open("brands.json", 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+            logger.warning("⚠️ brands.json not found, using default brand data")
+            return get_default_brand_data()
+    except Exception as e:
+        logger.error(f"❌ Failed to load brand data: {e}")
+        return get_default_brand_data()
+
+def get_default_brand_data():
+    """Get default brand data with tier information"""
+    return {
+        "Raf Simons": {"variants": ["raf simons", "raf", "ラフシモンズ"], "tier": 1},
+        "Rick Owens": {"variants": ["rick owens", "rick", "リックオウエンス"], "tier": 1},
+        "Maison Margiela": {"variants": ["margiela", "maison margiela", "メゾンマルジェラ"], "tier": 1},
+        "Jean Paul Gaultier": {"variants": ["jean paul gaultier", "gaultier", "jpg", "ジャンポールゴルチエ"], "tier": 1},
+        "Yohji Yamamoto": {"variants": ["yohji yamamoto", "yohji", "ヨウジヤマモト"], "tier": 2},
+        "Junya Watanabe": {"variants": ["junya watanabe", "junya", "ジュンヤワタナベ"], "tier": 2},
+        "Undercover": {"variants": ["undercover", "アンダーカバー"], "tier": 2},
+        "Vetements": {"variants": ["vetements", "ヴェトモン"], "tier": 2},
+        "Comme des Garçons": {"variants": ["comme des garcons", "cdg", "コムデギャルソン"], "tier": 3},
+        "Martine Rose": {"variants": ["martine rose", "martine"], "tier": 3},
+        "Balenciaga": {"variants": ["balenciaga", "バレンシアガ"], "tier": 3},
+        "Alyx": {"variants": ["alyx", "1017 alyx 9sm"], "tier": 3},
+        "Celine": {"variants": ["celine", "セリーヌ"], "tier": 4},
+        "Bottega Veneta": {"variants": ["bottega veneta", "bottega"], "tier": 4},
+        "Kiko Kostadinov": {"variants": ["kiko kostadinov", "kiko"], "tier": 4},
+        "Prada": {"variants": ["prada", "プラダ"], "tier": 4},
+        "Miu Miu": {"variants": ["miu miu", "ミュウミュウ"], "tier": 4},
+        "Chrome Hearts": {"variants": ["chrome hearts", "chrome"], "tier": 5}
+    }
+
 def extract_sizes_from_title(title):
     """Extract size information from auction title"""
     if not title:
