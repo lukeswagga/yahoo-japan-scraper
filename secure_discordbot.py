@@ -1522,15 +1522,33 @@ async def post_digest():
     """Post daily digest at 9 AM UTC"""
     while True:
         try:
+            # Check every hour if it's 9 AM UTC
             now = datetime.now(timezone.utc)
-            if now.hour == 9 and now.minute == 0:  # 9 AM UTC
+            print(f"🕘 Current UTC time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            if now.hour == 9 and now.minute < 10:  # 9:00-9:09 AM window
+                print("🔄 It's 9 AM UTC - generating daily digest...")
+                
                 if digest_manager:
-                    await digest_manager.generate_daily_digest()
-                    print("✅ Posted daily digest")
-            await asyncio.sleep(60)  # Check every minute
+                    success = await digest_manager.generate_daily_digest()
+                    if success:
+                        print("✅ Daily digest posted successfully")
+                    else:
+                        print("❌ Failed to post daily digest")
+                else:
+                    print("⚠️ Digest manager not available")
+                
+                # Wait 10 minutes to avoid duplicate posts
+                await asyncio.sleep(600)
+            else:
+                # Wait 1 hour before checking again
+                await asyncio.sleep(3600)
+                
         except Exception as e:
-            print(f"❌ Error in post_digest: {e}")
-            await asyncio.sleep(300)  # Wait 5 minutes on error
+            print(f"❌ Digest task error: {e}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
+            await asyncio.sleep(3600)  # Wait 1 hour before retrying
 
 @bot.event
 async def on_reaction_add(reaction, user):
@@ -4713,6 +4731,79 @@ async def tier_stats(ctx):
         
     except Exception as e:
         await ctx.send(f"❌ Error getting tier stats: {e}")
+
+@bot.command(name='testdigest')
+async def test_digest(ctx):
+    """Manually trigger daily digest generation (admin only)"""
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Admin only command")
+        return
+    
+    try:
+        await ctx.send("🔄 Generating test digest...")
+        
+        if digest_manager:
+            success = await digest_manager.generate_daily_digest()
+            if success:
+                await ctx.send("✅ Test digest posted successfully")
+            else:
+                await ctx.send("❌ Failed to post test digest - check console logs")
+        else:
+            await ctx.send("❌ Digest manager not available")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+        import traceback
+        print(f"❌ Test digest error: {traceback.format_exc()}")
+
+@bot.command(name='checkqueue')
+async def check_queue(ctx):
+    """Show queue statistics (admin only)"""
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Admin only command")
+        return
+    
+    try:
+        if tier_manager:
+            stats = await tier_manager.get_queue_stats()
+            
+            embed = discord.Embed(title="📊 Queue Statistics", color=0x00ff00)
+            embed.add_field(name="Total Listings", value=stats.get("total_listings", 0), inline=True)
+            embed.add_field(name="Unprocessed", value=stats.get("unprocessed_listings", 0), inline=True)
+            embed.add_field(name="Past 24h", value=stats.get("past_24h_listings", 0), inline=True)
+            embed.add_field(name="Standard Feed 24h", value=f"{stats.get('standard_feed_24h_count', 0)}/100", inline=True)
+            
+            # Add current time
+            now = datetime.now(timezone.utc)
+            embed.add_field(name="Current UTC Time", value=now.strftime("%Y-%m-%d %H:%M:%S"), inline=False)
+            
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("❌ Tier manager not available")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+        import traceback
+        print(f"❌ Check queue error: {traceback.format_exc()}")
+
+@bot.command(name='resetstandard')
+async def reset_standard(ctx):
+    """Reset standard-feed counter for testing (admin only)"""
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Admin only command")
+        return
+    
+    try:
+        if tier_manager:
+            success = await tier_manager.reset_standard_feed_counter()
+            if success:
+                await ctx.send("✅ Standard-feed counter reset successfully")
+            else:
+                await ctx.send("❌ Failed to reset standard-feed counter")
+        else:
+            await ctx.send("❌ Tier manager not available")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+        import traceback
+        print(f"❌ Reset standard error: {traceback.format_exc()}")
 
 # ============================================================================
 # TIER NOTIFICATION FUNCTIONS

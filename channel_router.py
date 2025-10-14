@@ -100,49 +100,50 @@ class ChannelRouter:
     
     async def _route_to_standard_feed(self, listing_data: Dict[str, Any]) -> bool:
         """
-        Send to #standard-feed if matches any standard user's preferences
-        
-        Only posts once per listing, not per user
+        Send to #standard-feed based on rolling 24h count (up to 100 posts)
+        No brand preference filtering - just highest priority listings
         """
         try:
-            standard_users = await self.tier_manager.get_all_standard_users()
-            if not standard_users:
-                return True  # No standard users, nothing to do
+            logger.info("🔄 Checking standard-feed routing...")
             
-            listing_brand = listing_data.get('brand', 'Unknown')
+            # Check current 24h count for standard-feed
+            count_24h = await self.tier_manager.get_standard_feed_count_24h()
+            logger.info(f"📊 Standard-feed 24h count: {count_24h}/100")
             
-            # Check if any standard user would want this listing
-            matching_users = []
-            for user_id in standard_users:
-                # Check if user can receive more listings today
-                if not await self.tier_manager.can_send_to_standard(user_id):
-                    continue
-                
-                # Check if listing brand matches user preferences
-                preferred_brands = await self.tier_manager.get_preferred_brands(user_id)
-                if not preferred_brands or listing_brand in preferred_brands:
-                    matching_users.append(user_id)
+            # If we've hit the limit, don't post
+            if count_24h >= 100:
+                logger.info("⏹️ Standard-feed limit reached (100/24h) - skipping")
+                return True
             
-            # If we have matching users, post to standard-feed
-            if matching_users:
-                channel = discord.utils.get(self.bot.get_all_channels(), name='standard-feed')
-                if channel:
-                    embed = self._create_listing_embed(listing_data)
-                    await channel.send(embed=embed)
-                    
-                    # Increment counter for all matching users
-                    for user_id in matching_users:
-                        await self.tier_manager.increment_standard_count(user_id)
-                    
-                    logger.info(f"✅ Posted to standard-feed for {len(matching_users)} users")
-                    return True
-                else:
-                    logger.warning("⚠️ #standard-feed channel not found")
+            # Try to find channel (with and without emoji prefix)
+            channel = discord.utils.get(self.bot.get_all_channels(), name='standard-feed')
+            if not channel:
+                # Try with emoji prefix
+                channel = discord.utils.get(self.bot.get_all_channels(), name='📦-standard-feed')
             
+            if not channel:
+                logger.warning("⚠️ #standard-feed channel not found (tried both 'standard-feed' and '📦-standard-feed')")
+                return True
+            
+            # Check bot permissions
+            if not channel.permissions_for(channel.guild.me).send_messages:
+                logger.error(f"❌ No permission to send messages in #{channel.name}")
+                return True
+            
+            # Post the listing
+            embed = self._create_listing_embed(listing_data)
+            await channel.send(embed=embed)
+            
+            # Record this post in the database
+            await self.tier_manager.record_standard_feed_post(listing_data.get('auction_id'))
+            
+            logger.info(f"✅ Posted to standard-feed (#{channel.name}) - new count: {count_24h + 1}/100")
             return True
             
         except Exception as e:
             logger.error(f"❌ Failed to route to standard feed: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
             return False
     
     async def _route_to_instant_channels(self, listing_data: Dict[str, Any]) -> bool:
@@ -172,7 +173,7 @@ class ChannelRouter:
     
     async def _post_to_channel(self, channel_name: str, listing_data: Dict[str, Any]) -> bool:
         """
-        Post listing to specific channel
+        Post listing to specific channel (tries with and without emoji prefix)
         
         Args:
             channel_name: Name of the Discord channel
@@ -182,18 +183,37 @@ class ChannelRouter:
             True if successful, False otherwise
         """
         try:
+            # Try exact name first
             channel = discord.utils.get(self.bot.get_all_channels(), name=channel_name)
+            
+            # If not found, try with common emoji prefixes
             if not channel:
-                logger.warning(f"⚠️ Channel #{channel_name} not found")
+                emoji_prefixes = ['🎯-', '💰-', '⏰-', '🏷️-', '📦-', '📰-']
+                for prefix in emoji_prefixes:
+                    prefixed_name = prefix + channel_name
+                    channel = discord.utils.get(self.bot.get_all_channels(), name=prefixed_name)
+                    if channel:
+                        logger.info(f"📝 Found channel with emoji prefix: #{prefixed_name}")
+                        break
+            
+            if not channel:
+                logger.warning(f"⚠️ Channel #{channel_name} not found (tried with emoji prefixes)")
+                return False
+            
+            # Check bot permissions
+            if not channel.permissions_for(channel.guild.me).send_messages:
+                logger.error(f"❌ No permission to send messages in #{channel.name}")
                 return False
             
             embed = self._create_listing_embed(listing_data)
             await channel.send(embed=embed)
-            logger.info(f"✅ Posted to #{channel_name}")
+            logger.info(f"✅ Posted to #{channel.name}")
             return True
             
         except Exception as e:
             logger.error(f"❌ Failed to post to #{channel_name}: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
             return False
     
     def _create_listing_embed(self, listing_data: Dict[str, Any]) -> discord.Embed:

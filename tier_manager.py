@@ -216,6 +216,107 @@ class TierManager:
             logger.error(f"❌ Failed to get standard users: {e}")
             return []
     
+    async def get_standard_feed_count_24h(self) -> int:
+        """Get count of posts to standard-feed in past 24 hours"""
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM listing_queue 
+                    WHERE scraper_source = 'standard_feed_posted' 
+                    AND received_at > ?
+                """, (cutoff.isoformat(),))
+                result = await cursor.fetchone()
+                return result[0] if result else 0
+        except Exception as e:
+            logger.error(f"❌ Failed to get standard feed count: {e}")
+            return 0
+    
+    async def record_standard_feed_post(self, auction_id: str) -> bool:
+        """Record a post to standard-feed"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    INSERT INTO listing_queue 
+                    (auction_id, listing_data, priority_score, brand, scraper_source, received_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    f"standard_feed_{auction_id}",
+                    json.dumps({"auction_id": auction_id, "posted_to": "standard_feed"}),
+                    0.0,
+                    "Standard Feed Post",
+                    "standard_feed_posted",
+                    datetime.now(timezone.utc).isoformat()
+                ))
+                await db.commit()
+                return True
+        except Exception as e:
+            logger.error(f"❌ Failed to record standard feed post: {e}")
+            return False
+    
+    async def mark_listings_processed(self, auction_ids: List[str]) -> bool:
+        """Mark listings as processed in digest"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                for auction_id in auction_ids:
+                    await db.execute("""
+                        UPDATE listing_queue 
+                        SET processed = 1 
+                        WHERE auction_id = ?
+                    """, (auction_id,))
+                await db.commit()
+                return True
+        except Exception as e:
+            logger.error(f"❌ Failed to mark listings as processed: {e}")
+            return False
+    
+    async def get_queue_stats(self) -> Dict[str, Any]:
+        """Get queue statistics for debugging"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Total listings
+                cursor = await db.execute("SELECT COUNT(*) FROM listing_queue")
+                total = (await cursor.fetchone())[0]
+                
+                # Unprocessed listings
+                cursor = await db.execute("SELECT COUNT(*) FROM listing_queue WHERE processed = 0")
+                unprocessed = (await cursor.fetchone())[0]
+                
+                # Past 24h listings
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+                cursor = await db.execute("SELECT COUNT(*) FROM listing_queue WHERE received_at > ?", (cutoff.isoformat(),))
+                past_24h = (await cursor.fetchone())[0]
+                
+                # Standard feed posts in past 24h
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM listing_queue 
+                    WHERE scraper_source = 'standard_feed_posted' 
+                    AND received_at > ?
+                """, (cutoff.isoformat(),))
+                standard_feed_count = (await cursor.fetchone())[0]
+                
+                return {
+                    "total_listings": total,
+                    "unprocessed_listings": unprocessed,
+                    "past_24h_listings": past_24h,
+                    "standard_feed_24h_count": standard_feed_count
+                }
+        except Exception as e:
+            logger.error(f"❌ Failed to get queue stats: {e}")
+            return {}
+    
+    async def reset_standard_feed_counter(self) -> bool:
+        """Reset standard-feed counter (for testing)"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("DELETE FROM listing_queue WHERE scraper_source = 'standard_feed_posted'")
+                await db.commit()
+                logger.info("✅ Reset standard-feed counter")
+                return True
+        except Exception as e:
+            logger.error(f"❌ Failed to reset standard-feed counter: {e}")
+            return False
+    
     async def get_user_stats(self, discord_id: str) -> Dict:
         """Get comprehensive user statistics"""
         try:

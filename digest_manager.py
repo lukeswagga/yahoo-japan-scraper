@@ -33,27 +33,60 @@ class DigestManager:
             True if successful, False otherwise
         """
         try:
+            logger.info("🔄 Starting daily digest generation...")
+            
             # Get top 20 listings from past 24 hours
             listings = await self.tier_manager.get_top_listings_for_digest(hours=24, limit=20)
+            
+            logger.info(f"📊 Found {len(listings)} listings for daily digest")
             
             if not listings:
                 logger.info("📭 No listings found for daily digest")
                 return True
             
-            # Create digest embed
+            # Try to find channel (with and without emoji prefix)
             channel = discord.utils.get(self.bot.get_all_channels(), name='daily-digest')
             if not channel:
-                logger.error("❌ #daily-digest channel not found")
+                # Try with emoji prefix
+                channel = discord.utils.get(self.bot.get_all_channels(), name='📰-daily-digest')
+            
+            if not channel:
+                logger.error("❌ #daily-digest channel not found (tried both 'daily-digest' and '📰-daily-digest')")
+                logger.info(f"Available channels: {[ch.name for ch in self.bot.get_all_channels() if 'digest' in ch.name.lower()]}")
                 return False
             
+            logger.info(f"📰 Found digest channel: #{channel.name}")
+            
+            # Check bot permissions
+            if not channel.permissions_for(channel.guild.me).send_messages:
+                logger.error(f"❌ No permission to send messages in #{channel.name}")
+                return False
+            
+            # Mark listings as processed to prevent duplicates
+            await self._mark_listings_processed(listings)
+            
+            # Create and send digest embed
             embed = await self._create_digest_embed(listings)
             await channel.send(embed=embed)
             
-            logger.info(f"✅ Posted daily digest with {len(listings)} listings")
+            logger.info(f"✅ Posted daily digest with {len(listings)} listings to #{channel.name}")
             return True
             
         except Exception as e:
             logger.error(f"❌ Failed to generate daily digest: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            return False
+    
+    async def _mark_listings_processed(self, listings: List[Tuple[Dict[str, Any], float]]) -> bool:
+        """Mark listings as processed to prevent duplicates"""
+        try:
+            auction_ids = [json.loads(listing_data)[0].get('auction_id') for listing_data, _ in listings]
+            await self.tier_manager.mark_listings_processed(auction_ids)
+            logger.info(f"✅ Marked {len(auction_ids)} listings as processed")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to mark listings as processed: {e}")
             return False
     
     async def _create_digest_embed(self, listings: List[Tuple[Dict[str, Any], float]]) -> discord.Embed:
