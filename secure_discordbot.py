@@ -1436,7 +1436,7 @@ async def send_individual_listings_with_rate_limit(batch_data):
 @bot.event
 async def on_ready():
     global guild, auction_channel, preference_learner, tier_manager, delayed_manager, reminder_system, size_alert_system
-    global priority_calculator, channel_router, digest_manager, brand_data
+    global priority_calculator, channel_router, digest_manager, brand_data, tier_manager_new
     print(f'✅ Bot connected as {bot.user}!')
     guild = bot.get_guild(GUILD_ID)
     
@@ -1462,7 +1462,7 @@ async def on_ready():
             digest_manager = DigestManager(bot, tier_manager_new)
             
             # Start background tasks
-            bot.loop.create_task(reset_counters())
+            bot.loop.create_task(reset_counters(tier_manager_new))
             bot.loop.create_task(post_digest())
             
             print("🎯 Tier system initialized")
@@ -1474,13 +1474,14 @@ async def on_ready():
             priority_calculator = None
             channel_router = None
             digest_manager = None
+            tier_manager_new = None
         
         # Initialize notification tier system - if available
         if ADVANCED_FEATURES_AVAILABLE and tier_manager:
             tier_manager.set_bot(bot)
         
         # Find and set daily digest channel (only if tier system is available)
-        if TIER_SYSTEM_AVAILABLE and 'tier_manager_new' in locals():
+        if TIER_SYSTEM_AVAILABLE and tier_manager_new:
             daily_digest_channel = discord.utils.get(guild.channels, name='daily-digest')
             if daily_digest_channel:
                 tier_manager_new.set_daily_digest_channel(daily_digest_channel.id)
@@ -1504,14 +1505,14 @@ async def on_ready():
     else:
         print(f'❌ Could not find server with ID: {GUILD_ID}')
 
-async def reset_counters():
+async def reset_counters(tier_mgr):
     """Reset standard tier counters at midnight UTC"""
     while True:
         try:
             now = datetime.now(timezone.utc)
             if now.hour == 0 and now.minute == 0:  # Midnight UTC
-                if tier_manager:
-                    await tier_manager.reset_daily_counters()
+                if tier_mgr:
+                    await tier_mgr.reset_daily_counters()
                     print("✅ Reset daily counters for standard tier users")
             await asyncio.sleep(60)  # Check every minute
         except Exception as e:
@@ -3440,7 +3441,8 @@ class DelayedListingManager:
                 except Exception as e:
                     print(f"❌ Error delivering to #{channel_name}: {e}")
 
-tier_manager = None
+tier_manager = None  # Old premium tier system
+tier_manager_new = None  # New tier system (TierManager)
 delayed_manager = None
 reminder_system = None
 size_alert_system = None
@@ -4763,8 +4765,8 @@ async def check_queue(ctx):
         return
     
     try:
-        if tier_manager:
-            stats = await tier_manager.get_queue_stats()
+        if tier_manager_new:
+            stats = await tier_manager_new.get_queue_stats()
             
             embed = discord.Embed(title="📊 Queue Statistics", color=0x00ff00)
             embed.add_field(name="Total Listings", value=stats.get("total_listings", 0), inline=True)
@@ -4792,8 +4794,8 @@ async def reset_standard(ctx):
         return
     
     try:
-        if tier_manager:
-            success = await tier_manager.reset_standard_feed_counter()
+        if tier_manager_new:
+            success = await tier_manager_new.reset_standard_feed_counter()
             if success:
                 await ctx.send("✅ Standard-feed counter reset successfully")
             else:

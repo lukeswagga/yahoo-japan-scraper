@@ -363,16 +363,18 @@ class TierManager:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute("""
                     INSERT OR REPLACE INTO listing_queue 
-                    (auction_id, listing_data, priority_score, brand, scraper_source)
-                    VALUES (?, ?, ?, ?, ?)
+                    (auction_id, listing_data, priority_score, brand, scraper_source, received_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 """, (
                     listing_data.get('auction_id'),
                     json.dumps(listing_data),
                     priority_score,
                     listing_data.get('brand', 'Unknown'),
-                    listing_data.get('scraper_source', '')
+                    listing_data.get('scraper_source', ''),
+                    datetime.now(timezone.utc).isoformat()
                 ))
                 await db.commit()
+                logger.info(f"✅ Added listing {listing_data.get('auction_id')} to queue (priority: {priority_score:.2f})")
                 return True
         except Exception as e:
             logger.error(f"❌ Failed to add listing to queue: {e}")
