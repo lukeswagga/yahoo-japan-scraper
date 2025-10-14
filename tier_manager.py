@@ -7,8 +7,8 @@ Handles user tiers, brand preferences, and daily counters
 
 import aiosqlite
 import json
-from datetime import datetime, timezone
-from typing import List, Dict, Optional, Tuple
+from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Optional, Tuple, Any
 import logging
 
 logger = logging.getLogger(__name__)
