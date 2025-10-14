@@ -4852,6 +4852,58 @@ async def debug_digest(ctx):
         import traceback
         print(f"❌ Debug digest error: {traceback.format_exc()}")
 
+@bot.command(name='debugstandard')
+async def debug_standard(ctx):
+    """Debug standard-feed routing (admin only)"""
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Admin only command")
+        return
+    
+    try:
+        if tier_manager_new:
+            # Get current count
+            count_24h = await tier_manager_new.get_standard_feed_count_24h()
+            
+            # Check if tier system is available
+            tier_available = TIER_SYSTEM_AVAILABLE
+            channel_router_available = channel_router is not None
+            
+            embed = discord.Embed(title="🔍 Standard Feed Debug", color=0xff6600)
+            embed.add_field(name="Current 24h Count", value=f"{count_24h}/100", inline=True)
+            embed.add_field(name="Tier System Available", value="✅" if tier_available else "❌", inline=True)
+            embed.add_field(name="Channel Router Available", value="✅" if channel_router_available else "❌", inline=True)
+            
+            # Check channel existence
+            guild = ctx.guild
+            standard_channel = discord.utils.get(guild.channels, name='standard-feed')
+            if not standard_channel:
+                standard_channel = discord.utils.get(guild.channels, name='📦-standard-feed')
+            
+            embed.add_field(name="Standard Feed Channel", value=f"#{standard_channel.name}" if standard_channel else "❌ Not found", inline=True)
+            
+            if standard_channel:
+                has_permission = standard_channel.permissions_for(guild.me).send_messages
+                embed.add_field(name="Bot Permission", value="✅" if has_permission else "❌", inline=True)
+            
+            # Check recent standard-feed posts in database
+            import aiosqlite
+            async with aiosqlite.connect(tier_manager_new.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM listing_queue 
+                    WHERE scraper_source = 'standard_feed_posted' 
+                    AND received_at > datetime('now', '-1 hour')
+                """)
+                recent_posts = (await cursor.fetchone())[0]
+                embed.add_field(name="Posts Last Hour", value=recent_posts, inline=True)
+            
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("❌ Tier manager not available")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+        import traceback
+        print(f"❌ Debug standard error: {traceback.format_exc()}")
+
 # ============================================================================
 # TIER NOTIFICATION FUNCTIONS
 # ============================================================================

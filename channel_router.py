@@ -104,7 +104,8 @@ class ChannelRouter:
         No brand preference filtering - just highest priority listings
         """
         try:
-            logger.info("🔄 Checking standard-feed routing...")
+            auction_id = listing_data.get('auction_id', 'unknown')
+            logger.info(f"🔄 Checking standard-feed routing for {auction_id}...")
             
             # Check current 24h count for standard-feed
             count_24h = await self.tier_manager.get_standard_feed_count_24h()
@@ -112,7 +113,7 @@ class ChannelRouter:
             
             # If we've hit the limit, don't post
             if count_24h >= 100:
-                logger.info("⏹️ Standard-feed limit reached (100/24h) - skipping")
+                logger.info(f"⏹️ Standard-feed limit reached (100/24h) - skipping {auction_id}")
                 return True
             
             # Try to find channel (with and without emoji prefix)
@@ -130,14 +131,17 @@ class ChannelRouter:
                 logger.error(f"❌ No permission to send messages in #{channel.name}")
                 return True
             
+            # Record this post in the database FIRST (before posting)
+            record_success = await self.tier_manager.record_standard_feed_post(auction_id)
+            if not record_success:
+                logger.error(f"❌ Failed to record standard-feed post for {auction_id}")
+                return False
+            
             # Post the listing
             embed = self._create_listing_embed(listing_data)
             await channel.send(embed=embed)
             
-            # Record this post in the database
-            await self.tier_manager.record_standard_feed_post(listing_data.get('auction_id'))
-            
-            logger.info(f"✅ Posted to standard-feed (#{channel.name}) - new count: {count_24h + 1}/100")
+            logger.info(f"✅ Posted to standard-feed (#{channel.name}) - auction {auction_id} - new count: {count_24h + 1}/100")
             return True
             
         except Exception as e:
