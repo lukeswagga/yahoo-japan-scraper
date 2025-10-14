@@ -4795,9 +4795,12 @@ async def reset_standard(ctx):
     
     try:
         if tier_manager_new:
+            # Get current count before reset
+            current_count = await tier_manager_new.get_standard_feed_count_24h()
+            
             success = await tier_manager_new.reset_standard_feed_counter()
             if success:
-                await ctx.send("✅ Standard-feed counter reset successfully")
+                await ctx.send(f"✅ Standard-feed counter reset successfully (was at {current_count}/100)")
             else:
                 await ctx.send("❌ Failed to reset standard-feed counter")
         else:
@@ -4806,6 +4809,48 @@ async def reset_standard(ctx):
         await ctx.send(f"❌ Error: {e}")
         import traceback
         print(f"❌ Reset standard error: {traceback.format_exc()}")
+
+@bot.command(name='debugdigest')
+async def debug_digest(ctx):
+    """Debug daily digest generation (admin only)"""
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Admin only command")
+        return
+    
+    try:
+        if tier_manager_new:
+            # Check what listings exist
+            stats = await tier_manager_new.get_queue_stats()
+            
+            # Try to get listings for digest
+            listings = await tier_manager_new.get_top_listings_for_digest(hours=24, limit=20)
+            
+            embed = discord.Embed(title="🔍 Digest Debug Info", color=0xff9900)
+            embed.add_field(name="Total Listings", value=stats.get("total_listings", 0), inline=True)
+            embed.add_field(name="Unprocessed", value=stats.get("unprocessed_listings", 0), inline=True)
+            embed.add_field(name="Past 24h", value=stats.get("past_24h_listings", 0), inline=True)
+            embed.add_field(name="Digest Listings Found", value=len(listings), inline=True)
+            
+            if listings:
+                # Show top 3 listings
+                top_listings = listings[:3]
+                for i, (listing_data, score) in enumerate(top_listings, 1):
+                    title = listing_data.get('title', 'No title')[:50]
+                    embed.add_field(
+                        name=f"#{i} (Score: {score:.2f})", 
+                        value=f"{title}...", 
+                        inline=False
+                    )
+            else:
+                embed.add_field(name="Issue", value="No listings found for digest", inline=False)
+            
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("❌ Tier manager not available")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+        import traceback
+        print(f"❌ Debug digest error: {traceback.format_exc()}")
 
 # ============================================================================
 # TIER NOTIFICATION FUNCTIONS

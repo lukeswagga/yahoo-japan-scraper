@@ -383,22 +383,27 @@ class TierManager:
     async def get_top_listings_for_digest(self, hours: int = 24, limit: int = 20) -> List[Tuple[dict, float]]:
         """Get top listings for daily digest"""
         try:
-            cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-            cutoff = cutoff.replace(hour=cutoff.hour - hours)
+            # Calculate cutoff time (hours ago from now)
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+            logger.info(f"📊 Getting top {limit} listings since {cutoff.strftime('%Y-%m-%d %H:%M:%S')} UTC")
             
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute("""
                     SELECT listing_data, priority_score 
                     FROM listing_queue 
                     WHERE received_at > ? 
+                    AND processed = 0
                     ORDER BY priority_score DESC 
                     LIMIT ?
                 """, (cutoff.isoformat(), limit))
                 
                 results = await cursor.fetchall()
+                logger.info(f"📊 Found {len(results)} listings for digest")
                 return [(json.loads(row[0]), row[1]) for row in results]
         except Exception as e:
             logger.error(f"❌ Failed to get top listings: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
             return []
     
     async def add_user_reaction(self, discord_id: str, auction_id: str, reaction_type: str) -> bool:
