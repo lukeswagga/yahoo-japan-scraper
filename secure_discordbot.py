@@ -5174,3 +5174,117 @@ if __name__ == "__main__":
     # Run the bot
     print("🤖 Starting Discord bot...")
     main()
+
+# New tier system commands
+@bot.command(name='tier')
+async def tier_command(ctx):
+    """Check your current tier and what you get"""
+    try:
+        if not TIER_SYSTEM_AVAILABLE or not tier_manager_new:
+            await ctx.send("❌ Tier system not available")
+            return
+        
+        discord_id = str(ctx.author.id)
+        user_tier = await tier_manager_new.get_user_tier(discord_id)
+        
+        if user_tier == 'free':
+            embed = discord.Embed(
+                title="🆓 Free Tier",
+                description="You're currently on the Free tier.",
+                color=0x808080
+            )
+            embed.add_field(
+                name="What You Get",
+                value="• Access to #daily-digest (top 20 listings at 9 AM UTC)",
+                inline=False
+            )
+            embed.add_field(
+                name="Upgrade Options",
+                value="• Standard Tier ($12/month): #standard-feed access\n• Instant Tier ($25/month): All channels + real-time alerts",
+                inline=False
+            )
+        elif user_tier == 'standard':
+            embed = discord.Embed(
+                title="🟢 Standard Tier",
+                description="You're on the Standard tier ($12/month).",
+                color=0x00ff00
+            )
+            embed.add_field(
+                name="What You Get",
+                value="• #daily-digest access\n• #standard-feed (5 best listings/hour)",
+                inline=False
+            )
+        else:  # instant
+            embed = discord.Embed(
+                title="🔴 Instant Tier", 
+                description="You're on the Instant tier ($25/month).",
+                color=0xff0000
+            )
+            embed.add_field(
+                name="What You Get",
+                value="• All Standard features\n• Real-time alerts in all channels\n• Brand-specific channels",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error checking tier: {e}")
+        print(f"❌ Tier command error: {e}")
+
+@bot.command(name='setbrands')
+async def setbrands_command(ctx, *brands):
+    """Set your preferred brands for Standard tier"""
+    try:
+        if not TIER_SYSTEM_AVAILABLE or not tier_manager_new:
+            await ctx.send("❌ Tier system not available")
+            return
+        
+        discord_id = str(ctx.author.id)
+        user_tier = await tier_manager_new.get_user_tier(discord_id)
+        
+        if user_tier != 'standard' and user_tier != 'instant':
+            await ctx.send("❌ Brand preferences are only available for Standard and Instant tier users.")
+            return
+        
+        if not brands:
+            # Show current brands
+            current_brands = await tier_manager_new.get_user_brands(discord_id)
+            if current_brands:
+                embed = discord.Embed(
+                    title="🏷️ Your Preferred Brands",
+                    description=", ".join(current_brands),
+                    color=0x00ff00
+                )
+            else:
+                embed = discord.Embed(
+                    title="🏷️ Your Preferred Brands",
+                    description="No brands set. Use `!setbrands brand1 brand2` to set them.",
+                    color=0xffaa00
+                )
+            await ctx.send(embed=embed)
+            return
+        
+        # Validate brands
+        valid_brands = []
+        for brand in brands:
+            if brand.lower() in [b.lower() for b in brand_data.keys()]:
+                valid_brands.append(brand)
+        
+        if not valid_brands:
+            await ctx.send("❌ No valid brands found. Available brands: " + ", ".join(list(brand_data.keys())[:10]) + "...")
+            return
+        
+        # Set brands
+        await tier_manager_new.set_user_brands(discord_id, valid_brands)
+        
+        embed = discord.Embed(
+            title="✅ Brands Updated",
+            description=f"Set your preferred brands to: {', '.join(valid_brands)}",
+            color=0x00ff00
+        )
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error setting brands: {e}")
+        print(f"❌ Setbrands command error: {e}")
