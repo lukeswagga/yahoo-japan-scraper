@@ -14,8 +14,17 @@ import hmac
 import hashlib
 import random
 from webhook_security import secure_webhook_required
-from stripe_integration import StripeManager
-from subscription_commands import SubscriptionCommands
+
+# Optional Stripe imports
+try:
+    from stripe_integration import StripeManager
+    from subscription_commands import SubscriptionCommands
+    STRIPE_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Stripe not available: {e}")
+    StripeManager = None
+    SubscriptionCommands = None
+    STRIPE_AVAILABLE = False
 from database_manager import (
     db_manager, get_user_proxy_preference, set_user_proxy_preference, 
     add_listing, add_user_bookmark, clear_user_bookmarks,
@@ -478,12 +487,15 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Initialize Stripe manager
 stripe_manager = None
-try:
-    stripe_manager = StripeManager()
-    print("✅ Stripe manager initialized")
-except Exception as e:
-    print(f"⚠️ Stripe not available: {e}")
-    stripe_manager = None
+if STRIPE_AVAILABLE:
+    try:
+        stripe_manager = StripeManager()
+        print("✅ Stripe manager initialized")
+    except Exception as e:
+        print(f"⚠️ Stripe initialization failed: {e}")
+        stripe_manager = None
+else:
+    print("⚠️ Stripe not available - install stripe package")
 
 guild = None
 auction_channel = None
