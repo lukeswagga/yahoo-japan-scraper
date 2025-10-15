@@ -13,6 +13,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import hmac
 import hashlib
 import random
+from webhook_security import secure_webhook_required
 from database_manager import (
     db_manager, get_user_proxy_preference, set_user_proxy_preference, 
     add_listing, add_user_bookmark, clear_user_bookmarks,
@@ -3057,6 +3058,7 @@ def stats():
     }), 200
 
 @app.route('/webhook/listing', methods=['POST'])
+@secure_webhook_required(os.getenv('WEBHOOK_SECRET_KEY', 'your-secret-key-here'))
 def webhook_listing():
     """Receive listing from multiple scrapers with rate limiting buffer"""
     try:
