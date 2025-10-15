@@ -14,6 +14,8 @@ import hmac
 import hashlib
 import random
 from webhook_security import secure_webhook_required
+from stripe_integration import StripeManager
+from subscription_commands import SubscriptionCommands
 from database_manager import (
     db_manager, get_user_proxy_preference, set_user_proxy_preference, 
     add_listing, add_user_bookmark, clear_user_bookmarks,
@@ -473,6 +475,15 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Initialize Stripe manager
+stripe_manager = None
+try:
+    stripe_manager = StripeManager()
+    print("✅ Stripe manager initialized")
+except Exception as e:
+    print(f"⚠️ Stripe not available: {e}")
+    stripe_manager = None
 
 guild = None
 auction_channel = None
@@ -1467,16 +1478,16 @@ async def on_ready():
             bot.loop.create_task(post_digest())
             bot.loop.create_task(post_standard_feed_hourly())
             
-            print("🎯 Tier system initialized")
-            print("📊 Priority calculator initialized")
-            print("🛣️ Channel router initialized")
-            print("📰 Digest manager initialized")
-        else:
-            print("⚠️ Tier system not available - running in basic mode")
-            priority_calculator = None
-            channel_router = None
-            digest_manager = None
-            tier_manager_new = None
+        print("🎯 Tier system initialized")
+        print("📊 Priority calculator initialized")
+        print("🛣️ Channel router initialized")
+        print("📰 Digest manager initialized")
+        
+        # Add subscription commands if Stripe is available
+        if stripe_manager and tier_manager_new:
+            subscription_cog = SubscriptionCommands(bot, stripe_manager, tier_manager_new)
+            await bot.add_cog(subscription_cog)
+            print("💳 Subscription commands loaded")
         
         # Initialize notification tier system - if available
         if ADVANCED_FEATURES_AVAILABLE and tier_manager:
@@ -3009,6 +3020,32 @@ def webhook():
         import traceback
         print(f"❌ Full traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/webhook/stripe', methods=['POST'])
+def stripe_webhook():
+    """Handle Stripe webhook events for subscription management"""
+    try:
+        if not stripe_manager:
+            return jsonify({"error": "Stripe not configured"}), 503
+        
+        # Get webhook data
+        payload = request.data
+        signature = request.headers.get('Stripe-Signature')
+        
+        if not signature:
+            return jsonify({"error": "Missing signature"}), 400
+        
+        # Process webhook with Stripe manager
+        event_data = asyncio.run(stripe_manager.handle_webhook(payload, signature))
+        
+        # Handle the event (this would update user tiers, assign roles, etc.)
+        print(f"📧 Stripe webhook processed: {event_data}")
+        
+        return jsonify({"status": "success"}), 200
+        
+    except Exception as e:
+        print(f"❌ Stripe webhook error: {e}")
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/check_duplicate/<auction_id>', methods=['GET'])
 def check_duplicate(auction_id):
