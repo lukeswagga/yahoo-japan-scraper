@@ -5288,3 +5288,52 @@ async def setbrands_command(ctx, *brands):
     except Exception as e:
         await ctx.send(f"❌ Error setting brands: {e}")
         print(f"❌ Setbrands command error: {e}")
+
+@bot.command(name='givetier')
+@commands.has_permissions(administrator=True)
+async def givetier(ctx, user: discord.Member, tier: str):
+    """Manually assign tier to user (admin only)"""
+    try:
+        if not TIER_SYSTEM_AVAILABLE or not tier_manager_new:
+            await ctx.send("❌ Tier system not available")
+            return
+        
+        if tier not in ['free', 'standard', 'instant']:
+            await ctx.send("❌ Invalid tier. Use: free, standard, instant")
+            return
+        
+        discord_id = str(user.id)
+        await tier_manager_new.set_user_tier(discord_id, tier)
+        
+        # Assign Discord role
+        guild = ctx.guild
+        free_role = discord.utils.get(guild.roles, name='Free')
+        standard_role = discord.utils.get(guild.roles, name='Standard')
+        instant_role = discord.utils.get(guild.roles, name='Instant')
+        
+        # Remove existing roles
+        if free_role and free_role in user.roles:
+            await user.remove_roles(free_role)
+        if standard_role and standard_role in user.roles:
+            await user.remove_roles(standard_role)
+        if instant_role and instant_role in user.roles:
+            await user.remove_roles(instant_role)
+        
+        # Add new role
+        if tier == 'free' and free_role:
+            await user.add_roles(free_role)
+        elif tier == 'standard' and standard_role:
+            await user.add_roles(standard_role)
+        elif tier == 'instant' and instant_role:
+            await user.add_roles(instant_role)
+        
+        embed = discord.Embed(
+            title="✅ Tier Assigned",
+            description=f"Assigned {tier.title()} tier to {user.mention}",
+            color=0x00ff00
+        )
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error assigning tier: {e}")
+        print(f"❌ Givetier command error: {e}")
