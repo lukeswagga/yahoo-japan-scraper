@@ -44,9 +44,28 @@ class TierManager:
                         brand TEXT,
                         scraper_source TEXT,
                         received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        processed BOOLEAN DEFAULT 0
+                        processed BOOLEAN DEFAULT 0,
+                        queued_for_standard_feed BOOLEAN DEFAULT 0,
+                        standard_feed_posted BOOLEAN DEFAULT 0,
+                        standard_feed_posted_at TIMESTAMP
                     )
                 """)
+                
+                # Add new columns if they don't exist (for existing databases)
+                try:
+                    await db.execute("ALTER TABLE listing_queue ADD COLUMN queued_for_standard_feed BOOLEAN DEFAULT 0")
+                except:
+                    pass  # Column already exists
+                
+                try:
+                    await db.execute("ALTER TABLE listing_queue ADD COLUMN standard_feed_posted BOOLEAN DEFAULT 0")
+                except:
+                    pass  # Column already exists
+                    
+                try:
+                    await db.execute("ALTER TABLE listing_queue ADD COLUMN standard_feed_posted_at TIMESTAMP")
+                except:
+                    pass  # Column already exists
                 
                 # Create user_reactions table
                 await db.execute("""
@@ -232,8 +251,70 @@ class TierManager:
             logger.error(f"❌ Failed to get standard feed count: {e}")
             return 0
     
+    async def queue_for_standard_feed(self, listing_data: dict) -> bool:
+        """Queue a listing for standard-feed hourly posting"""
+        try:
+            auction_id = listing_data.get('auction_id')
+            priority_score = listing_data.get('priority_score', 0.5)
+            
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    INSERT OR REPLACE INTO listing_queue 
+                    (auction_id, listing_data, priority_score, brand, scraper_source, received_at, queued_for_standard_feed)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    auction_id,
+                    json.dumps(listing_data),
+                    priority_score,
+                    listing_data.get('brand', 'Unknown'),
+                    listing_data.get('scraper_source', ''),
+                    datetime.now(timezone.utc).isoformat(),
+                    1  # Mark as queued for standard-feed
+                ))
+                await db.commit()
+                logger.info(f"✅ Queued {auction_id} for standard-feed (priority: {priority_score:.2f})")
+                return True
+        except Exception as e:
+            logger.error(f"❌ Failed to queue for standard feed: {e}")
+            return False
+    
+    async def get_top_standard_feed_listings(self, limit: int = 5) -> List[Tuple[dict, float]]:
+        """Get top listings queued for standard-feed posting"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT listing_data, priority_score 
+                    FROM listing_queue 
+                    WHERE queued_for_standard_feed = 1 
+                    AND standard_feed_posted = 0
+                    ORDER BY priority_score DESC 
+                    LIMIT ?
+                """, (limit,))
+                
+                results = await cursor.fetchall()
+                return [(json.loads(row[0]), row[1]) for row in results]
+        except Exception as e:
+            logger.error(f"❌ Failed to get standard feed listings: {e}")
+            return []
+    
+    async def mark_standard_feed_posted(self, auction_ids: List[str]) -> bool:
+        """Mark listings as posted to standard-feed"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                for auction_id in auction_ids:
+                    await db.execute("""
+                        UPDATE listing_queue 
+                        SET standard_feed_posted = 1, standard_feed_posted_at = ?
+                        WHERE auction_id = ?
+                    """, (datetime.now(timezone.utc).isoformat(), auction_id))
+                await db.commit()
+                return True
+        except Exception as e:
+            logger.error(f"❌ Failed to mark standard feed posted: {e}")
+            return False
+    
     async def record_standard_feed_post(self, auction_id: str) -> bool:
-        """Record a post to standard-feed"""
+        """Record a post to standard-feed (legacy method - keeping for compatibility)"""
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute("""

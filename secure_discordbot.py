@@ -1464,6 +1464,7 @@ async def on_ready():
             # Start background tasks
             bot.loop.create_task(reset_counters(tier_manager_new))
             bot.loop.create_task(post_digest())
+            bot.loop.create_task(post_standard_feed_hourly())
             
             print("🎯 Tier system initialized")
             print("📊 Priority calculator initialized")
@@ -1550,6 +1551,89 @@ async def post_digest():
             import traceback
             print(f"❌ Traceback: {traceback.format_exc()}")
             await asyncio.sleep(3600)  # Wait 1 hour before retrying
+
+async def post_standard_feed_hourly():
+    """Post top 5 listings to standard-feed every hour"""
+    while True:
+        try:
+            # Wait until the top of the next hour
+            now = datetime.now(timezone.utc)
+            next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            wait_seconds = (next_hour - now).total_seconds()
+            
+            print(f"⏰ Standard-feed hourly posting scheduled in {wait_seconds/60:.1f} minutes")
+            await asyncio.sleep(wait_seconds)
+            
+            # Post top 5 listings
+            if tier_manager_new:
+                await post_top_standard_feed_listings()
+            else:
+                print("⚠️ Tier manager not available for standard-feed posting")
+                
+        except Exception as e:
+            print(f"❌ Standard-feed hourly task error: {e}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
+            await asyncio.sleep(3600)  # Wait 1 hour before retrying
+
+async def post_top_standard_feed_listings():
+    """Post top 5 listings to standard-feed"""
+    try:
+        print("📦 Posting top 5 listings to standard-feed...")
+        
+        # Get top 5 listings
+        listings = await tier_manager_new.get_top_standard_feed_listings(limit=5)
+        
+        if not listings:
+            print("📭 No listings queued for standard-feed")
+            return
+        
+        print(f"📊 Found {len(listings)} listings for standard-feed")
+        
+        # Find standard-feed channel
+        guild = bot.get_guild(GUILD_ID)
+        if not guild:
+            print("❌ Guild not found")
+            return
+        
+        channel = discord.utils.get(guild.channels, name='standard-feed')
+        if not channel:
+            channel = discord.utils.get(guild.channels, name='📦-standard-feed')
+        
+        if not channel:
+            print("❌ Standard-feed channel not found")
+            return
+        
+        # Check permissions
+        if not channel.permissions_for(guild.me).send_messages:
+            print(f"❌ No permission to send messages in #{channel.name}")
+            return
+        
+        # Post each listing
+        posted_auction_ids = []
+        for i, (listing_data, priority_score) in enumerate(listings, 1):
+            try:
+                embed = create_listing_embed(listing_data)
+                await channel.send(embed=embed)
+                posted_auction_ids.append(listing_data.get('auction_id'))
+                print(f"✅ Posted listing {i}/5 to #{channel.name} (priority: {priority_score:.2f})")
+                
+                # Small delay between posts
+                await asyncio.sleep(2)
+                
+            except Exception as e:
+                print(f"❌ Failed to post listing {i}: {e}")
+                continue
+        
+        # Mark listings as posted
+        if posted_auction_ids:
+            await tier_manager_new.mark_standard_feed_posted(posted_auction_ids)
+            print(f"✅ Marked {len(posted_auction_ids)} listings as posted to standard-feed")
+        
+    except Exception as e:
+        print(f"❌ Failed to post standard-feed listings: {e}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
 
 @bot.event
 async def on_reaction_add(reaction, user):
@@ -4903,6 +4987,22 @@ async def debug_standard(ctx):
         await ctx.send(f"❌ Error: {e}")
         import traceback
         print(f"❌ Debug standard error: {traceback.format_exc()}")
+
+@bot.command(name='teststandard')
+async def test_standard_feed(ctx):
+    """Manually trigger standard-feed posting (admin only)"""
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Admin only command")
+        return
+    
+    try:
+        await ctx.send("🔄 Manually posting top 5 listings to standard-feed...")
+        await post_top_standard_feed_listings()
+        await ctx.send("✅ Standard-feed posting completed - check #standard-feed channel")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+        import traceback
+        print(f"❌ Test standard error: {traceback.format_exc()}")
 
 # ============================================================================
 # TIER NOTIFICATION FUNCTIONS

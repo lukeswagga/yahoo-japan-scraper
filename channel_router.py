@@ -100,66 +100,20 @@ class ChannelRouter:
     
     async def _route_to_standard_feed(self, listing_data: Dict[str, Any]) -> bool:
         """
-        Send to #standard-feed based on rolling 24h count (up to 100 posts)
-        No brand preference filtering - just highest priority listings
+        Queue listing for hourly standard-feed posting (5 best listings per hour)
+        No real-time posting - listings are queued and posted on schedule
         """
         try:
             auction_id = listing_data.get('auction_id', 'unknown')
-            logger.info(f"🔄 Checking standard-feed routing for {auction_id}...")
+            logger.info(f"📝 Queueing listing {auction_id} for standard-feed hourly posting...")
             
-            # Check if this auction was already posted to standard-feed
-            import aiosqlite
-            async with aiosqlite.connect(self.tier_manager.db_path) as db:
-                cursor = await db.execute("""
-                    SELECT COUNT(*) FROM listing_queue 
-                    WHERE auction_id = ? AND scraper_source = 'standard_feed_posted'
-                """, (f"standard_feed_{auction_id}",))
-                already_posted = (await cursor.fetchone())[0] > 0
-            
-            if already_posted:
-                logger.info(f"⏹️ Auction {auction_id} already posted to standard-feed - skipping")
-                return True
-            
-            # Check current 24h count for standard-feed
-            count_24h = await self.tier_manager.get_standard_feed_count_24h()
-            logger.info(f"📊 Standard-feed 24h count: {count_24h}/100")
-            
-            # If we've hit the limit, don't post
-            if count_24h >= 100:
-                logger.info(f"⏹️ Standard-feed limit reached ({count_24h}/100) - SKIPPING {auction_id}")
-                logger.info(f"🚫 BLOCKED: Not posting to standard-feed due to limit")
-                return True
-            
-            # Try to find channel (with and without emoji prefix)
-            channel = discord.utils.get(self.bot.get_all_channels(), name='standard-feed')
-            if not channel:
-                # Try with emoji prefix
-                channel = discord.utils.get(self.bot.get_all_channels(), name='📦-standard-feed')
-            
-            if not channel:
-                logger.warning("⚠️ #standard-feed channel not found (tried both 'standard-feed' and '📦-standard-feed')")
-                return True
-            
-            # Check bot permissions
-            if not channel.permissions_for(channel.guild.me).send_messages:
-                logger.error(f"❌ No permission to send messages in #{channel.name}")
-                return True
-            
-            # Record this post in the database FIRST (before posting)
-            record_success = await self.tier_manager.record_standard_feed_post(auction_id)
-            if not record_success:
-                logger.error(f"❌ Failed to record standard-feed post for {auction_id}")
-                return False
-            
-            # Post the listing
-            embed = self._create_listing_embed(listing_data)
-            await channel.send(embed=embed)
-            
-            logger.info(f"✅ Posted to standard-feed (#{channel.name}) - auction {auction_id} - new count: {count_24h + 1}/100")
+            # Mark listing as queued for standard-feed (not posted yet)
+            await self.tier_manager.queue_for_standard_feed(listing_data)
+            logger.info(f"✅ Queued {auction_id} for standard-feed hourly posting")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to route to standard feed: {e}")
+            logger.error(f"❌ Failed to queue for standard feed: {e}")
             import traceback
             logger.error(f"❌ Traceback: {traceback.format_exc()}")
             return False
