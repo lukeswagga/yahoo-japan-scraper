@@ -107,13 +107,27 @@ class ChannelRouter:
             auction_id = listing_data.get('auction_id', 'unknown')
             logger.info(f"🔄 Checking standard-feed routing for {auction_id}...")
             
+            # Check if this auction was already posted to standard-feed
+            import aiosqlite
+            async with aiosqlite.connect(self.tier_manager.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM listing_queue 
+                    WHERE auction_id = ? AND scraper_source = 'standard_feed_posted'
+                """, (f"standard_feed_{auction_id}",))
+                already_posted = (await cursor.fetchone())[0] > 0
+            
+            if already_posted:
+                logger.info(f"⏹️ Auction {auction_id} already posted to standard-feed - skipping")
+                return True
+            
             # Check current 24h count for standard-feed
             count_24h = await self.tier_manager.get_standard_feed_count_24h()
             logger.info(f"📊 Standard-feed 24h count: {count_24h}/100")
             
             # If we've hit the limit, don't post
             if count_24h >= 100:
-                logger.info(f"⏹️ Standard-feed limit reached (100/24h) - skipping {auction_id}")
+                logger.info(f"⏹️ Standard-feed limit reached ({count_24h}/100) - SKIPPING {auction_id}")
+                logger.info(f"🚫 BLOCKED: Not posting to standard-feed due to limit")
                 return True
             
             # Try to find channel (with and without emoji prefix)
