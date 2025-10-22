@@ -501,8 +501,16 @@ if STRIPE_AVAILABLE:
     try:
         stripe_manager = StripeManager()
         print("✅ Stripe manager initialized")
+        print(f"🔧 Stripe API key set: {bool(os.getenv('STRIPE_SECRET_KEY'))}")
+        print(f"🔧 Webhook secret set: {bool(os.getenv('STRIPE_WEBHOOK_SECRET'))}")
+        print(f"🔧 Standard price ID set: {bool(os.getenv('STRIPE_STANDARD_PRICE_ID'))}")
+        print(f"🔧 Instant price ID set: {bool(os.getenv('STRIPE_INSTANT_PRICE_ID'))}")
     except Exception as e:
         print(f"⚠️ Stripe initialization failed: {e}")
+        print(f"🔧 STRIPE_SECRET_KEY: {bool(os.getenv('STRIPE_SECRET_KEY'))}")
+        print(f"🔧 STRIPE_WEBHOOK_SECRET: {bool(os.getenv('STRIPE_WEBHOOK_SECRET'))}")
+        print(f"🔧 STRIPE_STANDARD_PRICE_ID: {bool(os.getenv('STRIPE_STANDARD_PRICE_ID'))}")
+        print(f"🔧 STRIPE_INSTANT_PRICE_ID: {bool(os.getenv('STRIPE_INSTANT_PRICE_ID'))}")
         stripe_manager = None
 else:
     print("⚠️ Stripe not available - install stripe package")
@@ -5168,9 +5176,15 @@ async def subscribe_command(ctx, tier: str):
         success_url = f"https://yahoo-japan-scraper-production.up.railway.app/stripe-success?session_id={{CHECKOUT_SESSION_ID}}"
         cancel_url = f"https://yahoo-japan-scraper-production.up.railway.app/stripe-cancel"
         
+        print(f"🔧 Creating Stripe checkout for {discord_id} -> {tier}")
+        print(f"🔧 Success URL: {success_url}")
+        print(f"🔧 Cancel URL: {cancel_url}")
+        
         checkout_url = await stripe_manager.create_checkout_session(
             discord_id, tier.lower(), success_url, cancel_url
         )
+        
+        print(f"🔧 Checkout URL result: {checkout_url}")
         
         if checkout_url:
             embed = discord.Embed(
