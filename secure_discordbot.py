@@ -5179,8 +5179,8 @@ async def subscribe_command(ctx, tier: str):
                 return
         
         # Create Stripe checkout session
-        success_url = f"https://motivated-stillness-production.up.railway.app/stripe-success?session_id={{CHECKOUT_SESSION_ID}}"
-        cancel_url = f"https://motivated-stillness-production.up.railway.app/stripe-cancel"
+        success_url = f"https://yahoo-japan-scraper-production.up.railway.app/stripe-success?session_id={{CHECKOUT_SESSION_ID}}"
+        cancel_url = f"https://yahoo-japan-scraper-production.up.railway.app/stripe-cancel"
         
         checkout_url = await stripe_manager.create_checkout_session(
             discord_id, tier.lower(), success_url, cancel_url
