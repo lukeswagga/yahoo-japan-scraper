@@ -1505,14 +1505,13 @@ async def on_ready():
         if ADVANCED_FEATURES_AVAILABLE and tier_manager:
             tier_manager.set_bot(bot)
         
-        # Find and set daily digest channel (only if tier system is available)
+        # Find daily digest channel (only if tier system is available)
         if TIER_SYSTEM_AVAILABLE and tier_manager_new:
             daily_digest_channel = discord.utils.get(guild.channels, name='daily-digest')
             if daily_digest_channel:
-                tier_manager_new.set_daily_digest_channel(daily_digest_channel.id)
-                print(f"📰 Daily digest channel set: #{daily_digest_channel.name}")
-        else:
-            print("⚠️ Daily digest channel not found - please create #daily-digest channel")
+                print(f"📰 Daily digest channel found: #{daily_digest_channel.name}")
+            else:
+                print("⚠️ Daily digest channel not found - please create #daily-digest channel")
         
         # Start background tasks
         bot.loop.create_task(process_batch_buffer())
