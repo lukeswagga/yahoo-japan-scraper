@@ -1495,11 +1495,8 @@ async def on_ready():
         print("🛣️ Channel router initialized")
         print("📰 Digest manager initialized")
         
-        # Add subscription commands if Stripe is available
-        if stripe_manager and tier_manager_new:
-            subscription_cog = SubscriptionCommands(bot, stripe_manager, tier_manager_new)
-            await bot.add_cog(subscription_cog)
-            print("💳 Subscription commands loaded")
+        # Subscription commands are loaded manually (see below)
+        print("💳 Subscription commands loaded manually")
         
         # Initialize notification tier system - if available
         if ADVANCED_FEATURES_AVAILABLE and tier_manager:
