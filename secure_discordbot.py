@@ -359,6 +359,8 @@ def health():
         # Check if advanced features are available
         advanced_status = "available" if ADVANCED_FEATURES_AVAILABLE else "limited"
         
+        print(f"🏥 Health check requested - Bot: {bot_status}, Advanced: {advanced_status}")
+        
         return jsonify({
             "status": "healthy",
             "service": "discord-bot",
@@ -368,6 +370,7 @@ def health():
             "timestamp": datetime.now(timezone.utc).isoformat()
         }), 200
     except Exception as e:
+        print(f"❌ Health check error: {e}")
         return jsonify({
             "status": "error",
             "service": "discord-bot", 
@@ -386,11 +389,18 @@ def root():
 @app.route('/ping', methods=['GET'])
 def ping():
     """Simple ping endpoint for Railway healthchecks"""
+    print("🏓 Ping endpoint accessed")
     return jsonify({
         "status": "ok",
         "message": "pong",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }), 200
+
+@app.route('/status', methods=['GET'])
+def status():
+    """Alternative health check endpoint"""
+    print("📊 Status endpoint accessed")
+    return jsonify({"status": "ok", "service": "discord-bot"}), 200
 
 def load_secure_config():
     bot_token = os.getenv('DISCORD_BOT_TOKEN')
