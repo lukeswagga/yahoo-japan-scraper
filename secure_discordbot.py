@@ -5054,6 +5054,40 @@ async def test_standard_feed(ctx):
         import traceback
         print(f"❌ Test standard error: {traceback.format_exc()}")
 
+@bot.command(name='subscribe')
+async def subscribe_command(ctx, tier: str):
+    """Subscribe to a tier (placeholder - Stripe integration needed)"""
+    try:
+        if tier.lower() not in ['standard', 'instant']:
+            await ctx.send("❌ Invalid tier. Use: standard, instant")
+            return
+        
+        await ctx.send(f"💳 Subscription to {tier.title()} tier is not yet implemented. Please contact an administrator for manual tier assignment.")
+        
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred while creating your subscription. Please try again later.")
+        print(f"❌ Subscribe command error: {e}")
+
+@bot.command(name='subscription')
+async def subscription_command(ctx):
+    """Check subscription status (placeholder)"""
+    try:
+        await ctx.send("💳 Subscription status checking is not yet implemented. Please contact an administrator.")
+        
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred while checking your subscription status.")
+        print(f"❌ Subscription command error: {e}")
+
+@bot.command(name='cancel')
+async def cancel_command(ctx):
+    """Cancel subscription (placeholder)"""
+    try:
+        await ctx.send("💳 Subscription cancellation is not yet implemented. Please contact an administrator.")
+        
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred while cancelling your subscription. Please try again later.")
+        print(f"❌ Cancel command error: {e}")
+
 # ============================================================================
 # TIER NOTIFICATION FUNCTIONS
 # ============================================================================
