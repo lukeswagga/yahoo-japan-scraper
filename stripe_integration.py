@@ -17,17 +17,35 @@ class StripeManager:
         self.standard_price_id = os.getenv('STRIPE_STANDARD_PRICE_ID')
         self.instant_price_id = os.getenv('STRIPE_INSTANT_PRICE_ID')
         
-        if not all([stripe.api_key, self.webhook_secret, self.standard_price_id, self.instant_price_id]):
-            raise ValueError("Missing required Stripe environment variables")
+        print(f"🔧 StripeManager init - API key: {bool(stripe.api_key)}")
+        print(f"🔧 StripeManager init - Webhook secret: {bool(self.webhook_secret)}")
+        print(f"🔧 StripeManager init - Standard price: {bool(self.standard_price_id)}")
+        print(f"🔧 StripeManager init - Instant price: {bool(self.instant_price_id)}")
+        
+        if not stripe.api_key:
+            raise ValueError("STRIPE_SECRET_KEY is missing or empty")
+        if not self.webhook_secret:
+            raise ValueError("STRIPE_WEBHOOK_SECRET is missing or empty")
+        if not self.standard_price_id:
+            raise ValueError("STRIPE_STANDARD_PRICE_ID is missing or empty")
+        if not self.instant_price_id:
+            raise ValueError("STRIPE_INSTANT_PRICE_ID is missing or empty")
     
     async def create_checkout_session(self, discord_id: str, tier: str, success_url: str, cancel_url: str) -> Dict[str, Any]:
         """Create Stripe checkout session for subscription"""
         try:
+            print(f"🔧 Creating checkout session for {discord_id} -> {tier}")
+            print(f"🔧 Stripe API key set: {bool(stripe.api_key)}")
+            
             # Validate tier
             if tier not in ['standard', 'instant']:
                 raise ValueError(f"Invalid tier: {tier}")
             
             price_id = self.standard_price_id if tier == 'standard' else self.instant_price_id
+            print(f"🔧 Using price ID: {price_id}")
+            
+            if not stripe.api_key:
+                raise ValueError("Stripe API key not set")
             
             session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
