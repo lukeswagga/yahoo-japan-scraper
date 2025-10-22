@@ -3039,31 +3039,7 @@ def webhook():
         print(f"❌ Full traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/webhook/stripe', methods=['POST'])
-def stripe_webhook():
-    """Handle Stripe webhook events for subscription management"""
-    try:
-        if not stripe_manager:
-            return jsonify({"error": "Stripe not configured"}), 503
-        
-        # Get webhook data
-        payload = request.data
-        signature = request.headers.get('Stripe-Signature')
-        
-        if not signature:
-            return jsonify({"error": "Missing signature"}), 400
-        
-        # Process webhook with Stripe manager
-        event_data = asyncio.run(stripe_manager.handle_webhook(payload, signature))
-        
-        # Handle the event (this would update user tiers, assign roles, etc.)
-        print(f"📧 Stripe webhook processed: {event_data}")
-        
-        return jsonify({"status": "success"}), 200
-        
-    except Exception as e:
-        print(f"❌ Stripe webhook error: {e}")
-        return jsonify({"error": "Internal server error"}), 500
+# Removed duplicate stripe webhook - using /stripe-webhook instead
 
 @app.route('/check_duplicate/<auction_id>', methods=['GET'])
 def check_duplicate(auction_id):
