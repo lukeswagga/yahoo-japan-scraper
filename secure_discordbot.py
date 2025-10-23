@@ -5155,8 +5155,12 @@ async def test_standard_feed(ctx):
 async def subscribe_command(ctx, tier: str):
     """Subscribe to a tier using Stripe"""
     try:
-        if not STRIPE_AVAILABLE or not stripe_manager:
-            await ctx.send("❌ Stripe is not configured. Please contact an administrator.")
+        if not STRIPE_AVAILABLE:
+            await ctx.send("❌ Stripe package is not available. Please contact an administrator.")
+            return
+            
+        if not stripe_manager:
+            await ctx.send("❌ Stripe manager is not initialized. Please check environment variables.")
             return
             
         if tier.lower() not in ['standard', 'instant']:
@@ -5179,6 +5183,16 @@ async def subscribe_command(ctx, tier: str):
         print(f"🔧 Creating Stripe checkout for {discord_id} -> {tier}")
         print(f"🔧 Success URL: {success_url}")
         print(f"🔧 Cancel URL: {cancel_url}")
+        
+        # Test Stripe module
+        try:
+            import stripe
+            print(f"🔧 Stripe module imported: {stripe}")
+            print(f"🔧 Stripe checkout available: {hasattr(stripe, 'checkout')}")
+            if hasattr(stripe, 'checkout'):
+                print(f"🔧 Stripe checkout.Session available: {hasattr(stripe.checkout, 'Session')}")
+        except Exception as e:
+            print(f"❌ Stripe module test failed: {e}")
         
         checkout_url = await stripe_manager.create_checkout_session(
             discord_id, tier.lower(), success_url, cancel_url
