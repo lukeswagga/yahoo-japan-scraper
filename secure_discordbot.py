@@ -15,16 +15,7 @@ import hashlib
 import random
 from webhook_security import secure_webhook_required
 
-# Optional Stripe imports
-try:
-    from stripe_integration import StripeManager
-    from subscription_commands import SubscriptionCommands
-    STRIPE_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ Stripe not available: {e}")
-    StripeManager = None
-    SubscriptionCommands = None
-    STRIPE_AVAILABLE = False
+# Stripe integration removed - using Whop.com instead
 from database_manager import (
     db_manager, get_user_proxy_preference, set_user_proxy_preference, 
     add_listing, add_user_bookmark, clear_user_bookmarks,
@@ -496,24 +487,7 @@ intents.reactions = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Initialize Stripe manager
-stripe_manager = None
-if STRIPE_AVAILABLE:
-    try:
-        stripe_manager = StripeManager()
-        print("✅ Stripe manager initialized")
-        print(f"🔧 Stripe API key set: {bool(os.getenv('STRIPE_SECRET_KEY'))}")
-        print(f"🔧 Webhook secret set: {bool(os.getenv('STRIPE_WEBHOOK_SECRET'))}")
-        print(f"🔧 Standard price ID set: {bool(os.getenv('STRIPE_STANDARD_PRICE_ID'))}")
-        print(f"🔧 Instant price ID set: {bool(os.getenv('STRIPE_INSTANT_PRICE_ID'))}")
-    except Exception as e:
-        print(f"⚠️ Stripe initialization failed: {e}")
-        print(f"🔧 STRIPE_SECRET_KEY: {bool(os.getenv('STRIPE_SECRET_KEY'))}")
-        print(f"🔧 STRIPE_WEBHOOK_SECRET: {bool(os.getenv('STRIPE_WEBHOOK_SECRET'))}")
-        print(f"🔧 STRIPE_STANDARD_PRICE_ID: {bool(os.getenv('STRIPE_STANDARD_PRICE_ID'))}")
-        print(f"🔧 STRIPE_INSTANT_PRICE_ID: {bool(os.getenv('STRIPE_INSTANT_PRICE_ID'))}")
-        stripe_manager = None
-else:
-    print("⚠️ Stripe not available - install stripe package")
+# Stripe manager removed - using Whop.com instead
 
 guild = None
 auction_channel = None
@@ -3096,111 +3070,7 @@ def stats():
         "buffer": buffer_info
     }), 200
 
-@app.route('/stripe-webhook', methods=['POST'])
-def stripe_webhook():
-    """Handle Stripe webhook events"""
-    try:
-        if not STRIPE_AVAILABLE or not stripe_manager:
-            return jsonify({"error": "Stripe not available"}), 500
-            
-        payload = request.get_data()
-        sig_header = request.headers.get('Stripe-Signature')
-        
-        if not sig_header:
-            print("❌ Missing Stripe signature")
-            return jsonify({"error": "Missing signature"}), 400
-        
-        # Verify webhook signature
-        event = stripe_manager.verify_webhook_signature(payload, sig_header)
-        if not event:
-            print("❌ Invalid Stripe signature")
-            return jsonify({"error": "Invalid signature"}), 400
-        
-        # Handle the event
-        if event['type'] == 'checkout.session.completed':
-            session = event['data']['object']
-            discord_id = session['metadata'].get('discord_id')
-            tier = session['metadata'].get('tier')
-            
-            if discord_id and tier and tier_manager_new:
-                # Assign tier to user (schedule for async execution)
-                def assign_tier():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(tier_manager_new.set_user_tier(discord_id, tier))
-                    loop.close()
-                
-                threading.Thread(target=assign_tier).start()
-                print(f"✅ User {discord_id} upgraded to {tier} tier via Stripe")
-                
-                # Try to send confirmation DM
-                def send_confirmation():
-                    try:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        user = bot.get_user(int(discord_id))
-                        if user:
-                            embed = discord.Embed(
-                                title="🎉 Subscription Successful!",
-                                description=f"Welcome to the {tier.title()} tier! You now have access to premium channels.",
-                                color=discord.Color.green()
-                            )
-                            loop.run_until_complete(user.send(embed=embed))
-                        loop.close()
-                    except Exception as e:
-                        print(f"❌ Could not send confirmation DM: {e}")
-                
-                threading.Thread(target=send_confirmation).start()
-        
-        elif event['type'] == 'customer.subscription.deleted':
-            subscription = event['data']['object']
-            discord_id = subscription['metadata'].get('discord_id')
-            
-            if discord_id and tier_manager_new:
-                # Downgrade to free tier (schedule for async execution)
-                def downgrade_tier():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(tier_manager_new.set_user_tier(discord_id, 'free'))
-                    loop.close()
-                
-                threading.Thread(target=downgrade_tier).start()
-                print(f"✅ User {discord_id} downgraded to free tier (subscription cancelled)")
-        
-        return jsonify({"status": "success"}), 200
-        
-    except Exception as e:
-        print(f"❌ Stripe webhook error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/stripe-success', methods=['GET'])
-def stripe_success():
-    """Handle successful Stripe checkout"""
-    session_id = request.args.get('session_id')
-    if session_id:
-        return f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-            <h1 style="color: green;">✅ Payment Successful!</h1>
-            <p>Your subscription has been activated. Check Discord for your new role!</p>
-            <p>You can close this window and return to Discord.</p>
-        </body>
-        </html>
-        """
-    return "Payment successful! Check Discord for your new role."
-
-@app.route('/stripe-cancel', methods=['GET'])
-def stripe_cancel():
-    """Handle cancelled Stripe checkout"""
-    return """
-    <html>
-    <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-        <h1 style="color: orange;">❌ Payment Cancelled</h1>
-        <p>Your payment was cancelled. You can try again anytime.</p>
-        <p>You can close this window and return to Discord.</p>
-    </body>
-    </html>
-    """
+# Stripe webhook endpoints removed - using Whop.com instead
 
 @app.route('/webhook/listing', methods=['POST'])
 # @secure_webhook_required(os.getenv('WEBHOOK_SECRET_KEY', 'your-secret-key-here'))  # Temporarily disabled
@@ -5151,149 +5021,7 @@ async def test_standard_feed(ctx):
         import traceback
         print(f"❌ Test standard error: {traceback.format_exc()}")
 
-@bot.command(name='subscribe')
-async def subscribe_command(ctx, tier: str):
-    """Subscribe to a tier using Stripe"""
-    try:
-        if not STRIPE_AVAILABLE:
-            await ctx.send("❌ Stripe package is not available. Please contact an administrator.")
-            return
-            
-        if not stripe_manager:
-            await ctx.send("❌ Stripe manager is not initialized. Please check environment variables.")
-            return
-            
-        if tier.lower() not in ['standard', 'instant']:
-            await ctx.send("❌ Invalid tier. Use: standard, instant")
-            return
-        
-        discord_id = str(ctx.author.id)
-        
-        # Check if user already has this tier
-        if tier_manager_new:
-            current_tier = await tier_manager_new.get_user_tier(discord_id)
-            if current_tier == tier.lower():
-                await ctx.send(f"✅ You are already on the {tier.title()} tier.")
-                return
-        
-        # Create Stripe checkout session
-        success_url = f"https://yahoo-japan-scraper-production.up.railway.app/stripe-success?session_id={{CHECKOUT_SESSION_ID}}"
-        cancel_url = f"https://yahoo-japan-scraper-production.up.railway.app/stripe-cancel"
-        
-        print(f"🔧 Creating Stripe checkout for {discord_id} -> {tier}")
-        print(f"🔧 Success URL: {success_url}")
-        print(f"🔧 Cancel URL: {cancel_url}")
-        
-        # Test Stripe module
-        try:
-            import stripe
-            print(f"🔧 Stripe module imported: {stripe}")
-            print(f"🔧 Stripe checkout available: {hasattr(stripe, 'checkout')}")
-            if hasattr(stripe, 'checkout'):
-                print(f"🔧 Stripe checkout.Session available: {hasattr(stripe.checkout, 'Session')}")
-        except Exception as e:
-            print(f"❌ Stripe module test failed: {e}")
-        
-        checkout_url = await stripe_manager.create_checkout_session(
-            discord_id, tier.lower(), success_url, cancel_url
-        )
-        
-        print(f"🔧 Checkout URL result: {checkout_url}")
-        
-        if checkout_url:
-            embed = discord.Embed(
-                title=f"💳 Upgrade to {tier.title()} Tier",
-                description=f"Click the link below to complete your subscription for the {tier.title()} tier. This link will expire in 24 hours.",
-                color=discord.Color.blue()
-            )
-            embed.add_field(name="Payment Link", value=f"[Click Here to Subscribe]({checkout_url})", inline=False)
-            embed.set_footer(text="Please complete the payment within 24 hours.")
-            await ctx.author.send(embed=embed)
-            await ctx.send(f"✅ Check your DMs, {ctx.author.mention}! I've sent you the subscription link.")
-        else:
-            await ctx.send("❌ Failed to create a Stripe checkout session. Please try again later or contact support.")
-        
-    except Exception as e:
-        await ctx.send(f"❌ An error occurred while creating your subscription. Please try again later.")
-        print(f"❌ Subscribe command error: {e}")
-
-@bot.command(name='subscription')
-async def subscription_command(ctx):
-    """Check subscription status"""
-    try:
-        if not STRIPE_AVAILABLE or not stripe_manager:
-            await ctx.send("❌ Stripe is not configured. Please contact an administrator.")
-            return
-            
-        discord_id = str(ctx.author.id)
-        
-        # Get user tier and subscription info
-        if tier_manager_new:
-            user_stats = await tier_manager_new.get_user_stats(discord_id)
-            current_tier = user_stats.get('tier', 'free')
-            
-            embed = discord.Embed(title="💳 Your Subscription Status", color=discord.Color.gold())
-            embed.add_field(name="Current Tier", value=current_tier.title(), inline=False)
-            
-            if current_tier != 'free':
-                subscription_id = user_stats.get('stripe_subscription_id')
-                if subscription_id and stripe_manager:
-                    status = await stripe_manager.get_subscription_status(subscription_id)
-                    embed.add_field(name="Stripe Status", value=status.replace('_', ' ').title() if status else "Unknown", inline=True)
-                    
-                    period_end = user_stats.get('current_period_end')
-                    if period_end:
-                        embed.add_field(name="Billing Period Ends", value=period_end, inline=True)
-                else:
-                    embed.add_field(name="Stripe Status", value="Not linked", inline=True)
-            else:
-                embed.add_field(name="Upgrade Options", value="Use `!subscribe standard` or `!subscribe instant` to upgrade", inline=False)
-            
-            await ctx.send(embed=embed)
-        else:
-            await ctx.send("❌ Tier system not available. Please contact an administrator.")
-        
-    except Exception as e:
-        await ctx.send(f"❌ An error occurred while checking your subscription status.")
-        print(f"❌ Subscription command error: {e}")
-
-@bot.command(name='cancel')
-async def cancel_command(ctx):
-    """Cancel subscription"""
-    try:
-        if not STRIPE_AVAILABLE or not stripe_manager:
-            await ctx.send("❌ Stripe is not configured. Please contact an administrator.")
-            return
-            
-        discord_id = str(ctx.author.id)
-        
-        if tier_manager_new:
-            user_stats = await tier_manager_new.get_user_stats(discord_id)
-            current_tier = user_stats.get('tier', 'free')
-            
-            if current_tier == 'free':
-                await ctx.send("❌ You don't have an active subscription to cancel.")
-                return
-            
-            subscription_id = user_stats.get('stripe_subscription_id')
-            if not subscription_id:
-                await ctx.send("❌ Could not find your subscription ID. Please contact support.")
-                return
-            
-            success = await stripe_manager.cancel_subscription(subscription_id)
-            if success:
-                # Downgrade user to free tier
-                await tier_manager_new.set_user_tier(discord_id, 'free')
-                await ctx.send("✅ Your subscription has been cancelled. You will be downgraded to Free tier at the end of your current billing period.")
-                print(f"User {discord_id} cancelled subscription {subscription_id}")
-            else:
-                await ctx.send("❌ Failed to cancel your subscription. Please try again later or contact support.")
-        else:
-            await ctx.send("❌ Tier system not available. Please contact an administrator.")
-        
-    except Exception as e:
-        await ctx.send(f"❌ An error occurred while cancelling your subscription. Please try again later.")
-        print(f"❌ Cancel command error: {e}")
+# Stripe subscription commands removed - using Whop.com instead
 
 # ============================================================================
 # TIER NOTIFICATION FUNCTIONS
