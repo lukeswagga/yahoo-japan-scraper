@@ -203,9 +203,15 @@ class ChannelRouter:
             auction_id_clean = listing_data.get('auction_id', '').replace('yahoo_', '')
             buyee_url = f"https://buyee.jp/item/yahoo/auction/{auction_id_clean}" if auction_id_clean else ''
             
+            # Sanitize title for Discord embed (import sanitize_embed_text from secure_discordbot if needed)
+            title = listing_data.get('title', 'Unknown Title')
+            # Basic sanitization - remove control chars and limit length
+            import re
+            title = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', title)[:256]
+            
             # Create base embed
             embed = discord.Embed(
-                title=listing_data.get('title', 'Unknown Title')[:256],
+                title=title,
                 url=buyee_url,
                 color=discord.Color.blue(),
                 timestamp=datetime.now(timezone.utc)

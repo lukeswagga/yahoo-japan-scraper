@@ -338,10 +338,138 @@ class SimpleHealthHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+# Initialize webhook security if secret is available
+webhook_secret = os.getenv('WEBHOOK_SECRET_KEY')
+if webhook_secret:
+    print("✅ Webhook security enabled - signature verification active")
+    secure_webhook = secure_webhook_required(webhook_secret)
+else:
+    print("⚠️ WARNING: WEBHOOK_SECRET_KEY not set - webhook security disabled!")
+    print("⚠️ Set WEBHOOK_SECRET_KEY in Railway to enable webhook authentication")
+    # No-op decorator if secret not set (allows app to run without breaking scrapers)
+    def secure_webhook(func):
+        return func
+
+# Simple rate limiting for public endpoints
+rate_limit_store = {}
+RATE_LIMIT_WINDOW = 60  # 1 minute window
+RATE_LIMIT_MAX_REQUESTS = 30  # 30 requests per minute
+
+def check_rate_limit(client_ip: str, endpoint: str = 'default') -> bool:
+    """Simple in-memory rate limiter - returns True if allowed"""
+    import time
+    current_time = time.time()
+    key = f"{client_ip}:{endpoint}"
+    
+    if key not in rate_limit_store:
+        rate_limit_store[key] = {'count': 1, 'window_start': current_time}
+        return True
+    
+    client_data = rate_limit_store[key]
+    
+    # Reset window if expired
+    if current_time - client_data['window_start'] > RATE_LIMIT_WINDOW:
+        client_data['count'] = 1
+        client_data['window_start'] = current_time
+        return True
+    
+    # Check limit
+    if client_data['count'] >= RATE_LIMIT_MAX_REQUESTS:
+        return False
+    
+    client_data['count'] += 1
+    return True
+
+def require_api_token():
+    """Decorator to require API token for sensitive endpoints"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            api_token = os.getenv('API_AUTH_TOKEN')
+            if not api_token:
+                # If no token set, allow access but warn
+                print("⚠️ API_AUTH_TOKEN not set - endpoint is public")
+                return func(*args, **kwargs)
+            
+            provided_token = request.headers.get('X-API-Token') or request.args.get('token')
+            if not provided_token or provided_token != api_token:
+                return jsonify({"error": "Unauthorized"}), 401
+            
+            return func(*args, **kwargs)
+        wrapper.__name__ = func.__name__
+        return wrapper
+    return decorator
+
+def rate_limited(func):
+    """Decorator to add rate limiting to endpoints"""
+    def wrapper(*args, **kwargs):
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if not check_rate_limit(client_ip, func.__name__):
+            return jsonify({"error": "Rate limit exceeded"}), 429
+        return func(*args, **kwargs)
+    wrapper.__name__ = func.__name__
+    return wrapper
+
+def sanitize_error_message(error: Exception, user_facing: bool = True) -> str:
+    """Sanitize error messages before sending to users"""
+    error_str = str(error)
+    
+    if not user_facing:
+        # Return full error for server-side logging
+        return error_str
+    
+    # Generic user-friendly messages for common errors
+    generic_messages = {
+        'database': 'A database error occurred. Please try again later.',
+        'network': 'A network error occurred. Please try again later.',
+        'timeout': 'Request timed out. Please try again.',
+        'permission': 'You do not have permission to perform this action.',
+        'validation': 'Invalid input provided. Please check your request.',
+        'not found': 'The requested resource was not found.',
+    }
+    
+    error_lower = error_str.lower()
+    
+    # Check for specific error types
+    if 'database' in error_lower or 'sql' in error_lower:
+        return generic_messages['database']
+    elif 'timeout' in error_lower or 'connection' in error_lower:
+        return generic_messages['timeout']
+    elif 'permission' in error_lower or 'forbidden' in error_lower:
+        return generic_messages['permission']
+    elif 'not found' in error_lower:
+        return generic_messages['not found']
+    elif 'validation' in error_lower or 'invalid' in error_lower:
+        return generic_messages['validation']
+    
+    # Generic fallback - never expose internal details
+    return 'An error occurred. Please try again later.'
+
+def sanitize_embed_text(text: str, max_length: int = 1024) -> str:
+    """Sanitize text for Discord embeds to prevent XSS"""
+    if not text:
+        return ''
+    
+    # Remove null bytes
+    text = text.replace('\x00', '')
+    
+    # Limit length
+    text = text[:max_length]
+    
+    # Escape markdown characters that could be used for injection
+    # Discord handles most XSS automatically, but we sanitize markdown
+    text = text.replace('```', '`\u200b`\u200b`')  # Break code blocks
+    
+    # Remove control characters except newlines
+    import re
+    text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', text)
+    
+    return text
+
 app = Flask(__name__)
 start_time = time.time()
 
 @app.route('/health', methods=['GET'])
+@rate_limited
 def health():
     try:
         # Check if Discord bot is connected
@@ -393,24 +521,83 @@ def status():
     print("📊 Status endpoint accessed")
     return jsonify({"status": "ok", "service": "discord-bot"}), 200
 
+def validate_environment_variables():
+    """Validate all required and optional environment variables"""
+    errors = []
+    warnings = []
+    
+    # Critical required variables
+    required_vars = {
+        'DISCORD_BOT_TOKEN': {
+            'required': True,
+            'validator': lambda v: len(v) >= 50 and v.startswith(('M', 'N', 'O')),
+            'error_msg': 'Invalid Discord bot token format (should be 50+ chars starting with M/N/O)'
+        },
+        'GUILD_ID': {
+            'required': True,
+            'validator': lambda v: v.isdigit(),
+            'error_msg': 'GUILD_ID must be numeric'
+        }
+    }
+    
+    # Optional but recommended variables
+    recommended_vars = {
+        'WEBHOOK_SECRET_KEY': {
+            'required': False,
+            'validator': lambda v: len(v) >= 16,
+            'warning_msg': 'WEBHOOK_SECRET_KEY should be at least 16 characters for security'
+        },
+        'API_AUTH_TOKEN': {
+            'required': False,
+            'validator': lambda v: len(v) >= 16 if v else True,
+            'warning_msg': 'API_AUTH_TOKEN recommended for securing stats endpoints'
+        }
+    }
+    
+    # Validate required variables
+    for var_name, config in required_vars.items():
+        value = os.getenv(var_name)
+        if not value:
+            errors.append(f"❌ {var_name} is required but not set")
+        elif not config['validator'](value):
+            errors.append(f"❌ {var_name}: {config['error_msg']}")
+    
+    # Validate recommended variables
+    for var_name, config in recommended_vars.items():
+        value = os.getenv(var_name)
+        if value and not config['validator'](value):
+            warnings.append(f"⚠️ {var_name}: {config['warning_msg']}")
+        elif not value:
+            warnings.append(f"⚠️ {var_name} not set - {config['warning_msg']}")
+    
+    # Report results
+    if errors:
+        print("\n" + "="*60)
+        print("SECURITY ERROR: Missing or invalid environment variables:")
+        for error in errors:
+            print(f"  {error}")
+        print("="*60 + "\n")
+        return False
+    
+    if warnings:
+        print("\n" + "="*60)
+        print("Security warnings:")
+        for warning in warnings:
+            print(f"  {warning}")
+        print("="*60 + "\n")
+    
+    return True
+
 def load_secure_config():
+    """Load and validate secure configuration"""
+    if not validate_environment_variables():
+        exit(1)
+    
     bot_token = os.getenv('DISCORD_BOT_TOKEN')
     guild_id = os.getenv('GUILD_ID')
     
-    if not bot_token:
-        print("❌ SECURITY ERROR: DISCORD_BOT_TOKEN environment variable not set!")
-        exit(1)
-    
-    if not guild_id:
-        print("❌ SECURITY ERROR: GUILD_ID environment variable not set!")
-        exit(1)
-    
-    if len(bot_token) < 50 or not bot_token.startswith(('M', 'N', 'O')):
-        logger.error("SECURITY ERROR: Invalid Discord bot token format detected!")
-        exit(1)
-    
-    logger.info("SECURITY: Secure configuration loaded from environment variables")
-    logger.info(f"Bot token validated successfully (length: {len(bot_token)} characters)")
+    logger.info("✅ SECURITY: All required environment variables validated")
+    logger.info(f"✅ Bot token validated (length: {len(bot_token)} characters)")
     
     return {
         'bot_token': bot_token,
@@ -3038,6 +3225,7 @@ def webhook():
 # Removed duplicate stripe webhook - using /stripe-webhook instead
 
 @app.route('/check_duplicate/<auction_id>', methods=['GET'])
+@rate_limited
 def check_duplicate(auction_id):
     try:
         # FIXED: Use proper placeholder for PostgreSQL
@@ -3059,12 +3247,19 @@ def check_duplicate(auction_id):
             'auction_id': auction_id
         }), 200
     except Exception as e:
+        # Log full error server-side
+        print(f"❌ Error checking duplicate: {e}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
+        # Return sanitized error to client
         return jsonify({
-            'error': str(e),
+            'error': sanitize_error_message(e, user_facing=True),
             'exists': False
         }), 500
 
 @app.route('/stats', methods=['GET'])
+@rate_limited
+@require_api_token()
 def stats():
     total_listings = db_manager.execute_query('SELECT COUNT(*) FROM listings', fetch_one=True)
     total_reactions = db_manager.execute_query('SELECT COUNT(*) FROM reactions', fetch_one=True)
@@ -3087,8 +3282,7 @@ def stats():
 # Stripe webhook endpoints removed - using Whop.com instead
 
 @app.route('/webhook/listing', methods=['POST'])
-# SECURITY: Enable webhook authentication by uncommenting below and setting WEBHOOK_SECRET_KEY in Railway
-# @secure_webhook_required(os.getenv('WEBHOOK_SECRET_KEY'))
+@secure_webhook
 def webhook_listing():
     """Receive listing from multiple scrapers with rate limiting buffer"""
     try:
@@ -3194,6 +3388,8 @@ def webhook_listing_with_delay():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/webhook/stats', methods=['POST'])
+@rate_limited
+@require_api_token()
 def webhook_stats():
     """Log scraper statistics"""
     try:
