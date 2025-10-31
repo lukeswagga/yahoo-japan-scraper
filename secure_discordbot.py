@@ -912,9 +912,12 @@ def create_enhanced_listing_embed(listing_data):
     
     description += link_section
     
+    # Use Buyee URL as main embed link (clickable title)
+    buyee_url = f"https://buyee.jp/item/yahoo/auction/{auction_id_clean}"
+    
     embed = discord.Embed(
         title=display_title,
-        url=zenmarket_url,
+        url=buyee_url,
         description=description,
         color=config['color'],
         timestamp=datetime.now(timezone.utc)
@@ -2722,9 +2725,13 @@ async def create_bookmark_channel_for_user(user, auction_data):
             bookmark_channel = existing_channel
         
         # CREATE BOOKMARK EMBED WITH THUMBNAIL (this is the key fix)
+        # Use Buyee URL as main embed link (clickable title)
+        auction_id_clean = auction_data['auction_id'].replace('yahoo_', '')
+        buyee_url = f"https://buyee.jp/item/yahoo/auction/{auction_id_clean}"
+        
         embed = discord.Embed(
             title=auction_data['title'][:100],  # Truncate long titles
-            url=auction_data['zenmarket_url'],
+            url=buyee_url,
             description=f"**Brand:** {auction_data['brand'].replace('_', ' ').title()}\n**Price:** ¥{auction_data['price_jpy']:,} (~${auction_data['price_usd']:.2f})",
             color=0x00ff00,
             timestamp=datetime.now(timezone.utc)
@@ -3676,9 +3683,12 @@ def create_listing_embed(listing_data):
     
     description += link_section
     
+    # Use Buyee URL as main embed link (clickable title)
+    buyee_url = f"https://buyee.jp/item/yahoo/auction/{auction_id_clean}"
+    
     embed = discord.Embed(
         title=display_title,
-        url=zenmarket_url,
+        url=buyee_url,
         description=description,
         color=color,
         timestamp=datetime.now(timezone.utc)
