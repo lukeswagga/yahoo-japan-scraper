@@ -339,10 +339,34 @@ class SimpleHealthHandler(BaseHTTPRequestHandler):
         pass
 
 # Initialize webhook security if secret is available
+# NOTE: Made optional - verifies signatures if provided, but doesn't reject if missing
+# This allows scrapers to work while transitioning to signed webhooks
 webhook_secret = os.getenv('WEBHOOK_SECRET_KEY')
 if webhook_secret:
-    print("✅ Webhook security enabled - signature verification active")
-    secure_webhook = secure_webhook_required(webhook_secret)
+    print("✅ Webhook security available - will verify signatures if provided")
+    # Create a lenient webhook decorator that verifies if signature present, but allows without
+    def secure_webhook(func):
+        def wrapper(*args, **kwargs):
+            signature = request.headers.get('X-Signature')
+            if signature:
+                # Signature provided - verify it
+                from webhook_security import WebhookSecurity
+                security = WebhookSecurity(webhook_secret)
+                client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+                
+                if not security.verify_signature(request.data, signature):
+                    print(f"❌ Invalid signature from {client_ip}")
+                    return jsonify({"error": "Invalid signature"}), 401
+                print(f"✅ Valid signature verified from {client_ip}")
+            else:
+                # No signature - allow but warn (for transition period)
+                client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+                print(f"⚠️ Webhook from {client_ip} has no signature - allowing (update scraper to add signature)")
+            
+            # Continue with request
+            return func(*args, **kwargs)
+        wrapper.__name__ = func.__name__
+        return wrapper
 else:
     print("⚠️ WARNING: WEBHOOK_SECRET_KEY not set - webhook security disabled!")
     print("⚠️ Set WEBHOOK_SECRET_KEY in Railway to enable webhook authentication")
