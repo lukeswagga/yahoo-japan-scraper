@@ -199,10 +199,14 @@ class ChannelRouter:
             Discord Embed object
         """
         try:
+            # Generate Buyee URL for main embed link (clickable title)
+            auction_id_clean = listing_data.get('auction_id', '').replace('yahoo_', '')
+            buyee_url = f"https://buyee.jp/item/yahoo/auction/{auction_id_clean}" if auction_id_clean else ''
+            
             # Create base embed
             embed = discord.Embed(
                 title=listing_data.get('title', 'Unknown Title')[:256],
-                url=listing_data.get('zenmarket_url', ''),
+                url=buyee_url,
                 color=discord.Color.blue(),
                 timestamp=datetime.now(timezone.utc)
             )
@@ -255,7 +259,7 @@ class ChannelRouter:
             # Add links - Yahoo Japan first, then Buyee, then Zenmarket
             yahoo_url = listing_data.get('yahoo_url', '')
             zenmarket_url = listing_data.get('zenmarket_url', '')
-            auction_id_clean = listing_data.get('auction_id', '').replace('yahoo_', '')
+            # auction_id_clean already defined above for buyee_url
             
             links = []
             if yahoo_url:
