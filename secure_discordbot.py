@@ -3072,6 +3072,97 @@ def stats():
 
 # Stripe webhook endpoints removed - using Whop.com instead
 
+@app.route('/whop/webhook', methods=['POST'])
+def whop_webhook():
+    """Handle Whop.com webhook events for role management"""
+    try:
+        # Verify webhook signature if Whop provides one
+        whop_secret = os.getenv('WHOP_WEBHOOK_SECRET')
+        if whop_secret:
+            signature = request.headers.get('X-Whop-Signature') or request.headers.get('Whop-Signature')
+            if signature:
+                # Verify signature (implement based on Whop's signature method)
+                # This is a placeholder - adjust based on Whop's actual signature verification
+                expected_sig = hmac.new(
+                    whop_secret.encode(),
+                    request.get_data(),
+                    hashlib.sha256
+                ).hexdigest()
+                if signature != expected_sig:
+                    print("❌ Invalid Whop webhook signature")
+                    return jsonify({"error": "Invalid signature"}), 401
+        
+        data = request.get_json()
+        event_type = data.get('type') or data.get('event')
+        
+        print(f"📧 Whop webhook received: {event_type}")
+        print(f"📧 Webhook data: {json.dumps(data, indent=2)}")
+        
+        # Handle different event types
+        if event_type in ['order.paid', 'subscription.created', 'pass.activated']:
+            # User purchased/subscribed - assign role
+            discord_id = data.get('user', {}).get('discord_id') or data.get('discord_id')
+            product_name = data.get('product', {}).get('name') or data.get('product_name', '').lower()
+            
+            if not discord_id:
+                print("❌ No Discord ID in webhook data")
+                return jsonify({"error": "Missing Discord ID"}), 400
+            
+            # Map product name to tier
+            tier = None
+            if 'instant' in product_name:
+                tier = 'instant'
+            elif 'standard' in product_name:
+                tier = 'standard'
+            else:
+                # Try to get tier from metadata or custom fields
+                tier = data.get('metadata', {}).get('tier') or data.get('custom_fields', {}).get('tier')
+            
+            if tier and tier_manager_new:
+                # Assign role asynchronously
+                def assign_role():
+                    try:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(tier_manager_new.set_user_tier(str(discord_id), tier))
+                        print(f"✅ Assigned {tier} tier to Discord user {discord_id} via Whop webhook")
+                        loop.close()
+                    except Exception as e:
+                        print(f"❌ Error assigning role: {e}")
+                
+                threading.Thread(target=assign_role).start()
+                return jsonify({"status": "success", "message": f"Role assigned: {tier}"}), 200
+            else:
+                print(f"⚠️ Could not determine tier for product: {product_name}")
+        
+        elif event_type in ['order.refunded', 'subscription.cancelled', 'pass.revoked', 'subscription.expired']:
+            # User cancelled/refunded - remove role
+            discord_id = data.get('user', {}).get('discord_id') or data.get('discord_id')
+            
+            if discord_id and tier_manager_new:
+                # Downgrade to free tier
+                def remove_role():
+                    try:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(tier_manager_new.set_user_tier(str(discord_id), 'free'))
+                        print(f"✅ Removed paid tier from Discord user {discord_id} via Whop webhook")
+                        loop.close()
+                    except Exception as e:
+                        print(f"❌ Error removing role: {e}")
+                
+                threading.Thread(target=remove_role).start()
+                return jsonify({"status": "success", "message": "Role removed"}), 200
+        
+        # Acknowledge webhook even if we don't handle it
+        return jsonify({"status": "received"}), 200
+        
+    except Exception as e:
+        print(f"❌ Whop webhook error: {e}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/webhook/listing', methods=['POST'])
 # @secure_webhook_required(os.getenv('WEBHOOK_SECRET_KEY', 'your-secret-key-here'))  # Temporarily disabled
 def webhook_listing():
@@ -5022,6 +5113,51 @@ async def test_standard_feed(ctx):
         print(f"❌ Test standard error: {traceback.format_exc()}")
 
 # Stripe subscription commands removed - using Whop.com instead
+
+@bot.command(name='testwhop')
+@commands.has_permissions(administrator=True)
+async def test_whop_integration(ctx, discord_id: str = None, tier: str = None):
+    """Test Whop integration by manually assigning a tier (admin only)"""
+    try:
+        # If no parameters, use the author's ID and show current tier
+        if not discord_id:
+            discord_id = str(ctx.author.id)
+            if tier_manager_new:
+                current_tier = await tier_manager_new.get_user_tier(discord_id)
+                await ctx.send(f"✅ Your current tier: **{current_tier.title()}**\n"
+                             f"Usage: `!testwhop <discord_id> <tier>` to test role assignment")
+                return
+            else:
+                await ctx.send("❌ Tier manager not available")
+                return
+        
+        # Validate tier
+        if tier and tier.lower() not in ['free', 'standard', 'instant']:
+            await ctx.send("❌ Invalid tier. Use: free, standard, or instant")
+            return
+        
+        if not tier_manager_new:
+            await ctx.send("❌ Tier manager not available")
+            return
+        
+        # Assign tier
+        tier_to_assign = tier.lower() if tier else 'free'
+        await tier_manager_new.set_user_tier(discord_id, tier_to_assign)
+        
+        # Get the user to verify
+        try:
+            user = bot.get_user(int(discord_id))
+            user_mention = user.mention if user else f"User {discord_id}"
+        except:
+            user_mention = f"User {discord_id}"
+        
+        await ctx.send(f"✅ Test successful! Assigned **{tier_to_assign.title()}** tier to {user_mention}\n"
+                      f"🔍 Check their roles in the server to verify.")
+        
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+        import traceback
+        print(f"❌ Test Whop error: {traceback.format_exc()}")
 
 # ============================================================================
 # TIER NOTIFICATION FUNCTIONS
