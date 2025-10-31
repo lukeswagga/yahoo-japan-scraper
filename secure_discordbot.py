@@ -901,10 +901,14 @@ def create_enhanced_listing_embed(listing_data):
             pass
     
     auction_id_clean = auction_id.replace('yahoo_', '')
-    link_section = "\n**🛒 Proxy Links:**\n"
-    for key, proxy_info in SUPPORTED_PROXIES.items():
-        proxy_url = generate_proxy_url(auction_id_clean, key)
-        link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
+    link_section = "\n**🛒 Links:**\n"
+    # Order: Yahoo Japan first, then Buyee, then Zenmarket
+    link_order = ['yahoo_japan', 'buyee', 'zenmarket']
+    for key in link_order:
+        if key in SUPPORTED_PROXIES:
+            proxy_info = SUPPORTED_PROXIES[key]
+            proxy_url = generate_proxy_url(auction_id_clean, key)
+            link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
     
     description += link_section
     
@@ -2740,15 +2744,18 @@ async def create_bookmark_channel_for_user(user, auction_data):
             inline=True
         )
         
-        # Add proxy links
+        # Add proxy links - Yahoo Japan first, then Buyee, then Zenmarket
         auction_id_clean = auction_data['auction_id'].replace('yahoo_', '')
         proxy_links = []
-        for key, proxy_info in SUPPORTED_PROXIES.items():
-            proxy_url = generate_proxy_url(auction_id_clean, key)
-            proxy_links.append(f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})")
+        link_order = ['yahoo_japan', 'buyee', 'zenmarket']
+        for key in link_order:
+            if key in SUPPORTED_PROXIES:
+                proxy_info = SUPPORTED_PROXIES[key]
+                proxy_url = generate_proxy_url(auction_id_clean, key)
+                proxy_links.append(f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})")
         
         embed.add_field(
-            name="🛒 Proxy Links",
+            name="🛒 Links",
             value="\n".join(proxy_links),
             inline=False
         )
@@ -3073,7 +3080,8 @@ def stats():
 # Stripe webhook endpoints removed - using Whop.com instead
 
 @app.route('/webhook/listing', methods=['POST'])
-# @secure_webhook_required(os.getenv('WEBHOOK_SECRET_KEY', 'your-secret-key-here'))  # Temporarily disabled
+# SECURITY: Enable webhook authentication by uncommenting below and setting WEBHOOK_SECRET_KEY in Railway
+# @secure_webhook_required(os.getenv('WEBHOOK_SECRET_KEY'))
 def webhook_listing():
     """Receive listing from multiple scrapers with rate limiting buffer"""
     try:
@@ -3657,10 +3665,14 @@ def create_listing_embed(listing_data):
             pass
     
     auction_id_clean = auction_id.replace('yahoo_', '')
-    link_section = "\n**🛒 Proxy Links:**\n"
-    for key, proxy_info in SUPPORTED_PROXIES.items():
-        proxy_url = generate_proxy_url(auction_id_clean, key)
-        link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
+    link_section = "\n**🛒 Links:**\n"
+    # Order: Yahoo Japan first, then Buyee, then Zenmarket
+    link_order = ['yahoo_japan', 'buyee', 'zenmarket']
+    for key in link_order:
+        if key in SUPPORTED_PROXIES:
+            proxy_info = SUPPORTED_PROXIES[key]
+            proxy_url = generate_proxy_url(auction_id_clean, key)
+            link_section += f"{proxy_info['emoji']} [{proxy_info['name']}]({proxy_url})\n"
     
     description += link_section
     

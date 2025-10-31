@@ -252,13 +252,28 @@ class ChannelRouter:
             if image_url:
                 embed.set_thumbnail(url=image_url)
             
-            # Add links
+            # Add links - Yahoo Japan first, then Buyee, then Zenmarket
             yahoo_url = listing_data.get('yahoo_url', '')
             zenmarket_url = listing_data.get('zenmarket_url', '')
-            if yahoo_url and zenmarket_url:
+            auction_id_clean = listing_data.get('auction_id', '').replace('yahoo_', '')
+            
+            links = []
+            if yahoo_url:
+                links.append(f"🇯🇵 [Yahoo Japan]({yahoo_url})")
+            if auction_id_clean:
+                # Buyee link
+                buyee_url = f"https://buyee.jp/item/yahoo/auction/{auction_id_clean}"
+                links.append(f"📦 [Buyee]({buyee_url})")
+                # Zenmarket link (if not already in yahoo_url)
+                if not zenmarket_url:
+                    zenmarket_url = f"https://zenmarket.jp/en/auction.aspx?itemCode={auction_id_clean}"
+            if zenmarket_url:
+                links.append(f"🛒 [ZenMarket]({zenmarket_url})")
+            
+            if links:
                 embed.add_field(
                     name="🔗 Links", 
-                    value=f"[Yahoo Japan]({yahoo_url}) | [ZenMarket]({zenmarket_url})", 
+                    value=" | ".join(links), 
                     inline=False
                 )
             
@@ -311,6 +326,7 @@ class ChannelRouter:
                         stats['standard_channels'] += 1
                     elif channel_name in self.brand_to_channel.values():
                         stats['brand_channels'] += 1
+  
                     else:
                         stats['instant_channels'] += 1
                 else:
