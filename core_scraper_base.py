@@ -18,29 +18,48 @@ from flask import Flask
 import threading
 import random
 
+# Import enhanced filtering system
+from enhancedfiltering import EnhancedSpamDetector, QualityChecker
+
 class YahooScraperBase:
     def __init__(self, scraper_name):
         self.scraper_name = scraper_name
         self.seen_file = f"seen_{scraper_name}.json"
         self.scraper_db = "auction_tracking.db"
-        
+
         # Discord Bot Integration
         self.discord_bot_url = os.getenv('DISCORD_BOT_URL', 'https://motivated-stillness-production.up.railway.app')
         if self.discord_bot_url and not self.discord_bot_url.startswith(('http://', 'https://')):
             self.discord_bot_url = f"https://{self.discord_bot_url}"
-        
+
         # Exchange rate
         self.current_usd_jpy_rate = 147.0
         self.seen_ids = self.load_seen_items()
-        
+
         # Brand data
         self.brand_data = self.load_brand_data()
-        
+
+        # Enhanced filtering system (integrated from enhancedfiltering.py)
+        self.spam_detector = EnhancedSpamDetector()
+        self.quality_checker = QualityChecker()
+
+        # Filtering statistics for analytics
+        self.stats = {
+            'total_processed': 0,
+            'spam_blocked': 0,
+            'clothing_blocked': 0,
+            'price_blocked': 0,
+            'quality_blocked': 0,
+            'sent': 0
+        }
+
         # Flask health server
         self.app = Flask(__name__)
         self.setup_health_routes()
-        
+
         print(f"🚀 {scraper_name} initialized")
+        print(f"🛡️ Enhanced spam detector loaded")
+        print(f"📊 Quality checker initialized")
     
     def setup_health_routes(self):
         @self.app.route('/health', methods=['GET'])
@@ -213,34 +232,43 @@ class YahooScraperBase:
     def extract_auction_data(self, item):
         """Extract auction data from BeautifulSoup item"""
         try:
+            self.stats['total_processed'] += 1
+
             # Get auction link and ID
             link_tag = item.select_one("a.Product__titleLink")
             if not link_tag:
                 return None
-                
+
             link = link_tag.get('href', '')
             if not link.startswith("http"):
                 link = "https://auctions.yahoo.co.jp" + link
-                
+
             # Get auction ID using improved extraction
             auction_id = self.extract_auction_id_from_url(link)
             if not auction_id or auction_id in self.seen_ids:
                 return None
-            
+
             # Debug: Print the auction ID and URL for troubleshooting
             print(f"🔍 Extracted auction ID: '{auction_id}' from URL: {link}")
-            
+
             # Get title
             title = link_tag.get_text(strip=True)
             if not title:
                 return None
-            
-            # Enhanced spam filtering before clothing check
-            if self.is_enhanced_spam(title):
-                print(f"🚫 Enhanced spam filter blocked: {title[:50]}...")
+
+            # Detect brand early for spam detection
+            brand = self.detect_brand_in_title(title)
+
+            # ENHANCED spam filtering using EnhancedSpamDetector
+            is_spam, spam_type = self.spam_detector.is_spam(title, brand, item, "", link)
+            if is_spam:
+                self.stats['spam_blocked'] += 1
+                print(f"🚫 Spam blocked ({spam_type}): {title[:50]}...")
                 return None
-            
+
+            # Clothing check (less aggressive now)
             if not self.is_clothing_item(title):
+                self.stats['clothing_blocked'] += 1
                 print(f"🚫 Clothing filter blocked: {title[:50]}...")
                 return None
             
@@ -360,28 +388,46 @@ class YahooScraperBase:
         return False
     
     def is_clothing_item(self, title):
-        """Enhanced clothing detection with better filtering"""
-        # First check for spam using enhanced filtering
-        if self.is_enhanced_spam(title):
-            return False
-            
+        """Less restrictive clothing detection - allow more items through"""
         title_lower = title.lower()
-        
-        # Look for clothing keywords (expanded)
+
+        # Expanded clothing keywords for better coverage
         clothing_keywords = {
-            "shirt", "tee", "tshirt", "t-shirt", "jacket", "blazer", "coat",
-            "pants", "trousers", "jeans", "hoodie", "sweatshirt", "sweater",
-            "dress", "skirt", "shorts", "vest", "cardigan", "pullover",
+            # English keywords
+            "shirt", "tee", "tshirt", "t-shirt", "jacket", "blazer", "coat", "parka",
+            "pants", "trousers", "jeans", "denim", "hoodie", "sweatshirt", "sweater",
+            "dress", "skirt", "shorts", "vest", "cardigan", "pullover", "knit",
+            "top", "bottom", "wear", "outerwear", "innerwear", "clothing", "apparel",
+            "suit", "blazer", "overcoat", "windbreaker", "bomber", "leather",
+            "cargo", "chino", "jogger", "sweatpants", "tracksuit", "jersey",
+            "polo", "henley", "tank", "sleeveless", "longsleeve", "crewneck",
+            "boots", "shoes", "sneakers", "sandals", "loafers", "oxfords",
+
+            # Japanese keywords (comprehensive)
             "シャツ", "Tシャツ", "ジャケット", "コート", "パンツ", "ジーンズ",
             "パーカー", "スウェット", "セーター", "ワンピース", "スカート",
-            "ベスト", "カーディガン", "プルオーバー", "アウター", "インナー"
+            "ベスト", "カーディガン", "プルオーバー", "アウター", "インナー",
+            "トップス", "ボトムス", "ウェア", "服", "衣類", "洋服",
+            "デニム", "ニット", "スーツ", "ブレザー", "オーバーコート",
+            "ボンバー", "レザー", "カーゴ", "チノ", "ジョガー",
+            "ポロ", "タンクトップ", "長袖", "半袖", "クルーネック",
+            "ブーツ", "シューズ", "スニーカー", "サンダル", "ローファー"
         }
-        
-        for clothing_word in clothing_keywords:
-            if clothing_word in title_lower:
+
+        # Check for any clothing keyword
+        for keyword in clothing_keywords:
+            if keyword in title_lower:
                 return True
-        
-        return True  # Default to allowing items that aren't clearly excluded
+
+        # LESS RESTRICTIVE: Allow items from known fashion brands even without keywords
+        # If it's from a recognized brand, assume it's clothing
+        brand = self.detect_brand_in_title(title)
+        if brand != "Unknown":
+            print(f"✅ Allowing brand item without clothing keyword: {brand}")
+            return True
+
+        # Default to ALLOWING (changed from blocking) - trust spam filter to catch non-fashion
+        return True
     
     def extract_price_from_text(self, price_text):
         """Extract numeric price from price text"""
@@ -471,28 +517,29 @@ class YahooScraperBase:
         """Send auction data to Discord via webhook"""
         try:
             webhook_url = f"{self.discord_bot_url}/webhook/listing"
-            
+
             # Debug logging
             print(f"🔗 Attempting to send to: {webhook_url}")
             print(f"📦 Data includes scraper_source: {auction_data.get('scraper_source', 'NOT SET')}")
-            
+
             # Ensure scraper_source is set for proper Discord bot routing
             if 'scraper_source' not in auction_data:
                 auction_data['scraper_source'] = self.scraper_name
-            
+
             response = requests.post(webhook_url, json=auction_data, timeout=10)
-            
+
             print(f"📡 Response status: {response.status_code}")
             if response.status_code != 200:
                 print(f"📄 Response content: {response.text[:200]}...")
-            
+
             if response.status_code in [200, 204]:
+                self.stats['sent'] += 1  # Track successful sends
                 print(f"✅ Sent to Discord bot: {auction_data['title'][:50]}...")
                 return True
             else:
                 print(f"❌ Discord webhook failed: {response.status_code}")
                 return False
-                
+
         except Exception as e:
             print(f"❌ Discord webhook error: {e}")
             return False
@@ -527,7 +574,7 @@ class YahooScraperBase:
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         ]
-        
+
         return {
             'User-Agent': random.choice(user_agents),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -537,3 +584,49 @@ class YahooScraperBase:
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1'
         }
+
+    def analyze_filtering(self):
+        """Log filtering statistics for debugging and optimization"""
+        print(f"\n📊 ===== {self.scraper_name.upper()} FILTERING STATISTICS =====")
+        print(f"   Total items processed:    {self.stats['total_processed']}")
+        print(f"   🚫 Blocked by spam:       {self.stats['spam_blocked']}")
+        print(f"   🚫 Blocked by clothing:   {self.stats['clothing_blocked']}")
+        print(f"   🚫 Blocked by price:      {self.stats['price_blocked']}")
+        print(f"   🚫 Blocked by quality:    {self.stats['quality_blocked']}")
+        print(f"   ✅ Sent to Discord:       {self.stats['sent']}")
+        print(f"   📦 Seen IDs tracked:      {len(self.seen_ids)}")
+
+        # Calculate percentages
+        if self.stats['total_processed'] > 0:
+            sent_rate = (self.stats['sent'] / self.stats['total_processed']) * 100
+            spam_rate = (self.stats['spam_blocked'] / self.stats['total_processed']) * 100
+            print(f"\n   📈 Send rate:             {sent_rate:.1f}%")
+            print(f"   📉 Spam block rate:       {spam_rate:.1f}%")
+
+        print(f"========================================\n")
+
+    def cleanup_old_seen_ids(self):
+        """Remove seen IDs older than retention period to prevent memory bloat"""
+        try:
+            current_size = len(self.seen_ids)
+
+            # Aggressive cleanup if we're over 50,000 items
+            if current_size > 50000:
+                print(f"🧹 AGGRESSIVE CLEANUP: {current_size} seen_ids (>50,000 limit)")
+                # Keep only most recent 10,000 items
+                self.seen_ids = set(list(self.seen_ids)[-10000:])
+                self.save_seen_items()
+                new_size = len(self.seen_ids)
+                print(f"✅ Cleaned from {current_size} to {new_size} items")
+
+            # Normal cleanup if we're over 30,000 items
+            elif current_size > 30000:
+                print(f"🧹 NORMAL CLEANUP: {current_size} seen_ids (>30,000)")
+                # Keep most recent 20,000 items
+                self.seen_ids = set(list(self.seen_ids)[-20000:])
+                self.save_seen_items()
+                new_size = len(self.seen_ids)
+                print(f"✅ Cleaned from {current_size} to {new_size} items")
+
+        except Exception as e:
+            print(f"⚠️ Error during seen_ids cleanup: {e}")
