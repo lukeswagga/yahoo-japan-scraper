@@ -1549,6 +1549,9 @@ async def send_single_listing_enhanced(auction_data):
             channel = discord.utils.get(guild.text_channels, name=channel_name)
             if channel:
                 try:
+                    # CRITICAL: Check per-channel rate limit before sending (5 msgs/5s limit)
+                    await respect_channel_rate_limit(channel.id)
+
                     message = await channel.send(embed=embed)
                     sent_count += 1
                     
@@ -1596,7 +1599,10 @@ async def send_to_premium_channels_immediately(listing_data):
         if channel:
             embed = create_enhanced_listing_embed(listing_data)
             embed.set_footer(text=f"Pro/Elite Real-time Alert | ID: {listing_data['auction_id']}")
-            
+
+            # CRITICAL: Check per-channel rate limit before sending (5 msgs/5s limit)
+            await respect_channel_rate_limit(channel.id)
+
             # Check channel permissions - only Pro/Elite should see this
             await channel.send(embed=embed)
             print(f"⚡ Sent real-time alert to #{channel.name}")
@@ -1606,6 +1612,35 @@ async def send_to_premium_channels_immediately(listing_data):
         
     except Exception as e:
         print(f"❌ Error sending to premium channels: {e}")
+
+# Track rate limits per channel to avoid 429 errors
+channel_rate_limits = {}
+
+async def respect_channel_rate_limit(channel_id):
+    """Ensure we don't exceed 5 messages per 5 seconds per channel (Discord limit)"""
+    import time
+    current_time = time.time()
+
+    if channel_id not in channel_rate_limits:
+        channel_rate_limits[channel_id] = []
+
+    # Remove timestamps older than 5 seconds
+    channel_rate_limits[channel_id] = [
+        timestamp for timestamp in channel_rate_limits[channel_id]
+        if current_time - timestamp < 5
+    ]
+
+    # If we've sent 5 messages in the last 5 seconds, wait
+    if len(channel_rate_limits[channel_id]) >= 5:
+        wait_time = 5 - (current_time - channel_rate_limits[channel_id][0])
+        if wait_time > 0:
+            print(f"⏳ Per-channel rate limit protection: waiting {wait_time:.1f}s for channel {channel_id}")
+            await asyncio.sleep(wait_time)
+            # Clear old entries after waiting
+            channel_rate_limits[channel_id] = []
+
+    # Record this send
+    channel_rate_limits[channel_id].append(current_time)
 
 async def send_individual_listings_with_rate_limit(batch_data):
     """Send listings with minimal rate limiting - Discord can handle 50 req/s"""
@@ -1619,7 +1654,7 @@ async def send_individual_listings_with_rate_limit(batch_data):
                     print(f"⚠️ Skipped {i}/{len(batch_data)}")
 
                 if i < len(batch_data):
-                    await asyncio.sleep(0.1)  # EMERGENCY: Reduced from 1.5s to 0.1s for faster processing
+                    await asyncio.sleep(1.2)  # Per-channel safe: 5 msgs per 6 seconds = safe rate
 
             except discord.HTTPException as e:
                 if e.status == 429:  # Rate limited by Discord
@@ -1846,12 +1881,16 @@ async def post_top_standard_feed_listings():
         for i, (listing_data, priority_score) in enumerate(listings, 1):
             try:
                 embed = create_listing_embed(listing_data)
+
+                # CRITICAL: Check per-channel rate limit before sending (5 msgs/5s limit)
+                await respect_channel_rate_limit(channel.id)
+
                 await channel.send(embed=embed)
                 posted_auction_ids.append(listing_data.get('auction_id'))
                 print(f"✅ Posted listing {i}/5 to #{channel.name} (priority: {priority_score:.2f})")
-                
-                # Small delay between posts
-                await asyncio.sleep(2)
+
+                # Small delay between posts (reduced from 2s - respect_channel_rate_limit handles this)
+                await asyncio.sleep(0.5)
                 
             except Exception as e:
                 print(f"❌ Failed to post listing {i}: {e}")
@@ -2796,10 +2835,14 @@ async def send_guide_command(ctx):
         for i, embed in enumerate(embeds):
             try:
                 print(f"📤 Sending guide embed {i+1}/{len(embeds)}")
+
+                # CRITICAL: Check per-channel rate limit before sending (5 msgs/5s limit)
+                await respect_channel_rate_limit(channel.id)
+
                 message = await channel.send(embed=embed)
                 messages.append(message)
                 if i < len(embeds) - 1:  # Don't sleep after last message
-                    await asyncio.sleep(2)  # Delay to avoid rate limits
+                    await asyncio.sleep(1.0)  # Reduced from 2s - respect_channel_rate_limit handles this
             except Exception as e:
                 print(f"❌ Error sending embed {i+1}: {e}")
                 continue
