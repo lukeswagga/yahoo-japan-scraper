@@ -86,19 +86,26 @@ class SellerMonitorScraper(YahooScraperBase):
 
     def build_seller_url(self, seller_id, page=1):
         """
-        Build Yahoo Japan seller listing URL
+        Build Yahoo Japan seller listing URL using search with seller filter
+        This ensures we get the same HTML structure as other scrapers
 
         Args:
             seller_id: Yahoo seller ID
             page: Page number (1-based)
         """
-        base_url = "https://auctions.yahoo.co.jp/seller"
+        base_url = "https://auctions.yahoo.co.jp/search/search"
 
         # Calculate starting position (100 items per page)
         start_position = (page - 1) * 100 + 1
 
-        # Build seller page URL with pagination
-        url = f"{base_url}/{seller_id}?b={start_position}&n=100&s1=new&o1=d"
+        # Build search URL filtered by seller, sorted by newest first
+        # Using sellerID parameter to filter by specific seller
+        url = (f"{base_url}?seller={seller_id}"
+               f"&b={start_position}"
+               f"&n=100"
+               f"&s1=new"  # Sort by newest
+               f"&o1=d"    # Descending order
+               f"&fixed=3") # Both auctions and fixed price
 
         return url
 
@@ -165,24 +172,35 @@ class SellerMonitorScraper(YahooScraperBase):
             try:
                 url = self.build_seller_url(seller_id, page)
 
-                print(f"  📄 Page {page}: {url}")
+                print(f"  📄 Page {page}/{max_pages}: {url}")
 
                 headers = self.get_request_headers()
                 response = requests.get(url, headers=headers, timeout=15)
 
                 if response.status_code != 200:
-                    print(f"  ⚠️ Got status code {response.status_code}")
+                    print(f"  ⚠️ Got status code {response.status_code} on page {page}")
                     break
 
                 soup = BeautifulSoup(response.text, "html.parser")
                 items = soup.select("li.Product")
 
                 if not items:
-                    print(f"  ℹ️ No items found on page {page}")
+                    print(f"  ℹ️ No items found on page {page} (seller may have no listings or reached end)")
+                    # Don't break on first page - might be wrong selector
+                    if page == 1:
+                        print(f"  🔍 Debugging: Checking for alternative selectors...")
+                        # Try alternative selectors
+                        alt_items = soup.select(".Product, article, div[class*='item']")
+                        if alt_items:
+                            print(f"  ⚠️ Found {len(alt_items)} items with alternative selector!")
+                        else:
+                            print(f"  ❌ No items found with any selector - seller may have no active listings")
                     break
 
-                print(f"  📦 Found {len(items)} items on page {page}")
+                print(f"  📦 Found {len(items)} raw items on page {page}")
 
+                # Track successful extractions
+                extracted_count = 0
                 for item in items:
                     auction_data = self.extract_auction_data(item)
                     if auction_data:
@@ -190,6 +208,14 @@ class SellerMonitorScraper(YahooScraperBase):
                         auction_data['seller_id'] = seller_id
                         auction_data['scraper_source'] = 'seller_monitor_scraper'
                         all_listings.append(auction_data)
+                        extracted_count += 1
+
+                print(f"  ✅ Successfully extracted {extracted_count}/{len(items)} items from page {page}")
+
+                # If we got fewer items than expected, might be last page
+                if len(items) < 50 and page > 1:
+                    print(f"  ℹ️ Found fewer items ({len(items)}) - likely last page")
+                    # Still continue to next page to be sure
 
                 # Rate limiting between pages
                 if page < max_pages:
@@ -198,8 +224,11 @@ class SellerMonitorScraper(YahooScraperBase):
 
             except Exception as e:
                 print(f"  ❌ Error scraping page {page}: {e}")
+                import traceback
+                traceback.print_exc()
                 break
 
+        print(f"  📊 Total listings extracted from {seller_id}: {len(all_listings)}")
         return all_listings
 
     def is_new_listing(self, seller_id, auction_id):
