@@ -34,10 +34,10 @@ class DigestManager:
         """
         try:
             logger.info("🔄 Starting daily digest generation...")
-            
-            # Get top 20 listings from past 24 hours
-            listings = await self.tier_manager.get_top_listings_for_digest(hours=24, limit=20)
-            
+
+            # Get top 50 listings from past 24 hours
+            listings = await self.tier_manager.get_top_listings_for_digest(hours=24, limit=50)
+
             logger.info(f"📊 Found {len(listings)} listings for daily digest")
             
             if not listings:
@@ -104,8 +104,8 @@ class DigestManager:
             
             # Create main embed
             embed = discord.Embed(
-                title="🌅 Daily Digest - Top 20 Listings",
-                description=f"Best deals from the past 24 hours\nPosted {now.strftime('%Y-%m-%d %H:%M UTC')}",
+                title="🌅 Daily Digest - Top 50 Listings",
+                description=f"🔥 Best deals from the past 24 hours\nPosted {now.strftime('%Y-%m-%d %H:%M UTC')}",
                 color=discord.Color.gold(),
                 timestamp=now
             )
