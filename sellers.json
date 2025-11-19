@@ -1,0 +1,185 @@
+{
+  "sellers": [
+    {
+      "seller_id": "7sTcUa1QqrNPSJ6RHRpzcvewQBkkS",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "EEaEf66Si31boMPw7vCVJiwTugSQ7",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "3KSwBmagHxi179c28cfrjXwpvPGA8",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "u1192879957",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "EBWQ58ahmfkLyrMYBUiKteM9nBm89",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "4VhAdiaCsN7Mw7skrNTKDMxdpnfP2",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "7gCtJuKaTWXHCiibksMd7P83DVzvh",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "4dUEDEekraFeuGfxmcHpFSKX7pb8X",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "A929ZZad5gAZ67MVdpkTyLbUwkWe",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "63bFsKE6sLg3UPe7RyoeX8xoLF3wh",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "E4mYaA5JfiNQbetUZxztr5QbKvyyG",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "DFrrWJ4d1pde2CpyNUytzZzhf5Vc4",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "VREgoFr8hbg8vPv3XKWoeT9XLzyo",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "CVtZffKgtgkAt7M6Ud9t8Nk7qnYZN",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "83ykU6zrcuPhtrp4ZkBmpQNDiJbhv",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "CRw9Ws95uexGQgbELnT8JoYRYgJha",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "D89NiKJhXqjjYktYdkZE9MN5xouDH",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "FotUY9ZeEVkYX5mkKwZpLe6iiQpb",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "BBe3wSWqPecWbAHVgWgEKnCZfY2iB",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "4WWZSiJShb7DjMJcKop4nTTdZbnJA",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "ELB1w1R93MtiEV1fgA7HUT6T8Xbsi",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "7bb61oN3enqnyaF9vY51ASmTBCcTG",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "5hdnpEpMtH1hp677rW5W832wipw2d",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "Ctwb89n1b8S5K9pJMJ5eraATttibY",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "DSkmfvqn38yWn8zuK4gU6xGJtfDR",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "29wEJa2mtzWY5VwbBKZ275HM76kQm",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "D2fgywjU9ansVdv1geE5yduqnqwuU",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "DJSar3w4Ms9nEwerZmovfoBrdpcA3",
+      "enabled": true,
+      "priority_level": "normal"
+    },
+    {
+      "seller_id": "3qzEEzcKx1AbHb55HXG9mkss4QFSM",
+      "enabled": true,
+      "priority_level": "normal"
+    }
+  ],
+  "settings": {
+    "check_interval_minutes": 15,
+    "max_pages_per_seller": 3,
+    "priority_keywords": [
+      "Yohji Yamamoto",
+      "Raf Simons",
+      "Rick Owens",
+      "Maison Margiela",
+      "Comme des Garcons",
+      "CDG",
+      "Undercover",
+      "Issey Miyake",
+      "Junya Watanabe",
+      "Number Nine",
+      "Number (N)ine",
+      "Dries Van Noten",
+      "Ann Demeulemeester",
+      "Carol Christian Poell",
+      "Julius",
+      "Boris Bidjan Saberi",
+      "Haider Ackermann",
+      "Helmut Lang",
+      "Archive",
+      "Runway"
+    ],
+    "price_alert_thresholds": {
+      "steal_price_usd": 50,
+      "good_deal_usd": 150,
+      "premium_find_usd": 500
+    },
+    "rate_limiting": {
+      "delay_between_sellers_seconds": 3,
+      "delay_between_pages_seconds": 2,
+      "request_timeout_seconds": 15
+    }
+  }
+}
