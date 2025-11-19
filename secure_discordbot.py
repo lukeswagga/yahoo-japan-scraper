@@ -51,6 +51,16 @@ except ImportError as e:
     daily_scheduler = None
     ADVANCED_FEATURES_AVAILABLE = False
 
+# Resale value predictor (AI-powered)
+try:
+    from resale_predictor import ResaleValuePredictor
+    RESALE_PREDICTOR_AVAILABLE = True
+    print("✅ Resale value predictor module imported successfully")
+except ImportError as e:
+    print(f"⚠️ Resale predictor not available: {e}")
+    ResaleValuePredictor = None
+    RESALE_PREDICTOR_AVAILABLE = False
+
 # Set up secure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -1094,7 +1104,107 @@ def create_enhanced_listing_embed(listing_data):
         embed.set_thumbnail(url=image_url)
     
     embed.set_footer(text=f"ID: {auction_id} | Source: {config['name']} | !setup for proxy config | React 👍/👎 to train")
-    
+
+    return embed
+
+def create_resale_embed(listing_data: dict, prediction: dict) -> discord.Embed:
+    """Create formatted embed for resale prediction"""
+
+    title = listing_data.get('title', 'Unknown')[:100]
+    brand = listing_data.get('brand', 'Unknown')
+    purchase_price = listing_data.get('price_usd', 0)
+    auction_id = listing_data.get('auction_id', 'unknown')
+
+    estimated_low = prediction.get('estimated_low', 0)
+    estimated_high = prediction.get('estimated_high', 0)
+    estimated_avg = prediction.get('estimated_avg', 0)
+    confidence = prediction.get('confidence', 'low')
+    profit_usd = prediction.get('net_profit_usd', 0)
+    profit_margin = prediction.get('net_margin', 0)
+
+    # Determine color based on profit
+    if profit_margin > 50:
+        color = 0x00ff00  # Green - great deal
+    elif profit_margin > 20:
+        color = 0xffd700  # Gold - good deal
+    elif profit_margin > 0:
+        color = 0xff9900  # Orange - marginal
+    else:
+        color = 0xff0000  # Red - likely loss
+
+    embed = discord.Embed(
+        title="💰 Resale Value Analysis",
+        description=f"**{title}**",
+        color=color,
+        timestamp=datetime.now(timezone.utc)
+    )
+
+    embed.add_field(
+        name="📦 Purchase Details",
+        value=f"**Brand:** {brand}\n**Yahoo Price:** ${purchase_price:.2f} USD",
+        inline=False
+    )
+
+    embed.add_field(
+        name="💵 Estimated US Resale",
+        value=f"**Range:** ${estimated_low:.0f} - ${estimated_high:.0f}\n**Average:** ${estimated_avg:.0f}\n**Confidence:** {confidence.upper()}",
+        inline=True
+    )
+
+    embed.add_field(
+        name="📊 Profit Analysis",
+        value=f"**Net Profit:** ${profit_usd:.2f}\n**Margin:** {profit_margin:.1f}%\n**Est. Costs:** ${prediction.get('estimated_costs', 0):.2f}",
+        inline=True
+    )
+
+    # Add reasoning
+    reasoning = prediction.get('reasoning', 'No analysis available')
+    embed.add_field(
+        name="🤔 AI Analysis",
+        value=reasoning[:1024],  # Discord limit
+        inline=False
+    )
+
+    market_notes = prediction.get('market_notes', '')
+    if market_notes:
+        embed.add_field(
+            name="📈 Market Notes",
+            value=market_notes[:1024],
+            inline=False
+        )
+
+    # Add profit recommendation
+    if profit_margin > 50:
+        recommendation = "🔥 **STRONG BUY** - High profit potential"
+    elif profit_margin > 20:
+        recommendation = "✅ **GOOD DEAL** - Solid profit margin"
+    elif profit_margin > 0:
+        recommendation = "⚠️ **MARGINAL** - Small profit, higher risk"
+    else:
+        recommendation = "❌ **PASS** - Likely unprofitable"
+
+    embed.add_field(
+        name="🎯 Recommendation",
+        value=recommendation,
+        inline=False
+    )
+
+    # Add cost breakdown
+    cost_breakdown = prediction.get('cost_breakdown', {})
+    if cost_breakdown:
+        costs_text = (
+            f"**Shipping:** ${cost_breakdown.get('shipping', 0):.2f}\n"
+            f"**Platform Fees:** ${cost_breakdown.get('platform_fees', 0):.2f}\n"
+            f"**Proxy Fee:** ${cost_breakdown.get('proxy_fee', 0):.2f}"
+        )
+        embed.add_field(
+            name="💸 Cost Breakdown",
+            value=costs_text,
+            inline=False
+        )
+
+    embed.set_footer(text=f"Powered by Claude AI • Confidence: {confidence} • ID: {auction_id}")
+
     return embed
 
 preference_learner = None
@@ -1702,7 +1812,7 @@ async def process_backlog_aggressive():
 @bot.event
 async def on_ready():
     global guild, auction_channel, preference_learner, tier_manager, delayed_manager, reminder_system, size_alert_system
-    global priority_calculator, channel_router, digest_manager, brand_data, tier_manager_new
+    global priority_calculator, channel_router, digest_manager, brand_data, tier_manager_new, resale_predictor
     print(f'✅ Bot connected as {bot.user}!')
     guild = bot.get_guild(GUILD_ID)
     
@@ -1713,7 +1823,15 @@ async def on_ready():
         # Initialize existing systems
         preference_learner = UserPreferenceLearner()
         delayed_manager = DelayedListingManager()
-        
+
+        # Initialize resale predictor if available
+        if RESALE_PREDICTOR_AVAILABLE:
+            resale_predictor = ResaleValuePredictor()
+            print("💰 Resale value predictor initialized")
+        else:
+            resale_predictor = None
+            print("⚠️ Resale predictor not initialized")
+
         # Initialize new tier system if available
         if TIER_SYSTEM_AVAILABLE:
             print("🔄 Initializing tier system...")
@@ -5303,6 +5421,112 @@ async def test_standard_feed(ctx):
         await ctx.send(f"❌ Error: {e}")
         import traceback
         print(f"❌ Test standard error: {traceback.format_exc()}")
+
+@bot.command(name='resale')
+async def resale_command(ctx, auction_id: str = None):
+    """
+    Predict resale value for a listing
+    Usage: !resale yahoo_x1234567890
+    """
+    global resale_predictor
+
+    if not auction_id:
+        await ctx.send("❌ Usage: `!resale <auction_id>`\nFind auction ID in listing footer")
+        return
+
+    # Check if resale predictor is available
+    if not resale_predictor:
+        await ctx.send("❌ Resale predictor not available. Please check ANTHROPIC_API_KEY configuration.")
+        return
+
+    # Clean auction_id
+    auction_id = auction_id.strip()
+
+    try:
+        # Get listing from database
+        listing = db_manager.execute_query(
+            'SELECT * FROM listings WHERE auction_id = %s' if db_manager.use_postgres else
+            'SELECT * FROM listings WHERE auction_id = ?',
+            (auction_id,),
+            fetch_one=True
+        )
+
+        if not listing:
+            await ctx.send(f"❌ Listing not found: `{auction_id}`")
+            return
+
+        await ctx.send("🤔 Analyzing resale value with AI... (this takes ~10 seconds)")
+
+        # Convert database row to dict
+        listing_data = {
+            'auction_id': listing.get('auction_id', auction_id) if isinstance(listing, dict) else listing[0],
+            'title': listing.get('title', '') if isinstance(listing, dict) else listing[1],
+            'brand': listing.get('brand', 'Unknown') if isinstance(listing, dict) else listing[2],
+            'price_usd': listing.get('price_usd', 0) if isinstance(listing, dict) else listing[4],
+            'price_jpy': listing.get('price_jpy', 0) if isinstance(listing, dict) else listing[3],
+            'condition': 'Used',  # Default, adjust if you track condition
+            'sizes': []  # Add if you track sizes
+        }
+
+        # Get prediction
+        prediction = await resale_predictor.predict_resale_value(listing_data)
+        prediction = resale_predictor.calculate_profit_metrics(prediction)
+
+        # Create embed
+        embed = create_resale_embed(listing_data, prediction)
+
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        await ctx.send(f"❌ Error predicting resale value: {e}")
+        print(f"❌ Resale command error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@bot.command(name='resale_help')
+async def resale_help(ctx):
+    """Show how to use resale predictor"""
+    embed = discord.Embed(
+        title="💰 Resale Value Predictor Guide",
+        description="AI-powered US resale price estimation for Yahoo Japan listings",
+        color=0x0099ff,
+        timestamp=datetime.now(timezone.utc)
+    )
+
+    embed.add_field(
+        name="📖 How to Use",
+        value="**Command:** `!resale <auction_id>`\n**Example:** `!resale yahoo_x1234567890`\n\nFind the auction ID in the footer of any listing.",
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎯 What It Analyzes",
+        value="• Brand reputation & demand\n• Item condition & rarity\n• Current market trends\n• Typical US markup\n• Profit margins after fees",
+        inline=False
+    )
+
+    embed.add_field(
+        name="💡 Interpreting Results",
+        value="**🔥 Strong Buy** - 50%+ profit margin\n**✅ Good Deal** - 20-50% margin\n**⚠️ Marginal** - 0-20% margin\n**❌ Pass** - Negative margin",
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚙️ Confidence Levels",
+        value="**High** - Detailed info, popular item\n**Medium** - Some uncertainty\n**Low** - Limited data, verify manually",
+        inline=False
+    )
+
+    embed.add_field(
+        name="💸 Costs Included",
+        value="• Shipping from Japan (~$40)\n• Platform fees (10%)\n• Proxy service fees (10%)\n\nNet profit shows your actual take-home.",
+        inline=False
+    )
+
+    embed.set_footer(text="Powered by Claude AI • Takes ~10 seconds per analysis")
+
+    await ctx.send(embed=embed)
 
 # Stripe subscription commands removed - using Whop.com instead
 
