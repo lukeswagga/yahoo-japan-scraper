@@ -2,25 +2,258 @@
   "Raf Simons": {
     "variants": [
       "Raf Simons",
-      "ラフシモンズ"
+      "ラフシモンズ",
+      "ラフ",
+      "RAF",
+      "Raf by Raf Simons"
     ],
     "subcategories": [
-      "jacket",
-      "shirt",
-      "ラフ ジャケット"
+      "jacket", "coat", "parka", "bomber", "blazer",
+      "shirt", "tee", "t-shirt", "sweater", "hoodie", "sweatshirt",
+      "pants", "jeans", "trousers", "shorts",
+      "shoes", "sneakers", "boots", "runners",
+      "ジャケット", "コート", "パーカー", "ボンバー",
+      "シャツ", "Tシャツ", "セーター", "パンツ", "ジーンズ",
+      "シューズ", "スニーカー", "ブーツ"
     ]
   },
   "Maison Margiela": {
     "variants": [
       "Maison Margiela",
       "Margiela",
-      "マルジェラ"
+      "マルジェラ",
+      "メゾンマルジェラ",
+      "Martin Margiela",
+      "MM6",
+      "マルタンマルジェラ"
     ],
     "subcategories": [
-      "jacket",
-      "coat",
-      "shoes",
-      "マルジェラ ジャケット"
+      "jacket", "coat", "blazer", "cardigan",
+      "shirt", "tee", "sweater", "knit", "polo",
+      "pants", "jeans", "trousers",
+      "shoes", "sneakers", "boots", "tabi", "replica",
+      "ジャケット", "コート", "ブレザー", "カーディガン",
+      "シャツ", "Tシャツ", "セーター", "ニット",
+      "パンツ", "ジーンズ", "シューズ", "スニーカー", "ブーツ", "タビ", "レプリカ"
+    ]
+  },
+  "Rick Owens": {
+    "variants": [
+      "Rick Owens",
+      "リックオウエンス",
+      "リック",
+      "DRKSHDW",
+      "ダークシャドウ",
+      "Rick",
+      "RO"
+    ],
+    "subcategories": [
+      "jacket", "coat", "leather", "bomber", "parka", "waxed",
+      "shirt", "tee", "t-shirt", "tank", "longsleeve",
+      "pants", "jeans", "trousers", "pods", "cargo",
+      "shoes", "boots", "sneakers", "ramones", "geobasket", "dunks",
+      "shorts", "hoodie", "sweatshirt",
+      "ジャケット", "コート", "レザー", "ボンバー", "パーカー",
+      "シャツ", "Tシャツ", "タンク", "ロングスリーブ",
+      "パンツ", "ジーンズ", "ポッド", "カーゴ",
+      "シューズ", "ブーツ", "スニーカー", "ラモーンズ", "ジオバスケット"
+    ]
+  },
+  "Yohji Yamamoto": {
+    "variants": [
+      "Yohji Yamamoto",
+      "ヨウジヤマモト",
+      "ヨウジ",
+      "Yamamoto",
+      "Y-3",
+      "ワイズ",
+      "Y's",
+      "Yohji"
+    ],
+    "subcategories": [
+      "jacket", "coat", "blazer", "cardigan", "vest",
+      "shirt", "tee", "blouse", "sweater", "knit",
+      "pants", "jeans", "trousers", "hakama", "wide",
+      "dress", "skirt",
+      "shoes", "boots", "sneakers",
+      "ジャケット", "コート", "ブレザー", "カーディガン", "ベスト",
+      "シャツ", "Tシャツ", "ブラウス", "セーター", "ニット",
+      "パンツ", "ジーンズ", "ワイド", "袴",
+      "ドレス", "スカート", "シューズ", "ブーツ", "スニーカー"
+    ]
+  },
+  "Jean Paul Gaultier": {
+    "variants": [
+      "Jean Paul Gaultier",
+      "ジャンポールゴルチエ",
+      "ジャンポール・ゴルチエ",
+      "JPG",
+      "Gaultier",
+      "ゴルチエ",
+      "ゴルチェ"
+    ],
+    "subcategories": [
+      "jacket", "coat", "trench", "blazer", "bomber",
+      "shirt", "tee", "mesh", "tattoo", "stripe",
+      "pants", "jeans", "denim",
+      "dress", "skirt",
+      "bag", "accessories",
+      "ジャケット", "コート", "トレンチ", "ブレザー",
+      "シャツ", "Tシャツ", "メッシュ", "タトゥー",
+      "パンツ", "ジーンズ", "デニム",
+      "ドレス", "スカート", "バッグ"
+    ]
+  },
+  "Junya Watanabe": {
+    "variants": [
+      "Junya Watanabe",
+      "ジュンヤワタナベ",
+      "ジュンヤ",
+      "Watanabe",
+      "Junya"
+    ],
+    "subcategories": [
+      "jacket", "coat", "patchwork", "technical", "nylon",
+      "shirt", "tee", "parka",
+      "pants", "jeans", "cargo", "denim",
+      "shoes", "sneakers",
+      "ジャケット", "コート", "パッチワーク", "テクニカル",
+      "シャツ", "Tシャツ", "パーカー",
+      "パンツ", "ジーンズ", "カーゴ", "デニム",
+      "シューズ", "スニーカー"
+    ]
+  },
+  "Undercover": {
+    "variants": [
+      "Undercover",
+      "アンダーカバー",
+      "アンダーカバ",
+      "UNDERCOVERISM",
+      "アンダーカバリズム"
+    ],
+    "subcategories": [
+      "jacket", "coat", "parka", "ma-1", "bomber",
+      "shirt", "tee", "hoodie", "sweatshirt", "sweater",
+      "pants", "jeans", "cargo",
+      "shoes", "boots", "sneakers",
+      "ジャケット", "コート", "パーカー", "MA-1", "ボンバー",
+      "シャツ", "Tシャツ", "フーディ", "スウェット", "セーター",
+      "パンツ", "ジーンズ", "カーゴ",
+      "シューズ", "ブーツ", "スニーカー"
+    ]
+  },
+  "Comme Des Garcons": {
+    "variants": [
+      "Comme Des Garcons",
+      "Comme des Garçons",
+      "CDG",
+      "コムデギャルソン",
+      "コムデギャルソンオム",
+      "Homme Plus",
+      "オムプリュス"
+    ],
+    "subcategories": [
+      "jacket", "coat", "blazer", "vest",
+      "shirt", "tee", "polo", "sweater", "cardigan",
+      "pants", "trousers",
+      "dress", "skirt",
+      "shoes", "boots", "sneakers",
+      "ジャケット", "コート", "ブレザー", "ベスト",
+      "シャツ", "Tシャツ", "ポロ", "セーター", "カーディガン",
+      "パンツ", "トラウザー",
+      "ドレス", "スカート", "シューズ", "ブーツ", "スニーカー"
+    ]
+  },
+  "Vetements": {
+    "variants": [
+      "Vetements",
+      "ヴェトモン",
+      "ベトモン",
+      "VTMNTS"
+    ],
+    "subcategories": [
+      "jacket", "coat", "parka", "bomber", "denim",
+      "hoodie", "t-shirt", "tee", "oversized", "logo",
+      "pants", "jeans", "denim", "cargo",
+      "shoes", "boots", "reebok",
+      "ジャケット", "コート", "パーカー", "ボンバー", "デニム",
+      "フーディ", "Tシャツ", "オーバーサイズ", "ロゴ",
+      "パンツ", "ジーンズ", "カーゴ",
+      "シューズ", "ブーツ", "リーボック"
+    ]
+  },
+  "Balenciaga": {
+    "variants": [
+      "Balenciaga",
+      "バレンシアガ",
+      "バレンシアーガ"
+    ],
+    "subcategories": [
+      "jacket", "coat", "blazer", "bomber",
+      "shirt", "tee", "hoodie", "sweater", "knit",
+      "pants", "jeans", "trousers",
+      "shoes", "sneakers", "triple s", "speed", "track",
+      "bag", "accessories",
+      "ジャケット", "コート", "ブレザー", "ボンバー",
+      "シャツ", "Tシャツ", "フーディ", "セーター", "ニット",
+      "パンツ", "ジーンズ", "トラウザー",
+      "シューズ", "スニーカー", "トリプルS", "スピード", "トラック",
+      "バッグ"
+    ]
+  },
+  "Alyx": {
+    "variants": [
+      "Alyx",
+      "1017 ALYX 9SM",
+      "1017 Alyx",
+      "アリクス",
+      "アリックス"
+    ],
+    "subcategories": [
+      "jacket", "coat", "parka", "vest",
+      "shirt", "tee", "hoodie", "sweatshirt",
+      "pants", "cargo", "belt", "buckle",
+      "bag", "accessories", "chain",
+      "ジャケット", "コート", "パーカー", "ベスト",
+      "シャツ", "Tシャツ", "フーディ", "スウェット",
+      "パンツ", "カーゴ", "ベルト", "バックル",
+      "バッグ", "チェーン"
+    ]
+  },
+  "Martine Rose": {
+    "variants": [
+      "Martine Rose",
+      "マルティーヌローズ",
+      "マルティーヌ・ローズ",
+      "Martine"
+    ],
+    "subcategories": [
+      "jacket", "coat", "parka", "blazer",
+      "shirt", "polo", "tee", "oversized",
+      "pants", "jeans", "trousers", "wide",
+      "shoes", "sneakers",
+      "ジャケット", "コート", "パーカー", "ブレザー",
+      "シャツ", "ポロ", "Tシャツ", "オーバーサイズ",
+      "パンツ", "ジーンズ", "ワイド",
+      "シューズ", "スニーカー"
+    ]
+  },
+  "Kiko Kostadinov": {
+    "variants": [
+      "Kiko Kostadinov",
+      "キココスタディノフ",
+      "キコ",
+      "Kiko"
+    ],
+    "subcategories": [
+      "jacket", "coat", "vest", "technical",
+      "shirt", "tee",
+      "pants", "trousers", "cargo", "technical",
+      "shoes", "sneakers", "asics",
+      "ジャケット", "コート", "ベスト", "テクニカル",
+      "シャツ", "Tシャツ",
+      "パンツ", "トラウザー", "カーゴ",
+      "シューズ", "スニーカー", "アシックス"
     ]
   },
   "Prada": {
@@ -29,9 +262,16 @@
       "プラダ"
     ],
     "subcategories": [
-      "jacket",
-      "bag",
-      "shoes"
+      "jacket", "coat", "blazer", "bomber", "nylon",
+      "shirt", "tee", "polo", "sweater",
+      "pants", "trousers",
+      "shoes", "sneakers", "boots", "loafers",
+      "bag", "accessories",
+      "ジャケット", "コート", "ブレザー", "ボンバー", "ナイロン",
+      "シャツ", "Tシャツ", "ポロ", "セーター",
+      "パンツ", "トラウザー",
+      "シューズ", "スニーカー", "ブーツ", "ローファー",
+      "バッグ"
     ]
   },
   "Miu Miu": {
@@ -40,218 +280,220 @@
       "ミュウミュウ"
     ],
     "subcategories": [
-      "jacket",
-      "coat",
-      "shirt",
-      "pants",
-      "sweater",
-      "ミュウミュウ ジャケット"
+      "jacket", "coat", "blazer", "cardigan",
+      "shirt", "tee", "blouse", "sweater", "knit",
+      "pants", "trousers", "skirt", "dress",
+      "shoes", "boots", "sneakers", "mary jane",
+      "bag", "accessories",
+      "ジャケット", "コート", "ブレザー", "カーディガン",
+      "シャツ", "Tシャツ", "ブラウス", "セーター", "ニット",
+      "パンツ", "トラウザー", "スカート", "ドレス",
+      "シューズ", "ブーツ", "スニーカー", "メリージェーン",
+      "バッグ"
     ]
   },
   "Chrome Hearts": {
     "variants": [
       "Chrome Hearts",
-      "クロムハーツ"
+      "クロムハーツ",
+      "CH"
     ],
     "subcategories": [
-      "ring",
-      "jacket",
-      "クロムハーツ リング"
-    ]
-  },
-  "Rick Owens": {
-    "variants": [
-      "Rick Owens",
-      "リックオウエンス"
-    ],
-    "subcategories": [
-      "jacket",
-      "shoes",
-      "pants",
-      "リック ジャケット"
-    ]
-  },
-  "Kiko Kostadinov": {
-    "variants": [
-      "Kiko Kostadinov",
-      "キココスタディノフ"
-    ],
-    "subcategories": [
-      "jacket",
-      "shoes",
-      "pants"
-    ]
-  },
-  "Yohji Yamamoto": {
-    "variants": [
-      "Yohji Yamamoto",
-      "ヨウジヤマモト",
-      "Yamamoto"
-    ],
-    "subcategories": [
-      "jacket",
-      "coat",
-      "pants",
-      "shirt",
-      "ヨウジ ジャケット",
-      "ヨウジ パンツ"
-    ]
-  },
-  "Martine Rose": {
-    "variants": [
-      "Martine Rose"
-    ],
-    "subcategories": [
-      "shirt",
-      "jacket",
-      "pants"
-    ]
-  },
-  "Balenciaga": {
-    "variants": [
-      "Balenciaga",
-      "バレンシアガ"
-    ],
-    "subcategories": [
-      "coat",
-      "jacket",
-      "pants",
-      "shoes",
-      "バレンシアガ ジャケット"
-    ]
-  },
-  "Celine": {
-    "variants": [
-      "Celine",
-      "セリーヌ"
-    ],
-    "subcategories": [
-      "coat",
-      "jacket",
-      "pants",
-      "セリーヌ ジャケット"
-    ]
-  },
-  "Alyx": {
-    "variants": [
-      "Alyx",
-      "1017 ALYX 9SM",
-      "アリクス"
-    ],
-    "subcategories": [
-      "belt",
-      "jacket",
-      "pants",
-      "bag",
-      "アリクス ジャケット",
-      "アリクス ベルト"
-    ]
-  },
-  "Undercover": {
-    "variants": [
-      "Undercover",
-      "アンダーカバー"
-    ],
-    "subcategories": [
-      "jacket",
-      "shirt",
-      "pants",
-      "アンダーカバー ジャケット"
+      "jacket", "leather", "denim",
+      "shirt", "tee", "hoodie",
+      "pants", "jeans", "leather",
+      "ring", "jewelry", "accessories", "cross", "dagger",
+      "ジャケット", "レザー", "デニム",
+      "シャツ", "Tシャツ", "フーディ",
+      "パンツ", "ジーンズ",
+      "リング", "ジュエリー", "クロス", "ダガー"
     ]
   },
   "Bottega Veneta": {
     "variants": [
       "Bottega Veneta",
-      "ボッテガ・ヴェネタ"
+      "ボッテガヴェネタ",
+      "ボッテガ・ヴェネタ",
+      "Bottega"
     ],
     "subcategories": [
-      "bag",
-      "shoes",
-      "jacket"
+      "jacket", "coat", "blazer", "leather",
+      "shirt", "tee", "sweater", "knit",
+      "pants", "trousers",
+      "shoes", "boots", "sneakers", "loafers",
+      "bag", "intrecciato", "pouch",
+      "ジャケット", "コート", "ブレザー", "レザー",
+      "シャツ", "Tシャツ", "セーター", "ニット",
+      "パンツ", "トラウザー",
+      "シューズ", "ブーツ", "スニーカー", "ローファー",
+      "バッグ", "イントレチャート", "ポーチ"
     ]
   },
-  "Junya Watanabe": {
+  "Celine": {
     "variants": [
-      "Junya Watanabe",
-      "ジュンヤワタナベ"
+      "Celine",
+      "セリーヌ",
+      "Céline"
     ],
     "subcategories": [
-      "jacket",
-      "shirt",
-      "pants",
-      "ジュンヤ ジャケット"
-    ]
-  },
-  "Comme Des Garcons": {
-    "variants": [
-      "Comme Des Garcons",
-      "CDG",
-      "コムデギャルソン"
-    ],
-    "subcategories": [
-      "shirt",
-      "pants",
-      "ジャケット"
-    ]
-  },
-  "Jean Paul Gaultier": {
-    "variants": [
-      "Jean Paul Gaultier",
-      "ジャンポール・ゴルチエ",
-      "JPG",
-      "Gaultier",
-      "ゴルチエ"
-    ],
-    "subcategories": [
-      "jacket",
-      "coat",
-      "shirt",
-      "pants",
-      "bag",
-      "denim",
-      "blazer",
-      "トレンチ",
-      "ジャケット",
-      "パンツ",
+      "jacket", "coat", "blazer", "leather",
+      "shirt", "tee", "blouse", "sweater",
+      "pants", "trousers", "jeans",
+      "dress", "skirt",
+      "shoes", "boots", "sneakers",
+      "bag", "accessories",
+      "ジャケット", "コート", "ブレザー", "レザー",
+      "シャツ", "Tシャツ", "ブラウス", "セーター",
+      "パンツ", "トラウザー", "ジーンズ",
+      "ドレス", "スカート",
+      "シューズ", "ブーツ", "スニーカー",
       "バッグ"
-    ]
-  },
-  "Vetements": {
-    "variants": [
-      "Vetements",
-      "ヴェトモン"
-    ],
-    "subcategories": [
-      "jacket",
-      "hoodie",
-      "t-shirt",
-      "denim",
-      "pants",
-      "ヴェトモン ジャケット",
-      "ヴェトモン パンツ"
     ]
   },
   "Helmut Lang": {
     "variants": [
       "Helmut Lang",
-      "ヘルムートラング"
+      "ヘルムートラング",
+      "ヘルムート・ラング"
     ],
     "subcategories": [
-      "jacket",
-      "shirt",
-      "denim"
+      "jacket", "coat", "bomber", "leather",
+      "shirt", "tee", "tank", "sweater",
+      "pants", "jeans", "denim", "astro",
+      "shoes", "boots",
+      "ジャケット", "コート", "ボンバー", "レザー",
+      "シャツ", "Tシャツ", "タンク", "セーター",
+      "パンツ", "ジーンズ", "デニム",
+      "シューズ", "ブーツ"
     ]
   },
   "Hysteric Glamour": {
     "variants": [
       "Hysteric Glamour",
-      "ヒステリックグラマー"
+      "ヒステリックグラマー",
+      "ヒステリック・グラマー",
+      "Hysteric"
     ],
     "subcategories": [
-      "t-shirt",
-      "denim",
-      "jacket",
-      "ヒステリックグラマー デニム"
+      "jacket", "coat", "denim", "leather",
+      "t-shirt", "tee", "hoodie", "sweatshirt",
+      "pants", "jeans", "denim",
+      "shoes", "boots",
+      "ジャケット", "コート", "デニム", "レザー",
+      "Tシャツ", "フーディ", "スウェット",
+      "パンツ", "ジーンズ", "デニム",
+      "シューズ", "ブーツ"
+    ]
+  },
+  "Comme des Garcons Homme Plus": {
+    "variants": [
+      "Comme des Garcons Homme Plus",
+      "CDG Homme Plus",
+      "コムデギャルソンオムプリュス",
+      "オムプリュス",
+      "Homme Plus"
+    ],
+    "subcategories": [
+      "jacket", "coat", "blazer", "vest",
+      "shirt", "dress shirt", "tee", "sweater",
+      "pants", "trousers", "wool",
+      "shoes", "boots",
+      "ジャケット", "コート", "ブレザー", "ベスト",
+      "シャツ", "ドレスシャツ", "Tシャツ", "セーター",
+      "パンツ", "トラウザー", "ウール",
+      "シューズ", "ブーツ"
+    ]
+  },
+  "Issey Miyake": {
+    "variants": [
+      "Issey Miyake",
+      "イッセイミヤケ",
+      "イッセイ・ミヤケ",
+      "Pleats Please",
+      "プリーツプリーズ",
+      "Homme Plisse",
+      "オムプリッセ"
+    ],
+    "subcategories": [
+      "jacket", "coat", "pleats", "technical",
+      "shirt", "tee", "polo", "pleated",
+      "pants", "trousers", "pleats",
+      "dress", "skirt",
+      "shoes",
+      "ジャケット", "コート", "プリーツ", "テクニカル",
+      "シャツ", "Tシャツ", "ポロ",
+      "パンツ", "トラウザー",
+      "ドレス", "スカート", "シューズ"
+    ]
+  },
+  "Number Nine": {
+    "variants": [
+      "Number Nine",
+      "Number (N)ine",
+      "ナンバーナイン",
+      "N(N)",
+      "ナンバー(N)ine"
+    ],
+    "subcategories": [
+      "jacket", "coat", "leather", "denim",
+      "shirt", "tee", "hoodie", "sweater",
+      "pants", "jeans", "denim",
+      "shoes", "boots",
+      "ジャケット", "コート", "レザー", "デニム",
+      "シャツ", "Tシャツ", "フーディ", "セーター",
+      "パンツ", "ジーンズ", "デニム",
+      "シューズ", "ブーツ"
+    ]
+  },
+  "Takahiromiyashita The Soloist": {
+    "variants": [
+      "Takahiromiyashita The Soloist",
+      "The Soloist",
+      "Soloist",
+      "ソロイスト",
+      "タカヒロミヤシタザソロイスト"
+    ],
+    "subcategories": [
+      "jacket", "coat", "blazer", "cardigan",
+      "shirt", "tee", "sweater",
+      "pants", "jeans", "trousers",
+      "shoes", "boots",
+      "ジャケット", "コート", "ブレザー", "カーディガン",
+      "シャツ", "Tシャツ", "セーター",
+      "パンツ", "ジーンズ", "トラウザー",
+      "シューズ", "ブーツ"
+    ]
+  },
+  "Doublet": {
+    "variants": [
+      "Doublet",
+      "ダブレット"
+    ],
+    "subcategories": [
+      "jacket", "coat", "hoodie",
+      "shirt", "tee", "sweatshirt",
+      "pants", "jeans",
+      "shoes", "sneakers",
+      "ジャケット", "コート", "フーディ",
+      "シャツ", "Tシャツ", "スウェット",
+      "パンツ", "ジーンズ",
+      "シューズ", "スニーカー"
+    ]
+  },
+  "Sacai": {
+    "variants": [
+      "Sacai",
+      "サカイ"
+    ],
+    "subcategories": [
+      "jacket", "coat", "parka", "ma-1", "hybrid",
+      "shirt", "tee", "hoodie", "sweatshirt", "sweater",
+      "pants", "trousers", "skirt",
+      "shoes", "sneakers", "nike",
+      "ジャケット", "コート", "パーカー", "MA-1", "ハイブリッド",
+      "シャツ", "Tシャツ", "フーディ", "スウェット", "セーター",
+      "パンツ", "トラウザー", "スカート",
+      "シューズ", "スニーカー", "ナイキ"
     ]
   }
 }

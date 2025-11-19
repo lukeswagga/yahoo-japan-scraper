@@ -215,15 +215,15 @@ class QualityChecker:
             issues.append(f"Spam detected: {spam_type}")
             confidence += 0.9  # Very high confidence for spam
         
-        # IMPROVED PRICE FILTERING - less aggressive
+        # IMPROVED PRICE FILTERING - much less aggressive
         if price_usd < 5:
             issues.append("Price too low - likely damaged/fake")
             confidence += 0.7
-        elif price_usd > 2000:
+        elif price_usd > 3000:
             issues.append("Price extremely high - needs verification")
             confidence += 0.4
-        elif price_usd > 1000:
-            # Allow high prices but flag for review
+        elif price_usd > 2000:
+            # Allow high prices for premium brands (Rick Owens, etc.)
             issues.append("High price - premium item")
             confidence += 0.1
         
@@ -232,18 +232,9 @@ class QualityChecker:
             issues.append("Title too short - insufficient detail")
             confidence += 0.3
         
-        # Require clothing indicators for fashion items
-        clothing_keywords = [
-            'shirt', 'tee', 'jacket', 'pants', 'hoodie', 'sweater', 'coat',
-            'dress', 'skirt', 'shorts', 'top', 'blouse', 'cardigan',
-            'シャツ', 'ジャケット', 'パンツ', 'パーカー', 'コート',
-            'トップス', 'スカート', 'ワンピース', 'ブラウス'
-        ]
-        
-        has_clothing_keyword = any(keyword in title.lower() for keyword in clothing_keywords)
-        if not has_clothing_keyword:
-            issues.append("No clothing keywords detected")
-            confidence += 0.4
+        # REMOVED: Clothing keyword requirement - too restrictive
+        # Trust that spam detector and scraper's is_clothing_item handles this
+        # Removing this check allows more brand items through
         
         # Suspicious pattern detection
         suspicious_patterns = [
@@ -258,9 +249,9 @@ class QualityChecker:
             if re.search(pattern, title, re.IGNORECASE):
                 issues.append(f"Suspicious pattern: {pattern}")
                 confidence += 0.3
-        
-        should_block = confidence > 0.6  # Adjusted threshold
-        
+
+        should_block = confidence > 0.75  # LESS AGGRESSIVE: Raised from 0.6 to 0.75
+
         return {
             'should_block': should_block,
             'confidence': confidence,

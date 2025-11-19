@@ -185,19 +185,25 @@ class EndingSoonScraper(YahooScraperBase):
                         print(f"✅ Sent ending soon listing to Discord bot: {listing['title'][:50]}...")
                     
                     total_found += 1
-                    
-                    # Rate limiting between sends
-                    time.sleep(0.5)
-                
-                # Rate limiting between brands
-                time.sleep(2)
-                
+
+                    # OPTIMIZED: Reduced from 0.5s to 0.1s for faster processing
+                    time.sleep(0.1)
+
+                # OPTIMIZED: Reduced from 2s to 0.5s for faster brand switching
+                time.sleep(0.5)
+
             except Exception as e:
                 print(f"❌ Error processing {brand}: {e}")
                 continue
-        
+
         # Save seen items
         self.save_seen_items()
+
+        # ANALYTICS: Show filtering statistics
+        self.analyze_filtering()
+
+        # Cleanup seen_ids if needed
+        self.cleanup_old_seen_ids()
         
         cycle_duration = time.time() - cycle_start
         print(f"\n📊 Ending Soon Cycle #{self.cycle_count} Complete:")

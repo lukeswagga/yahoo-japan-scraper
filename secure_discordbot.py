@@ -640,7 +640,7 @@ AUCTION_CATEGORY_NAME = "🎯 AUCTION SNIPES"
 AUCTION_CHANNEL_NAME = "🎯-auction-alerts"
 
 batch_buffer = []
-BATCH_SIZE = 10  # Increase from 4 to 10
+BATCH_SIZE = 30  # EMERGENCY: Aggressive batch processing to clear 4,125 item backlog
 BATCH_TIMEOUT = 60  # Increase from 30 to 60 seconds
 last_batch_time = None
 
@@ -990,53 +990,8 @@ class UserPreferenceLearner:
         
         return False
 
-def final_spam_check(listing_data):
-    """Final spam check before Discord sending with enhanced filtering"""
-    title = listing_data.get('title', '')
-    brand = listing_data.get('brand', '')
-    title_lower = title.lower()
-    
-    # NEW HIGH PRIORITY EXCLUSIONS (same as in core_scraper_base.py)
-    new_excluded_keywords = {
-        "LEGO", "レゴ",  # LEGO blocks
-        "Water Tank", "ウォータータンク", "水タンク",  # Water tanks
-        "BMW Touring E91", "BMW E91", "E91",  # BMW car parts
-        "Mazda", "マツダ",  # Mazda car parts
-        "Band of Outsiders", "バンドオブアウトサイダーズ"  # Unwanted brand
-    }
-    
-    for excluded in new_excluded_keywords:
-        if excluded.lower() in title_lower:
-            print(f"🚫 FINAL SPAM CHECK - NEW EXCLUSION BLOCKED: {excluded}")
-            return True
-    
-    # STRICT JDirectItems FILTERING
-    if "jdirectitems" in title_lower:
-        import re
-        pattern = r'jdirectitems auction.*?→\s*([^,\n]+)'
-        match = re.search(pattern, title_lower)
-        if match:
-            category = match.group(1).strip().lower()
-            
-            # Only allow fashion-related categories
-            allowed_categories = {
-                "fashion", "clothing", "apparel", 
-                "ファッション", "衣類", "服", "洋服"
-            }
-            
-            if not any(allowed in category for allowed in allowed_categories):
-                print(f"🚫 FINAL SPAM CHECK - JDirectItems NON-FASHION BLOCKED: {category}")
-                return True
-            else:
-                print(f"✅ FINAL SPAM CHECK - JDirectItems FASHION ALLOWED: {category}")
-    
-    # Use existing spam detection
-    if preference_learner and preference_learner.is_likely_spam(title, brand):
-        print(f"🚫 FINAL SPAM CHECK - Existing spam patterns detected")
-        return True
-    
-    print(f"✅ FINAL SPAM CHECK - Listing passed all filters")
-    return False
+# REMOVED: final_spam_check() - filtering now happens ONLY in scrapers (no dual filtering)
+# Trust that scrapers have already filtered properly via EnhancedSpamDetector
 
 def create_enhanced_listing_embed(listing_data):
     """Create enhanced embed with scraper-specific styling"""
@@ -1653,19 +1608,60 @@ async def send_to_premium_channels_immediately(listing_data):
         print(f"❌ Error sending to premium channels: {e}")
 
 async def send_individual_listings_with_rate_limit(batch_data):
+    """Send listings with minimal rate limiting - Discord can handle 50 req/s"""
     try:
         for i, auction_data in enumerate(batch_data, 1):
-            success = await send_single_listing_enhanced(auction_data)
-            if success:
-                print(f"✅ Sent {i}/{len(batch_data)}")
-            else:
-                print(f"⚠️ Skipped {i}/{len(batch_data)}")
-            
-            if i < len(batch_data):
-                await asyncio.sleep(1.5)  # Reduced from 3 to 1.5 seconds
-        
+            try:
+                success = await send_single_listing_enhanced(auction_data)
+                if success:
+                    print(f"✅ Sent {i}/{len(batch_data)}")
+                else:
+                    print(f"⚠️ Skipped {i}/{len(batch_data)}")
+
+                if i < len(batch_data):
+                    await asyncio.sleep(0.1)  # EMERGENCY: Reduced from 1.5s to 0.1s for faster processing
+
+            except discord.HTTPException as e:
+                if e.status == 429:  # Rate limited by Discord
+                    retry_after = getattr(e, 'retry_after', 5)
+                    print(f"⚠️ Discord rate limited! Waiting {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    # Retry this item
+                    await send_single_listing_enhanced(auction_data)
+                else:
+                    raise
+
     except Exception as e:
         print(f"❌ Error in rate-limited sending: {e}")
+
+async def process_backlog_aggressive():
+    """Aggressive backlog processing for emergency queue clearing"""
+    global batch_buffer
+
+    try:
+        initial_size = len(batch_buffer)
+        print(f"🔥 EMERGENCY BACKLOG CLEAR: Processing {initial_size} items...")
+
+        processed = 0
+        while batch_buffer and processed < initial_size:
+            # Take larger chunks for aggressive processing
+            chunk_size = min(50, len(batch_buffer))
+            chunk = batch_buffer[:chunk_size]
+            batch_buffer = batch_buffer[chunk_size:]
+
+            print(f"⚡ Processing chunk of {chunk_size} items ({len(batch_buffer)} remaining)...")
+            await send_individual_listings_with_rate_limit(chunk)
+
+            processed += chunk_size
+
+            # Very brief pause between chunks to avoid overwhelming Discord
+            if batch_buffer:
+                await asyncio.sleep(0.5)
+
+        print(f"✅ EMERGENCY BACKLOG CLEAR COMPLETE: Processed {processed} items")
+
+    except Exception as e:
+        print(f"❌ Error in aggressive backlog processing: {e}")
 
 @bot.event
 async def on_ready():
@@ -1723,11 +1719,17 @@ async def on_ready():
         # Start background tasks
         bot.loop.create_task(process_batch_buffer())
         bot.loop.create_task(delayed_manager.process_delayed_queue())
-        
+
+        # EMERGENCY: Clear backlog immediately on startup
+        if len(batch_buffer) > 100:
+            print(f"🚨 BACKLOG DETECTED: {len(batch_buffer)} items in queue")
+            print("🔥 Starting aggressive queue clear...")
+            bot.loop.create_task(process_backlog_aggressive())
+
         # Start daily scheduler - if available
         if ADVANCED_FEATURES_AVAILABLE and daily_scheduler:
             daily_scheduler.start()
-        
+
         print("⏰ Started batch buffer processor")
         print("🧠 User preference learning system initialized")
         print("💎 Notification tier system initialized")
@@ -3321,16 +3323,10 @@ def webhook_listing():
         # Add scraper source info for debugging
         scraper_source = listing_data.get('scraper_source', 'unknown')
         print(f"📥 Received listing from {scraper_source}: {listing_data.get('title', 'Unknown')[:50]}...")
-        
-        # FINAL SPAM CHECK before processing
-        if final_spam_check(listing_data):
-            print(f"🚫 Final spam check blocked listing from {scraper_source}")
-            return jsonify({
-                "status": "blocked", 
-                "message": "Listing blocked by final spam check", 
-                "scraper_source": scraper_source
-            }), 200
-        
+
+        # NO DUAL FILTERING: Trust that scrapers have already filtered via EnhancedSpamDetector
+        # All filtering happens in core_scraper_base.py and enhancedfiltering.py
+
         # Process with tier system if available
         if bot.is_ready() and priority_calculator and channel_router:
             try:
@@ -4869,20 +4865,21 @@ async def test_exclusions(ctx, *, title: str):
         'scraper_source': 'test_scraper'
     }
     
-    # Test final spam check
-    is_spam = final_spam_check(test_data)
-    
+    # NOTE: final_spam_check() removed - filtering now happens only in scrapers
+    # Spam filtering is handled by EnhancedSpamDetector in core_scraper_base.py
+    is_spam = False  # Placeholder - scrapers handle filtering now
+
     # Create test embed
     embed = create_enhanced_listing_embed(test_data)
-    
+
     # Add test results
     embed.add_field(
         name="🧪 Test Results",
-        value=f"**Spam Check:** {'🚫 BLOCKED' if is_spam else '✅ ALLOWED'}\n**Title:** {title[:100]}...",
+        value=f"**Note:** Filtering now happens in scrapers (see core_scraper_base.py)\n**Title:** {title[:100]}...",
         inline=False
     )
-    
-    embed.color = 0xff0000 if is_spam else 0x00ff00
+
+    embed.color = 0x00ff00  # Green - filtering happens at scraper level
     
     await ctx.send(embed=embed)
     
