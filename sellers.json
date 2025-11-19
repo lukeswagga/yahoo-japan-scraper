@@ -148,7 +148,7 @@
   ],
   "settings": {
     "check_interval_minutes": 15,
-    "max_pages_per_seller": 3,
+    "max_pages_per_seller": 5,
     "priority_keywords": [
       "Yohji Yamamoto",
       "Raf Simons",
