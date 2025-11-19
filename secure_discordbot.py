@@ -1014,7 +1014,8 @@ def create_enhanced_listing_embed(listing_data):
         'ending_soon_scraper': {'color': 0xff6b6b, 'emoji': '⏰', 'name': 'Ending Soon'},
         'budget_steals_scraper': {'color': 0x4ecdc4, 'emoji': '💰', 'name': 'Budget Steal'},
         'new_listings_scraper': {'color': 0x45b7d1, 'emoji': '🆕', 'name': 'New Listing'},
-        'buy_it_now_scraper': {'color': 0x96ceb4, 'emoji': '🛒', 'name': 'Buy It Now'}
+        'buy_it_now_scraper': {'color': 0x96ceb4, 'emoji': '🛒', 'name': 'Buy It Now'},
+        'seller_monitor_scraper': {'color': 0x9b59b6, 'emoji': '👤', 'name': 'Seller Alert'}
     }
     
     # Get scraper-specific styling

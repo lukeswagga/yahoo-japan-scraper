@@ -29,7 +29,8 @@ class ChannelRouter:
             'ending_soon_scraper': '⏰-ending-soon',
             'budget_steals_scraper': '💰-budget-steals',
             'new_listings_scraper': '🆕-new-listings',
-            'buy_it_now_scraper': '🛒-buy-it-now'
+            'buy_it_now_scraper': '🛒-buy-it-now',
+            'seller_monitor_scraper': '👤-seller-alerts'
         }
         
         # Brand to channel name mapping (with emoji prefix to match actual Discord channels)
