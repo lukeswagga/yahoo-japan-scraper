@@ -640,7 +640,7 @@ AUCTION_CATEGORY_NAME = "🎯 AUCTION SNIPES"
 AUCTION_CHANNEL_NAME = "🎯-auction-alerts"
 
 batch_buffer = []
-BATCH_SIZE = 30  # EMERGENCY: Aggressive batch processing to clear 4,125 item backlog
+BATCH_SIZE = 15  # Balanced: Fast enough but readable (was 30 - too overwhelming)
 BATCH_TIMEOUT = 60  # Increase from 30 to 60 seconds
 last_batch_time = None
 
@@ -667,13 +667,14 @@ SUPPORTED_PROXIES = {
 
 BRAND_CHANNEL_MAP = {
     "Vetements": "vetements",
-    "Alyx": "alyx", 
+    "Alyx": "alyx",
     "Anonymous Club": "anonymous-club",
     "Balenciaga": "balenciaga",
     "Bottega Veneta": "bottega-veneta",
     "Celine": "celine",
     "Chrome Hearts": "chrome-hearts",
     "Comme Des Garcons": "comme-des-garcons",
+    "Comme des Garcons Homme Plus": "comme-des-garcons",  # Same channel as CDG
     "Gosha Rubchinskiy": "gosha-rubchinskiy",
     "Helmut Lang": "helmut-lang",
     "Hood By Air": "hood-by-air",
@@ -689,7 +690,11 @@ BRAND_CHANNEL_MAP = {
     "Undercover": "undercover",
     "Jean Paul Gaultier": "jean-paul-gaultier",
     "Yohji Yamamoto": "yohji_yamamoto",
-    "Issey Miyake": "issey-miyake"  # NEW: Added Issey Miyake
+    "Issey Miyake": "issey-miyake",
+    "Number Nine": "number-nine",
+    "Takahiromiyashita The Soloist": "soloist",
+    "Doublet": "doublet",
+    "Sacai": "sacai"
 }
 
 intents = discord.Intents.default()
@@ -1655,7 +1660,7 @@ async def send_individual_listings_with_rate_limit(batch_data):
                     print(f"⚠️ Skipped {i}/{len(batch_data)}")
 
                 if i < len(batch_data):
-                    await asyncio.sleep(1.2)  # Per-channel safe: 5 msgs per 6 seconds = safe rate
+                    await asyncio.sleep(2.0)  # Slower for readability (was 1.2s - too fast to click)
 
             except discord.HTTPException as e:
                 if e.status == 429:  # Rate limited by Discord

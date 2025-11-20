@@ -151,11 +151,11 @@ class BudgetStealsScraper(YahooScraperBase):
                     
                     total_found += 1
 
-                    # OPTIMIZED: Reduced from 0.5s to 0.1s for faster processing
-                    time.sleep(0.1)
+                    # Balanced speed: Readable but still efficient
+                    time.sleep(0.3)
 
-                # OPTIMIZED: Reduced from 2s to 0.5s for faster brand switching
-                time.sleep(0.5)
+                # Balanced speed: Gives time to process without overwhelming
+                time.sleep(1.0)
                 
             except Exception as e:
                 print(f"❌ Error processing {brand}: {e}")
